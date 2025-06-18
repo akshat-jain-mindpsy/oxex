@@ -205,6 +205,20 @@ $admintype = $admintype ?? 'Unknown';
                   }
                   ?>
                   <?php
+                  if ($admintype == "DV" || $admintype == "AT") {
+                     $url = 'pass_standards.php';
+                     $urldetail = 'pass_standard_detail.php';
+                     $page = 'Pass Standards';
+                     if ($thispage == $url || $thispage == $urldetail) {
+                        $isactive = ' active';
+                        $whichDocModal = 3;
+                     } else {
+                        $isactive = ' ';
+                     }
+                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
+                  }
+                  ?>
+                  <?php
                      if ($admintype == "DV" || $admintype == "AT") {
                      $url = 'graph.php';
                      $urldetail = 'graphdetail.php';

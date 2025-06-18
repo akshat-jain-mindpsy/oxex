@@ -159,6 +159,65 @@ These changes create a more organized and maintainable system structure by estab
 
 This section documents the evolution of the database structure, including all new tables added and schema modifications.
 
+### Pass Standards System (September 2023)
+
+This table introduces a system for defining and tracking completion criteria for trainees.
+
+```sql
+CREATE TABLE `pass_standards` (
+  `psid` INT NOT NULL AUTO_INCREMENT,
+  `standard_name` VARCHAR(255) NOT NULL,
+  `tbid` TINYINT UNSIGNED NOT NULL,
+  `stid` MEDIUMINT UNSIGNED NULL DEFAULT NULL,
+  `requirement_type` ENUM('TOTAL_HOURS', 'UNIQUE_VALUES', 'TOTAL_COUNT') NOT NULL,
+  `required_value` INT NOT NULL,
+  `field_value` VARCHAR(255) NULL DEFAULT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `who_by` CHAR(32) NULL DEFAULT NULL,
+  `date_added` INT(11) NULL DEFAULT NULL,
+  `date_modified` INT(11) NULL DEFAULT NULL,
+  PRIMARY KEY (`psid`),
+  INDEX `fk_pass_standards_tbid` (`tbid`),
+  INDEX `fk_pass_standards_stid` (`stid`),
+  INDEX `fk_pass_standards_who_by` (`who_by`),
+  CONSTRAINT `fk_pass_standards_tbid` FOREIGN KEY (`tbid`) REFERENCES `tabs_tbl` (`tbid`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_pass_standards_stid` FOREIGN KEY (`stid`) REFERENCES `select_types` (`stid`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_pass_standards_who_by` FOREIGN KEY (`who_by`) REFERENCES `who_there` (`usrkey`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+```
+
+**Purpose**: This table introduces a formal system for defining and tracking completion criteria for trainees. It allows administrators to set specific, measurable standards (e.g., "log 20 hours of contact time" or "record at least 5 unique disability types") that can be automatically checked against a trainee's logbook data. This helps in standardizing requirements and providing clear progress feedback.
+
+**Key Features**:
+- Supports multiple requirement types: total hours, count of unique values, and total entry count.
+- `stid` can be nullable to support standards that are not tied to a specific field, like total hours logged.
+- Includes a `field_value` column to allow for more specific requirements, such as counting entries where a particular option was selected.
+- Foreign keys with `ON DELETE` rules maintain data integrity.
+- An `is_active` flag allows standards to be enabled or disabled without deleting them.
+
+#### How It Works
+
+The system uses these standards to dynamically calculate pass/fail status in real-time from the existing `logbook` and `trainee_log` data, without storing redundant trainee progress data.
+
+**At Runtime:** When checking if a trainee passes a specific category (`tbid`):
+1.  The system queries the `pass_standards` table for all active standards linked to that `tbid`.
+2.  For each standard found, it dynamically calculates the trainee's current progress from their existing data:
+    -   **`TOTAL_HOURS`**: Sums the `session` values from the `logbook` table for the trainee.
+    -   **`UNIQUE_VALUES`**: Counts the distinct values in `trainee_log.select_val` for a specific field (`stid`).
+    -   **`TOTAL_COUNT`**: Counts the total number of entries in `trainee_log` for a specific field (`stid`).
+3.  The calculated value is then compared against the `required_value` for that standard.
+4.  A trainee **passes** the category only if they meet **all** the defined standards for it.
+
+**Examples:**
+-   **Category "Clinical"**: Might require 100 `TOTAL_HOURS`, 3 `UNIQUE_VALUES` for an 'Age Group' field, and 4 `UNIQUE_VALUES` for an 'Ethnicity' field.
+-   **Category "Community"**: Might require 50 `TOTAL_HOURS` and 5 `UNIQUE_VALUES` for a 'Setting' field.
+-   **Category "Research"**: Might simply require 20 `TOTAL_COUNT` on a 'Research Activity' field.
+
+This dynamic approach gives administrators the flexibility to:
+- Set different and complex requirements for each category.
+- Change standards over time without affecting any historical data.
+- Have the system automatically apply new or updated standards to all trainees instantly.
+
 ### Section Table Link (August 2023)
 
 This table establishes the relationship between field sections and tables, enabling dynamic organization of fields within tables.
