@@ -1,0 +1,203 @@
+classDiagram
+    class admin_msg {
+        +int amid PK
+        +char(32) usrkey_from
+        +char(32) usrkey_to
+        +int date_sent
+        +int date_read
+        +text msg
+        +tinyint isread
+    }
+
+    class blog_link_tbl {
+        +mediumint blid PK
+        +mediumint btagid FK
+        +mediumint kbid FK
+    }
+
+    class blog_subject_tags {
+        +smallint btagid PK
+        +varchar(64) btag
+    }
+
+    class compositesearch {
+        +int csid PK
+        +varchar(255) csname
+        +mediumint stid1
+        +mediumint pid1
+        +mediumint stid2
+        +mediumint pid2
+        +mediumint stid3
+        +mediumint pid3
+        +tinyint sort_order
+        +decimal(5,2) target
+        +char(32) who_by
+        +int date_added
+        +int date_modified
+    }
+
+    class cs_gallery {
+        +int gid PK
+        +tinyint category
+        +smallint sort_order
+        +char(16) filename
+        +text caption
+        +int date_created
+        +int blog
+        +char(21) webp
+        +char(21) avif
+    }
+
+    class docs_tbl {
+        +int did PK
+        +tinyint doc_section
+        +varchar(255) sect_title
+        +text sect_txt
+        +mediumint sort_order
+        +char(32) who_by
+        +int date_added
+        +int date_modified
+    }
+
+    class field_sections {
+        +int section_id PK
+        +varchar(255) section_name
+        +int section_order
+        +text section_description
+        +text table_ids
+    }
+
+    class select_types {
+        +mediumint stid PK
+        +varchar(255) str
+        +tinyint single
+        +tinyint musthave
+        +tinyint wouldlike
+        +smallint sort_order
+        +int section_id FK
+    }
+
+    class trainee_tbl {
+        +bigint tid PK
+        +char(32) trainkey
+        +char(128) password
+        +char(8) txtpw
+        +char(128) salt
+        +varchar(255) name
+        +varchar(255) email
+        +tinyint tandc
+        +smallint uid FK
+        +char(32) supervisor
+        +char(32) supervisor2
+        +char(32) supervisor3
+        +char(32) tutor
+        +smallint year
+        +varchar(255) syslink
+        +char(32) who_by
+        +int date_added
+        +int date_modified
+        +int last_used
+    }
+
+    class tabs_tbl {
+        +tinyint tbid PK
+        +varchar(255) tab_name
+        +text tab_notes
+        +tinyint sort_order
+        +tinyint isvis
+    }
+
+    class tab_fields {
+        +int tfid PK
+        +tinyint tbid FK
+        +smallint stid FK
+        +smallint sort_order
+    }
+
+    class trainee_tab_link {
+        +int ttid PK
+        +char(32) trainkey FK
+        +tinyint tbid FK
+    }
+
+    class trainee_log {
+        +bigint tlogid PK
+        +char(32) trainkey FK
+        +char(32) logkey
+        +tinyint tbid FK
+        +mediumint stid FK
+        +int pid
+        +varchar(255) select_val
+        +int date_added
+        +int date_modified
+    }
+
+    class who_there {
+        +tinyint whid PK
+        +varchar(64) realname
+        +char(128) password
+        +char(128) salt
+        +varchar(128) email
+        +char(32) usrkey
+        +char(2) admintype
+        +char(8) startdate
+        +varchar(16) ipaddress
+        +char(20) photo
+        +tinyint isonline
+        +tinyint isdev
+        +int lastlogin
+    }
+
+    class uni_tbl {
+        +smallint uid PK
+        +varchar(255) university
+        +char(2) ident
+    }
+
+    class subset_tbl {
+        +int sd PK
+        +char(32) setkey
+        +char(32) usrkey
+        +varchar(255) subset
+        +text description
+        +char(32) who_by
+        +int date_added
+        +int date_modified
+    }
+
+    class subset_link_tbl {
+        +int slid PK
+        +char(32) setkey FK
+        +char(32) trainkey FK
+        +char(32) who_by
+        +int date_added
+    }
+
+    class tasks {
+        +tinyint dtid PK
+        +varchar(64) task
+        +char(6) colour
+        +tinyint textcolor
+    }
+
+    class timesheet {
+        +bigint tsid PK
+        +char(32) trainkey FK
+        +tinyint dtid FK
+        +int taskdate
+    }
+
+    blog_subject_tags "1" -- "many" blog_link_tbl: has
+    field_sections "1" -- "many" select_types: contains
+    tabs_tbl "1" -- "many" tab_fields: has
+    select_types "1" -- "many" tab_fields: used-in
+    tabs_tbl "1" -- "many" trainee_tab_link: associated-with
+    trainee_tbl "1" -- "many" trainee_tab_link: has-access-to
+    trainee_tbl "1" -- "many" trainee_log: creates
+    tabs_tbl "1" -- "many" trainee_log: categorizes
+    select_types "1" -- "many" trainee_log: has-value-of
+    uni_tbl "1" -- "many" trainee_tbl: enrolls
+    subset_tbl "1" -- "many" subset_link_tbl: references
+    trainee_tbl "1" -- "many" subset_link_tbl: belongs-to
+    trainee_tbl "1" -- "many" timesheet: logs
+    tasks "1" -- "many" timesheet: categorizes

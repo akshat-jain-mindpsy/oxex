@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+   <meta name="description" content="Bootstrap Admin App">
+   <meta name="keywords" content="app, responsive, jquery, bootstrap, dashboard, admin">
+   <link rel="icon" type="image/x-icon" href="favicon.ico">
+   <title>Admin</title><!-- =============== VENDOR STYLES ===============-->
+   <!-- FONT AWESOME-->
+   <link rel="stylesheet" href="assets/vendor/@fortawesome/fontawesome-free/css/brands.css">
+   <link rel="stylesheet" href="assets/vendor/@fortawesome/fontawesome-free/css/regular.css">
+   <link rel="stylesheet" href="assets/vendor/@fortawesome/fontawesome-free/css/solid.css">
+   <link rel="stylesheet" href="assets/vendor/@fortawesome/fontawesome-free/css/fontawesome.css"><!-- ANIMATE.CSS-->
+   <link rel="stylesheet" href="assets/vendor/animate.css/animate.css"><!-- =============== BOOTSTRAP STYLES ===============-->
+   <link rel="stylesheet" href="assets/css/bootstrap.css" id="bscss"><!-- =============== APP STYLES ===============-->
+   <link rel="stylesheet" href="assets/css/app.css" id="maincss">
+</head>
+
+<body>
+   <div class="wrapper">
+      <div class="full-page-background bg-darker"></div>
+      <div class="d-flex align-items-center justify-content-center h-100 w-100 flex-column">
+         <!-- START card-->
+         <div class="card card-flat" style="min-width: 300px">
+            <div class="card-header text-center bg-transparent border-0">
+               <img src="assets/img/Oxford_Health_correct_logo.jfif" alt="NHS logo" class="img-fluid">
+               <h3 class="py-3">OXICPTR Admin</h3></div>
+            <div class="card-body">
+               <p class="text-center text-bold">SIGN IN TO CONTINUE.</p>
+               <form id="loginForm" method="post" action="login2.php" novalidate>
+                  <div class="form-group">
+                     <div class="input-group with-focus"><input class="form-control border-right-0" id="email" name="email" type="email" placeholder="Enter email" autocomplete="off" required>
+                        <div class="input-group-append"><span class="input-group-text text-muted bg-transparent border-left-0"><em class="fa fa-envelope"></em></span></div>
+                     </div>
+                  </div>
+                  <div class="form-group">
+                     <div class="input-group with-focus"><input class="form-control border-right-0" id="p" name="p" type="password" placeholder="Password" required>
+                        <div class="input-group-append"><span class="input-group-text text-muted bg-transparent border-left-0"><em class="fa fa-lock"></em></span></div>
+                     </div>
+                  </div>
+                  <div class="clearfix">
+                     
+                  </div><button class="btn btn-block btn-primary my-3" type="submit">Login</button>
+               </form>
+               <p class="my-3"><a href="reset.php">Reset/Change Password</a></p>
+            </div>
+         </div>
+      </div>
+   </div><!-- =============== VENDOR SCRIPTS ===============-->
+   <!-- STORAGE API-->
+   <script src="assets/vendor/js-storage/js.storage.js"></script><!-- i18next-->
+   <script src="assets/vendor/i18next/i18next.js"></script>
+   <script src="assets/vendor/i18next-xhr-backend/i18nextXHRBackend.js"></script><!-- JQUERY-->
+   <script src="assets/vendor/jquery/dist/jquery.js"></script><!-- BOOTSTRAP-->
+   <script src="assets/vendor/popper.js/dist/umd/popper.js"></script>
+   <script src="assets/vendor/bootstrap/dist/js/bootstrap.js"></script><!-- PARSLEY-->
+   <script src="assets/vendor/parsleyjs/dist/parsley.js"></script><!-- =============== APP SCRIPTS ===============-->
+   <script src="assets/js/app.js"></script>
+   <script>
+   document.addEventListener('DOMContentLoaded', function() {
+       const urlParams = new URLSearchParams(window.location.search);
+       const error = urlParams.get('error');
+       const errorMessages = {
+           'invalid_email': 'Please enter a valid email address.',
+           'email_not_found': 'This email address is not registered.',
+           'incorrect_password': 'The password you entered is incorrect.',
+           'account_locked': 'Too many failed login attempts. Your account is temporarily locked.',
+           'unauthorized': 'You are not authorized to access this system.',
+           'invalid_request': 'Invalid login request. Please try again.'
+       };
+
+       if (error && errorMessages[error]) {
+           const errorDiv = document.createElement('div');
+           errorDiv.className = 'alert alert-danger mt-3';
+           errorDiv.textContent = errorMessages[error];
+           document.querySelector('form').insertAdjacentElement('beforebegin', errorDiv);
+       }
+   });
+   </script>
+</body>
+
+</html>

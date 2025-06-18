@@ -1,0 +1,116 @@
+body, html {
+  font-family: Arial, sans-serif;
+  color:#212b32;
+  background-color: #f0f4f5;
+}
+/* see https://service-manual.nhs.uk/design-system/styles */
+p {
+	font-size: 16px;
+}
+p a:link {color: #005eb8; text-decoration: underline;}
+p a:visited {color: #330072; text-decoration: underline;}
+p a:hover {color: #7C2855;text-decoration: underline;}
+	
+.text-white a:link {color: #fff; text-decoration: none;}
+.text-white a:visited {color: #fff; text-decoration: none;}
+.text-white a:hover {color: #ccc;text-decoration: underline;}
+
+.navbar-nav {
+  font-size: 16px;
+}
+.navbar-nav a:link {color: #005eb8; text-decoration: underline;}
+.navbar-nav a:visited {color: #330072; text-decoration: underline;}
+.navbar-nav a:hover {color: #7C2855;text-decoration: underline;}
+
+#main li {
+  font-size: 16px;
+}
+
+.bg_nhsuk-blue  {
+  background: #005eb8;
+}
+
+.bg-nhsuk-grey-3 {
+  background-color: #aeb7bd;
+}
+
+.footer {
+  background-color: #aeb7bd;
+  border-top:  solid 3px #005eb8;
+}
+
+.logoshad	{
+	filter: drop-shadow(4px 4px 4px rgba(0,0,0,0.3));
+}
+
+.whtintpanel	{
+	background: rgba(255, 255, 255, .80);
+	border-radius:5px;
+	padding-top:16px;
+	padding-bottom:16px;
+}
+
+.fc-event {
+  cursor: grabbing;
+}
+
+.btn-nhs { 
+  color: #ffffff; 
+  background-color: #007F3B; 
+  border-color: #4C6272; 
+} 
+ 
+.btn-nhs:hover, 
+.btn-nhs:focus, 
+.btn-nhs:active, 
+.btn-nhs.active, 
+.open .dropdown-toggle.btn-nhs { 
+  color: #ffffff; 
+  background-color: #7C2855; 
+  border-color: #4C6272; 
+} 
+ 
+.btn-nhs:active, 
+.btn-nhs.active, 
+.open .dropdown-toggle.btn-nhs { 
+  background-image: none; 
+} 
+ 
+.btn-nhs.disabled, 
+.btn-nhs[disabled], 
+fieldset[disabled] .btn-nhs, 
+.btn-nhs.disabled:hover, 
+.btn-nhs[disabled]:hover, 
+fieldset[disabled] .btn-nhs:hover, 
+.btn-nhs.disabled:focus, 
+.btn-nhs[disabled]:focus, 
+fieldset[disabled] .btn-nhs:focus, 
+.btn-nhs.disabled:active, 
+.btn-nhs[disabled]:active, 
+fieldset[disabled] .btn-nhs:active, 
+.btn-nhs.disabled.active, 
+.btn-nhs[disabled].active, 
+fieldset[disabled] .btn-nhs.active { 
+  background-color: #007F3B; 
+  border-color: #4C6272; 
+} 
+ 
+.btn-nhs .badge { 
+  color: #007F3B; 
+  background-color: #ffffff; 
+}
+
+.btn-purple .badge { 
+  color: #9b58b6; 
+  background-color: #ffffff; 
+}
+@media only screen and (min-width : 768px) {
+	p {
+    font-size: 19px;
+  }
+  #main li {
+    font-size: 19px;
+  }
+
+
+}

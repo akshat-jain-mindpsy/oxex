@@ -1,0 +1,24 @@
+# Composer dependencies
+/vendor/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Log files
+*.log
+logs/
+
+# IDE and system files
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Build artifacts
+/public_html/build/
+/node_modules/
+npm-debug.log
+yarn-error.log 
