@@ -27,8 +27,11 @@ $standard = [
     'requirement_type' => 'TOTAL_COUNT',
     'required_value' => 0,
     'field_value' => null,
+    'parent_standard_id' => null,
     'is_active' => 1
 ];
+
+$selected_or_fields = [];
 
 if ($is_editing) {
     $subtitle = "Edit Pass Standard";
@@ -38,6 +41,17 @@ if ($is_editing) {
     $result = $stmt->get_result();
     if ($result->num_rows > 0) {
         $standard = $result->fetch_assoc();
+        // If the main stid is null, it's an OR condition, so fetch the fields
+        if (is_null($standard['stid'])) {
+            $or_stmt = $mysqli->prepare("SELECT stid FROM pass_standard_fields WHERE standard_id = ?");
+            $or_stmt->bind_param("i", $psid);
+            $or_stmt->execute();
+            $or_result = $or_stmt->get_result();
+            while($row = $or_result->fetch_assoc()) {
+                $selected_or_fields[] = $row['stid'];
+            }
+            $or_stmt->close();
+        }
     }
     $stmt->close();
 } else {
@@ -47,6 +61,18 @@ if ($is_editing) {
 // Fetch all tables for the dropdown
 $tables_query = "SELECT tbid, tab_name FROM tabs_tbl ORDER BY tab_name ASC";
 $tables_result = $mysqli->query($tables_query);
+
+// Fetch all possible parent standards
+$parents_query = "SELECT psid, standard_name, tbid FROM pass_standards";
+if ($is_editing) {
+    // A standard cannot be its own parent
+    $parents_query .= " WHERE psid != " . $psid;
+}
+$parents_result = $mysqli->query($parents_query);
+$all_parents = [];
+while($parent = $parents_result->fetch_assoc()) {
+    $all_parents[] = $parent;
+}
 
 // Fetch all fields for the dropdown
 $fields_query = "SELECT stid, str FROM select_types ORDER BY str ASC";
@@ -59,8 +85,12 @@ $fields_result = $mysqli->query($fields_query);
     <meta charset="utf-8">
     <title><?php echo $pagetitle ?> - <?php echo $adminname ?></title>
     <?php include 'incl/admincss.php' ?>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <style>
-        #fieldSelectionGroup { display: none; }
+        .select2-container--default .select2-selection--multiple {
+            border: 1px solid #ced4da;
+            padding: .375rem .75rem;
+        }
     </style>
 </head>
 
@@ -110,23 +140,57 @@ $fields_result = $mysqli->query($fields_query);
                                     <option value="TOTAL_HOURS" <?php echo ($standard['requirement_type'] == 'TOTAL_HOURS') ? 'selected' : ''; ?>>Total Hours</option>
                                     <option value="UNIQUE_VALUES" <?php echo ($standard['requirement_type'] == 'UNIQUE_VALUES') ? 'selected' : ''; ?>>Unique Values</option>
                                     <option value="TOTAL_COUNT" <?php echo ($standard['requirement_type'] == 'TOTAL_COUNT') ? 'selected' : ''; ?>>Total Count</option>
+                                    <option value="UNIQUE_VALUES_IN_RANGE" <?php echo ($standard['requirement_type'] == 'UNIQUE_VALUES_IN_RANGE') ? 'selected' : ''; ?>>Unique Values in Range</option>
                                 </select>
                             </div>
                         </div>
 
-                        <div id="fieldDependentSection">
+                        <div class="form-group">
+                            <label for="parent_standard_id">Parent Standard (for nested rules)</label>
+                            <select class="form-control" id="parent_standard_id" name="parent_standard_id">
+                                <option value="">-- None (this is a main rule) --</option>
+                                <?php foreach($all_parents as $parent): ?>
+                                    <option class="parent-option" style="display:none;" value="<?php echo $parent['psid']; ?>" data-tbid="<?php echo $parent['tbid']; ?>" <?php echo ($standard['parent_standard_id'] == $parent['psid']) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($parent['standard_name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <small class="form-text text-muted">A rule can only be nested under another rule from the same table.</small>
+                        </div>
+
+                        <div id="fieldDependentSection" class="card card-body mb-3">
                             <div class="form-group">
+                                <label>How should the field(s) be checked?</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="field_logic_mode" id="logicSingle" value="single" <?php echo (is_null($standard['stid']) && !empty($selected_or_fields)) ? '' : 'checked'; ?>>
+                                    <label class="form-check-label" for="logicSingle">On a Single Field</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="field_logic_mode" id="logicMultiple" value="multiple" <?php echo (is_null($standard['stid']) && !empty($selected_or_fields)) ? 'checked' : ''; ?>>
+                                    <label class="form-check-label" for="logicMultiple">On Multiple Fields (OR condition)</label>
+                                </div>
+                            </div>
+                        
+                            <div class="form-group" id="singleFieldContainer">
                                 <label for="stid">Field to Check</label>
-                                <select class="form-control" id="stid" name="stid" disabled>
+                                <select class="form-control" id="stid" name="stid">
                                     <option value="">-- Select a Table First --</option>
                                 </select>
                                 <small class="form-text text-muted">Required for 'Unique Values' and 'Total Count'. Ignored for 'Total Hours'.</small>
                             </div>
 
-                            <div class="form-group" id="fieldValueContainer">
-                                <label for="field_value">Specific Value (Optional)</label>
+                            <div class="form-group" id="multipleFieldContainer" style="display:none;">
+                                <label for="stids">Fields to Check (OR condition)</label>
+                                <select class="form-control" id="stids" name="stids[]" multiple>
+                                     <!-- Options loaded by JS -->
+                                </select>
+                                <small class="form-text text-muted">The rule will pass if the condition is met in ANY of the selected fields.</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="field_value">Specific Value / Range (Optional)</label>
                                 <input type="text" class="form-control" id="field_value" name="field_value" value="<?php echo htmlspecialchars($standard['field_value'] ?? ''); ?>">
-                                <small class="form-text text-muted">If set, only entries matching this value will be counted.</small>
+                                <small id="fieldValueHelp" class="form-text text-muted">If set, only entries matching this value will be counted. For OR conditions, separate values with a pipe (|). For ranges, use a hyphen (e.g., 18-64).</small>
                             </div>
                         </div>
 
@@ -152,116 +216,122 @@ $fields_result = $mysqli->query($fields_query);
     </section>
 </div>
 <?php include 'incl/adminjs.php' ?>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
 $(document).ready(function() {
     
+    // Initialize Select2
+    $('#stids').select2({
+        placeholder: '-- Select a Table First --',
+        width: '100%'
+    });
+
     var initialTbid = $('#tbid').val();
     var initialStid = '<?php echo $standard['stid'] ?? 'null'; ?>';
-    var initialFieldValue = '<?php echo addslashes(htmlspecialchars($standard['field_value'] ?? '')); ?>';
+    var selectedOrFields = <?php echo json_encode($selected_or_fields); ?>;
+    
+    function filterParents(tableId) {
+        var selectedParent = $('#parent_standard_id').val();
+        $('#parent_standard_id option.parent-option').each(function() {
+            if ($(this).data('tbid') == tableId) {
+                $(this).show();
+            } else {
+                $(this).hide();
+            }
+        });
+        // If the currently selected parent doesn't belong to the new table, deselect it
+        if ($('#parent_standard_id option:selected').data('tbid') != tableId) {
+            $('#parent_standard_id').val('');
+        }
+    }
 
     function loadFieldsForTable(tableId, callback) {
         var $stidSelect = $('#stid');
-        $stidSelect.prop('disabled', true).html('<option value="">Loading fields...</option>');
+        var $stidsMultiSelect = $('#stids');
+
+        $stidSelect.prop('disabled', true).html('<option value="">Loading...</option>');
+        $stidsMultiSelect.prop('disabled', true).html('').trigger('change');
         
         if (!tableId) {
-            $stidSelect.html('<option value="">-- Select a Table First --</option>');
-            // Also reset field value input
-            updateFieldValueInput(null, '');
+            $stidSelect.html('<option value="">-- Select a Table --</option>').prop('disabled', false);
+            $stidsMultiSelect.select2({ placeholder: '-- Select a Table --' }).prop('disabled', false);
             return;
         }
 
         $.getJSON('ajax/get_fields_for_table.php', { tbid: tableId }, function(fields) {
-            $stidSelect.prop('disabled', false).html('<option value="">-- Select a Field (Optional) --</option>');
+            $stidSelect.html('<option value="">-- Select a Field --</option>');
+            $stidsMultiSelect.html(''); // Clear existing
+
             $.each(fields, function(index, field) {
-                $stidSelect.append($('<option>', {
-                    value: field.stid,
-                    text: field.str
-                }));
+                var option = new Option(field.str, field.stid, false, false);
+                $stidSelect.append(option);
+                // Also create an option for the multi-select
+                var multiOption = new Option(field.str, field.stid, false, false);
+                $stidsMultiSelect.append(multiOption);
             });
-            if (callback) callback();
-        });
-    }
+            
+            $stidSelect.prop('disabled', false);
+            $stidsMultiSelect.prop('disabled', false).trigger('change');
 
-    function updateFieldValueInput(options, currentValue) {
-        var $container = $('#fieldValueContainer');
-        $container.find('input, select').remove(); // Remove old input/select
-
-        var $newElement;
-        if (options && options.length > 0) {
-            $newElement = $('<select>', {
-                class: 'form-control',
-                id: 'field_value',
-                name: 'field_value'
-            });
-            $newElement.append('<option value="">-- Select a Value --</option>');
-            $.each(options, function(index, option) {
-                $newElement.append($('<option>', {
-                    value: option,
-                    text: option,
-                    selected: (option == currentValue)
-                }));
-            });
-        } else {
-            $newElement = $('<input>', {
-                type: 'text',
-                class: 'form-control',
-                id: 'field_value',
-                name: 'field_value',
-                value: currentValue
-            });
-        }
-        $container.find('label').after($newElement); // Place the new element after the label
-    }
-
-    function loadOptionsForField(fieldId, callback) {
-        if (!fieldId) {
-            updateFieldValueInput(null, initialFieldValue);
-            if(callback) callback();
-            return;
-        }
-
-        $.getJSON('ajax/get_options_for_field.php', { stid: fieldId }, function(options) {
-            updateFieldValueInput(options, initialFieldValue);
             if (callback) callback();
         });
     }
     
-    // Function to toggle field-dependent inputs
     function toggleFieldDependent(type) {
+        var helpText = "If set, only entries matching this value will be counted. For OR conditions, separate values with a pipe (|).";
         if (type === 'TOTAL_HOURS') {
             $('#fieldDependentSection').slideUp();
-            $('#stid').prop('required', false);
         } else {
             $('#fieldDependentSection').slideDown();
-            $('#stid').prop('required', true);
+            if (type === 'UNIQUE_VALUES_IN_RANGE') {
+                helpText = "Define the numeric range to check (e.g., 18-64).";
+            }
+        }
+        $('#fieldValueHelp').text(helpText);
+    }
+    
+    function toggleFieldLogicMode() {
+        if ($('#logicSingle').is(':checked')) {
+            $('#singleFieldContainer').show();
+            $('#stid').prop('disabled', false);
+            $('#multipleFieldContainer').hide();
+            $('#stids').prop('disabled', true);
+        } else {
+            $('#singleFieldContainer').hide();
+            $('#stid').prop('disabled', true);
+            $('#multipleFieldContainer').show();
+            $('#stids').prop('disabled', false);
         }
     }
 
-    // Initial check on page load
+    // Initial State Setup
     toggleFieldDependent($('#requirement_type').val());
+    toggleFieldLogicMode();
+    filterParents(initialTbid);
     if (initialTbid) {
         loadFieldsForTable(initialTbid, function() {
-            $('#stid').val(initialStid);
-            loadOptionsForField(initialStid);
+            // Restore selections after fields are loaded
+            if ($('#logicSingle').is(':checked')) {
+                $('#stid').val(initialStid);
+            } else {
+                $('#stids').val(selectedOrFields).trigger('change');
+            }
         });
     }
 
-    // Event handlers
+    // Event Handlers
     $('#requirement_type').on('change', function() {
         toggleFieldDependent($(this).val());
     });
 
     $('#tbid').on('change', function() {
-        // When table changes, reset initial field value since it's no longer relevant
-        initialFieldValue = ''; 
-        loadFieldsForTable($(this).val());
+        var tableId = $(this).val();
+        filterParents(tableId);
+        loadFieldsForTable(tableId);
     });
-
-    // Use event delegation for stid since its options are dynamic
-    $(document).on('change', '#stid', function() {
-        // When field changes, reset initial field value
-        initialFieldValue = ''; 
-        loadOptionsForField($(this).val());
+    
+    $('input[name="field_logic_mode"]').on('change', function() {
+        toggleFieldLogicMode();
     });
 
     // Handle form submission
@@ -272,6 +342,13 @@ $(document).ready(function() {
         if (this.checkValidity() === false) {
             $(this).addClass('was-validated');
             return;
+        }
+
+        // Before serializing, disable the field input that is not active
+        if ($('#logicSingle').is(':checked')) {
+            $('#stids').prop('disabled', true);
+        } else {
+            $('#stid').prop('disabled', true);
         }
 
         var formData = $(this).serialize();

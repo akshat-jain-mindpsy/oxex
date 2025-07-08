@@ -22,6 +22,8 @@ $filename = "OXEX_elog_$today.csv";
 
 $which = isset($_GET['which']) ? $_GET['which'] : '';
 $template_id = isset($_GET['template_id']) ? intval($_GET['template_id']) : 0;
+$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : null;
+$end_date = isset($_GET['end_date']) ? $_GET['end_date'] : null;
 
 // Check if the template table exists and if the requested template exists
 $template_exists = false;
@@ -43,7 +45,7 @@ if ($template_id > 0) {
 
 // Use template if it exists, otherwise use default CSV
 if ($template_exists) {
-    generateTemplateCSV($mysqli, $which, $template_id);
+    generateTemplateCSV($mysqli, $which, $template_id, $start_date, $end_date);
 } else {
     generateDefaultCSV($mysqli, $which);
 }
@@ -52,7 +54,7 @@ exit(); // Add exit to prevent any additional output
 /**
  * Generate CSV using a selected template
  */
-function generateTemplateCSV($mysqli, $trainee_key, $template_id) {
+function generateTemplateCSV($mysqli, $trainee_key, $template_id, $start_date, $end_date) {
     // Define date variables
     $today = date("Ymd");
     $todaydisp = strtotime($today);
@@ -154,16 +156,44 @@ function generateTemplateCSV($mysqli, $trainee_key, $template_id) {
     // Get data for each column
     $data_rows = [];
     
-    // Group the data by logkey to create rows
-    $data_query = $mysqli->prepare("
-        SELECT logkey, MAX(date_added) as entry_date
+    // Base query to get logkeys
+    $query = "
+        SELECT logkey
         FROM trainee_log 
         WHERE trainkey = ?
-        GROUP BY logkey
-        ORDER BY MAX(date_added) DESC
-        LIMIT ?
-    ");
-    $data_query->bind_param("si", $trainee_key, $max_rows);
+    ";
+    
+    $params = [$trainee_key];
+    $types = "s";
+    
+    // Add date filtering
+    if ($start_date) {
+        $start_date_int = (int) str_replace('-', '', $start_date);
+        $query .= " AND date_added >= ?";
+        $params[] = $start_date_int;
+        $types .= "i";
+    }
+    
+    if ($end_date) {
+        $end_date_int = (int) str_replace('-', '', $end_date);
+        $query .= " AND date_added <= ?";
+        $params[] = $end_date_int;
+        $types .= "i";
+    }
+    
+    $query .= " GROUP BY logkey ORDER BY MAX(date_added) DESC LIMIT ?";
+    $params[] = $max_rows;
+    $types .= "i";
+    
+    // Get logkeys with date filtering
+    $data_query = $mysqli->prepare($query);
+    if (!$data_query) {
+        // Fallback or error handling
+        generateDefaultCSV($mysqli, $trainee_key);
+        return;
+    }
+    
+    $data_query->bind_param($types, ...$params);
     $data_query->execute();
     $data_result = $data_query->get_result();
     

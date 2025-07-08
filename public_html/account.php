@@ -349,8 +349,8 @@ $valueyearend = 20991231;
                                   $description = htmlspecialchars($template['description']);
                                   $template_id = $template['id'];
                                   
-                                  echo "<a class=\"dropdown-item\" href=\"csv-logbook.php?which={$trainkey}&template_id={$template_id}\" 
-                                          title=\"{$description}\">{$template_name}</a>";
+                                  echo "<a class=\"dropdown-item csv-template-link\" href=\"#\" data-template-id=\"{$template_id}\" 
+                                          title=\"{$description}\" data-toggle=\"modal\" data-target=\"#csvDateModal\">{$template_name}</a>";
                               }
                           }
                       }
@@ -435,6 +435,111 @@ $valueyearend = 20991231;
     }
     ?>
     <?php include 'incl/js.php' ?>
+
+    <!-- Modal for CSV date selection -->
+    <div class="modal fade" id="csvDateModal" tabindex="-1" role="dialog" aria-labelledby="csvDateModalLabel" aria-hidden="true">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="csvDateModalLabel">Select Timeframe for CSV Export</h5>
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+          <div class="modal-body">
+            <input type="hidden" id="csvTemplateId" value="">
+            <input type="hidden" id="csvWhich" value="<?php echo $trainkey ?>">
+            
+            <div class="form-group">
+                <label for="timeframeSelect">Timeframe</label>
+                <select class="form-control" id="timeframeSelect">
+                    <option value="all" selected>All Time</option>
+                    <option value="1year">Last Year</option>
+                    <option value="6months">Last 6 Months</option>
+                    <option value="3months">Last 3 Months</option>
+                    <option value="custom">Custom Range</option>
+                </select>
+            </div>
+            <div id="customDateRange" style="display: none;">
+                <div class="form-group">
+                    <label for="startDate">Start Date</label>
+                    <input type="date" class="form-control" id="startDate">
+                </div>
+                <div class="form-group">
+                    <label for="endDate">End Date</label>
+                    <input type="date" class="form-control" id="endDate">
+                </div>
+            </div>
+    
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary" id="downloadCsvBtn">Download</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    $(document).ready(function() {
+        // When a template link is clicked, set the template ID in the modal
+        $('.csv-template-link').on('click', function(e) {
+            e.preventDefault();
+            var templateId = $(this).data('template-id');
+            $('#csvTemplateId').val(templateId);
+        });
+    
+        // Show/hide custom date range fields
+        $('#timeframeSelect').on('change', function() {
+            if ($(this).val() === 'custom') {
+                $('#customDateRange').show();
+            } else {
+                $('#customDateRange').hide();
+            }
+        });
+    
+        // Handle CSV download
+        $('#downloadCsvBtn').on('click', function() {
+            var which = $('#csvWhich').val();
+            var templateId = $('#csvTemplateId').val();
+            var timeframe = $('#timeframeSelect').val();
+            
+            var url = 'csv-logbook.php?which=' + which + '&template_id=' + templateId;
+            
+            var startDate = '';
+            var endDate = '';
+            var today = new Date();
+    
+            if (timeframe === '1year') {
+                var lastYear = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+                startDate = lastYear.toISOString().split('T')[0];
+                endDate = today.toISOString().split('T')[0];
+            } else if (timeframe === '6months') {
+                var last6Months = new Date(today.getFullYear(), today.getMonth() - 6, today.getDate());
+                startDate = last6Months.toISOString().split('T')[0];
+                endDate = today.toISOString().split('T')[0];
+            } else if (timeframe === '3months') {
+                var last3Months = new Date(today.getFullYear(), today.getMonth() - 3, today.getDate());
+                startDate = last3Months.toISOString().split('T')[0];
+                endDate = today.toISOString().split('T')[0];
+            } else if (timeframe === 'custom') {
+                startDate = $('#startDate').val();
+                endDate = $('#endDate').val();
+                if (!startDate || !endDate) {
+                    alert('Please select a start and end date for the custom range.');
+                    return;
+                }
+            }
+    
+            if (startDate && endDate) {
+                url += '&start_date=' + startDate + '&end_date=' + endDate;
+            }
+            
+            window.location.href = url;
+            $('#csvDateModal').modal('hide');
+        });
+    });
+    </script>
 
   </body>
   <?php

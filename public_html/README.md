@@ -169,9 +169,10 @@ CREATE TABLE `pass_standards` (
   `standard_name` VARCHAR(255) NOT NULL,
   `tbid` TINYINT UNSIGNED NOT NULL,
   `stid` MEDIUMINT UNSIGNED NULL DEFAULT NULL,
-  `requirement_type` ENUM('TOTAL_HOURS', 'UNIQUE_VALUES', 'TOTAL_COUNT') NOT NULL,
+  `requirement_type` ENUM('TOTAL_HOURS', 'UNIQUE_VALUES', 'TOTAL_COUNT', 'UNIQUE_VALUES_IN_RANGE') NOT NULL,
   `required_value` INT NOT NULL,
   `field_value` VARCHAR(255) NULL DEFAULT NULL,
+  `parent_standard_id` INT NULL DEFAULT NULL,
   `is_active` TINYINT(1) NOT NULL DEFAULT 1,
   `who_by` CHAR(32) NULL DEFAULT NULL,
   `date_added` INT(11) NULL DEFAULT NULL,
@@ -180,16 +181,19 @@ CREATE TABLE `pass_standards` (
   INDEX `fk_pass_standards_tbid` (`tbid`),
   INDEX `fk_pass_standards_stid` (`stid`),
   INDEX `fk_pass_standards_who_by` (`who_by`),
+  INDEX `fk_pass_standards_parent` (`parent_standard_id`),
   CONSTRAINT `fk_pass_standards_tbid` FOREIGN KEY (`tbid`) REFERENCES `tabs_tbl` (`tbid`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_pass_standards_stid` FOREIGN KEY (`stid`) REFERENCES `select_types` (`stid`) ON DELETE SET NULL ON UPDATE CASCADE,
-  CONSTRAINT `fk_pass_standards_who_by` FOREIGN KEY (`who_by`) REFERENCES `who_there` (`usrkey`) ON DELETE SET NULL ON UPDATE CASCADE
+  CONSTRAINT `fk_pass_standards_who_by` FOREIGN KEY (`who_by`) REFERENCES `who_there` (`usrkey`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `fk_pass_standards_parent` FOREIGN KEY (`parent_standard_id`) REFERENCES `pass_standards` (`psid`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 ```
 
 **Purpose**: This table introduces a formal system for defining and tracking completion criteria for trainees. It allows administrators to set specific, measurable standards (e.g., "log 20 hours of contact time" or "record at least 5 unique disability types") that can be automatically checked against a trainee's logbook data. This helps in standardizing requirements and providing clear progress feedback.
 
 **Key Features**:
-- Supports multiple requirement types: total hours, count of unique values, and total entry count.
+- Supports multiple requirement types: total hours, count of unique values, total entry count, and count of unique values within a numeric range.
+- **`parent_standard_id`** allows for the creation of nested rules, where a child standard is only evaluated against the population of data that passes its parent standard. This is critical for complex, multi-step competencies.
 - `stid` can be nullable to support standards that are not tied to a specific field, like total hours logged.
 - Includes a `field_value` column to allow for more specific requirements, such as counting entries where a particular option was selected.
 - Foreign keys with `ON DELETE` rules maintain data integrity.
@@ -217,6 +221,116 @@ This dynamic approach gives administrators the flexibility to:
 - Set different and complex requirements for each category.
 - Change standards over time without affecting any historical data.
 - Have the system automatically apply new or updated standards to all trainees instantly.
+
+### Pass Standard Fields Table (Enhancement for OR Logic)
+
+This new table works with the `pass_standards` table to allow a single rule to check for a condition across multiple fields.
+
+```sql
+CREATE TABLE `pass_standard_fields` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `standard_id` INT NOT NULL,
+    `stid` MEDIUMINT UNSIGNED NOT NULL,
+    FOREIGN KEY (`standard_id`) REFERENCES `pass_standards`(`psid`) ON DELETE CASCADE,
+    FOREIGN KEY (`stid`) REFERENCES `select_types`(`stid`) ON DELETE CASCADE,
+    UNIQUE KEY `standard_field_unique` (`standard_id`, `stid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+**Purpose**: This table solves the need for `OR` conditions in rules. For example, a rule might need to check if a trainee has logged "Psychosis" in *either* the "Primary Presenting Clinical Issue" field *or* the "Additional Presenting Issues" field. By linking one standard (`standard_id`) to multiple fields (`stid`), the evaluation engine can check for the condition in any of the specified locations.
+
+### Pass/Fail Evaluation Engine
+
+**File Location:** `public_html/OXEXfolder/pass_standard_functions.php`
+
+**Purpose:** This file contains the centralized "evaluation engine" for dynamically checking a trainee's competency status. It encapsulates all the complex logic for evaluating rules from the `pass_standards` table, including nested parent-child conditions and multi-field OR logic.
+
+**Core Function: `checkCompetencyStatus()`**
+
+This is the primary function to be used throughout the application.
+
+```php
+checkCompetencyStatus(string $traineeKey, int $tbid, mysqli $mysqli_connection, int $endDate = null)
+```
+
+-   `$traineeKey`: The unique identifier for the trainee being checked.
+-   `$tbid`: The ID of the competency (from `tabs_tbl`) to be evaluated.
+-   `$mysqli_connection`: The active database connection object.
+-   `$endDate`: (Optional) The cohort's end date in `YYYYMMDD` format. If provided and in the past, unmet competencies will be marked as 'Fail'.
+
+**Return Value**
+
+The function returns a detailed associative array, which can be easily converted to JSON for frontend use. This structure provides not just a simple pass/fail/in-progress result, but a complete breakdown of every rule and sub-rule that was checked.
+
+**Example JSON Response:**
+
+```json
+{
+  "overall_status": "In Progress",
+  "breakdown": [
+    {
+      "standard_name": "AWA: 6+ Unique Clients (18-64)",
+      "is_passed": true,
+      "current_value": 7,
+      "required_value": 6,
+      "children": [
+        {
+          "standard_name": "AWA: Has Psychosis Case",
+          "is_passed": false,
+          "current_value": 0,
+          "required_value": 1,
+          "children": []
+        }
+      ]
+    }
+  ]
+}
+```
+
+**How to Use**
+
+Here is a basic example of how to implement this function on a page.
+
+```php
+// 1. Include the function file
+require_once 'OXEXfolder/pass_standard_functions.php';
+
+// 2. Define the trainee and competency to check
+$traineeKey = $_SESSION['trainkey'];
+$competencyId = 14; // e.g., 'Adults of Working Age'
+
+// 3. Call the engine to get the status
+$status = checkCompetencyStatus($traineeKey, $competencyId, $mysqli);
+
+// 4. Use the results to build your UI
+if ($status['overall_status'] === 'Passed') {
+    echo "<h2>Competency Passed!</h2>";
+} else {
+    echo "<h2>Competency In Progress...</h2>";
+}
+
+// You can then recursively loop through the 'breakdown' array
+// to display a detailed progress report for the trainee.
+```
+
+### Subsets / Cohorts System
+
+These tables allow for the grouping of trainees into cohorts or subsets for specific tracking or reporting purposes.
+
+#### Subset Table (`subset_tbl`)
+
+This table defines the cohort itself. The schema should be updated to include an end date.
+
+```sql
+ALTER TABLE `subset_tbl`
+ADD COLUMN `end_date` INT(8) NULL DEFAULT NULL COMMENT 'YYYYMMDD format graduation/end date for the cohort' AFTER `description`;
+```
+
+**Purpose**: Defines a group or cohort. The optional `end_date` marks a graduation or completion date for the entire cohort. When this date passes, any trainee in the cohort who has not met a competency's criteria will be marked as 'Fail' by the evaluation engine.
+
+#### Subset Link Table (`subset_link_tbl`)
+
+**Purpose**: This table links trainees to one or more subsets/cohorts. A trainee's `end_date` for a given competency can be determined by finding the cohort they belong to.
 
 ### Section Table Link (August 2023)
 
@@ -292,7 +406,6 @@ ALTER TABLE field_sections
 ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 ADD COLUMN updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP;
 ```
-
 **Purpose**: Added timestamp fields for better tracking of when sections were created and modified. This improves auditability and helps with troubleshooting.
 
 #### Select Types Table Update
@@ -317,3 +430,4 @@ The database schema evolution follows these key principles:
 4. **Accountability**: Timestamp and user tracking fields enable audit trails.
 
 5. **Backward Compatibility**: Changes are made in ways that don't break existing functionality.
+

@@ -46,7 +46,8 @@ try {
     $trainkey = isset($_POST['trainee_key']) ? $_POST['trainee_key'] : null;
     error_log("Requested trainkey from POST: " . ($trainkey ? $trainkey : 'NULL'));
     
-    // Check if "All Users" mode is selected
+    // Check for different modes
+    $is_subset_mode = (strpos($trainkey, 'subset_') === 0);
     $all_users_mode = ($trainkey === 'ALL_USERS');
     
     // If no specific trainee selected and not "All Users" mode, return error
@@ -61,8 +62,66 @@ try {
     
     // Prepare list of accessible trainee keys for this admin
     $accessible_trainee_keys = [];
-    
-    if ($all_users_mode) {
+    $effective_trainkey = null;
+
+    if ($is_subset_mode) {
+        $setkey = substr($trainkey, 7);
+        error_log("Subset mode detected for setkey: $setkey");
+        
+        // Fetch all trainkeys from the subset
+        $subset_trainees_query = "SELECT trainkey FROM subset_link_tbl WHERE setkey = ?";
+        $subset_stmt = $mysqli->prepare($subset_trainees_query);
+        $subset_stmt->bind_param("s", $setkey);
+        $subset_stmt->execute();
+        $subset_result = $subset_stmt->get_result();
+        
+        $trainees_in_subset = [];
+        while ($row = $subset_result->fetch_assoc()) {
+            $trainees_in_subset[] = $row['trainkey'];
+        }
+        $subset_stmt->close();
+        
+        if (empty($trainees_in_subset)) {
+            error_log("ERROR: Subset $setkey is empty.");
+            echo json_encode(['status' => 'error', 'message' => 'This trainee group is empty.']);
+            exit;
+        }
+        
+        // Verify the admin has access to EACH trainee in the subset
+        $canViewAll = ($admintype == 'AT' || $admintype == 'DV');
+        if ($canViewAll) {
+            $accessible_trainee_keys = $trainees_in_subset;
+        } else {
+            // For non-super-admins, filter the list of subset trainees
+            $placeholders = rtrim(str_repeat('?,', count($trainees_in_subset)), ',');
+            $access_query = "SELECT trainkey FROM trainee_tbl 
+                             WHERE trainkey IN ($placeholders) 
+                             AND (supervisor = ? OR supervisor2 = ? OR supervisor3 = ? OR tutor = ?)";
+            
+            $access_stmt = $mysqli->prepare($access_query);
+            $params = array_merge($trainees_in_subset, [$usrkey, $usrkey, $usrkey, $usrkey]);
+            $types = str_repeat('s', count($params));
+            $access_stmt->bind_param($types, ...$params);
+            $access_stmt->execute();
+            $access_result = $access_stmt->get_result();
+            
+            while ($row = $access_result->fetch_assoc()) {
+                $accessible_trainee_keys[] = $row['trainkey'];
+            }
+            $access_stmt->close();
+        }
+        
+        if (empty($accessible_trainee_keys)) {
+            error_log("ERROR: Admin $usrkey has no access to any trainees in subset $setkey");
+            echo json_encode(['status' => 'error', 'message' => 'You do not have permission to view data for any trainees in this group.']);
+            exit;
+        }
+        
+        error_log("Subset mode: Found " . count($accessible_trainee_keys) . " accessible trainees in subset $setkey for admin $usrkey");
+        $effective_trainkey = $trainkey; // Use the full subset key for reference
+        $all_users_mode = true; // Treat as a multi-user mode for query building
+
+    } else if ($all_users_mode) {
         // Get all trainee keys this admin can access
         $canViewAll = ($admintype == 'AT' || $admintype == 'DV');
         
@@ -463,8 +522,21 @@ try {
         // Get trainee name for display
         $trainee_name = '';
         if ($all_users_mode) {
-            $trainee_name = 'All Users (Aggregated)';
-                    } else {
+            if ($is_subset_mode) {
+                $setkey = substr($effective_trainkey, 7);
+                $subset_name_stmt = $mysqli->prepare("SELECT subset FROM subset_tbl WHERE setkey = ? LIMIT 1");
+                if ($subset_name_stmt) {
+                    $subset_name_stmt->bind_param("s", $setkey);
+                    $subset_name_stmt->execute();
+                    $subset_name_stmt->bind_result($trainee_name);
+                    $subset_name_stmt->fetch();
+                    $subset_name_stmt->close();
+                    $trainee_name .= " (Group)";
+                }
+            } else {
+                $trainee_name = 'All Users (Aggregated)';
+            }
+        } else {
             $name_stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
             if ($name_stmt) {
                 $name_stmt->bind_param("s", $effective_trainkey);
@@ -539,8 +611,21 @@ try {
     // Get trainee name for display
     $trainee_name = '';
     if ($all_users_mode) {
-        $trainee_name = 'All Users (Aggregated)';
-                    } else {
+        if ($is_subset_mode) {
+            $setkey = substr($effective_trainkey, 7);
+            $subset_name_stmt = $mysqli->prepare("SELECT subset FROM subset_tbl WHERE setkey = ? LIMIT 1");
+            if ($subset_name_stmt) {
+                $subset_name_stmt->bind_param("s", $setkey);
+                $subset_name_stmt->execute();
+                $subset_name_stmt->bind_result($trainee_name);
+                $subset_name_stmt->fetch();
+                $subset_name_stmt->close();
+                $trainee_name .= " (Group)";
+            }
+        } else {
+            $trainee_name = 'All Users (Aggregated)';
+        }
+    } else {
         $name_stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
         if ($name_stmt) {
             $name_stmt->bind_param("s", $effective_trainkey);
@@ -565,7 +650,7 @@ try {
         'time_frame' => $time_frame,
         'date_range' => $date_range,
         'table_id' => $table_id,
-        'trainee_key' => $all_users_mode ? 'ALL_USERS' : $effective_trainkey,
+        'trainee_key' => $is_subset_mode ? $effective_trainkey : ($all_users_mode ? 'ALL_USERS' : $effective_trainkey),
         'trainee_name' => $trainee_name ?: ($all_users_mode ? 'All Users (Aggregated)' : 'Unknown User'),
         'total_records' => count($data),
         'is_all_users_mode' => $all_users_mode,

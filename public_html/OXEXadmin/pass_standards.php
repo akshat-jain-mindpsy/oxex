@@ -72,7 +72,8 @@ if ($del == "del" && $which > 0) {
                                     <tr>
                                         <th>Standard Name</th>
                                         <th>Applies to Table</th>
-                                        <th>Field</th>
+                                        <th>Parent Standard</th>
+                                        <th>Field(s)</th>
                                         <th>Requirement Type</th>
                                         <th>Required Value</th>
                                         <th>Active</th>
@@ -89,15 +90,22 @@ if ($del == "del" && $which > 0) {
                                             ps.required_value, 
                                             ps.is_active,
                                             t.tab_name,
-                                            st.str as field_name
+                                            st.str as field_name,
+                                            parent.standard_name as parent_name,
+                                            (SELECT GROUP_CONCAT(st_or.str SEPARATOR ', ') 
+                                             FROM pass_standard_fields psf 
+                                             JOIN select_types st_or ON psf.stid = st_or.stid 
+                                             WHERE psf.standard_id = ps.psid) as or_fields
                                         FROM 
                                             pass_standards ps
                                         LEFT JOIN 
                                             tabs_tbl t ON ps.tbid = t.tbid
                                         LEFT JOIN
                                             select_types st ON ps.stid = st.stid
+                                        LEFT JOIN
+                                            pass_standards parent ON ps.parent_standard_id = parent.psid
                                         ORDER BY 
-                                            t.tab_name, ps.standard_name";
+                                            t.tab_name, parent.standard_name, ps.standard_name";
                                     
                                     if ($stmt = $mysqli->prepare($query)) {
                                         $stmt->execute();
@@ -105,10 +113,20 @@ if ($del == "del" && $which > 0) {
                                         
                                         while ($row = $result->fetch_assoc()) {
                                             $status_badge = $row['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-secondary">Inactive</span>';
+                                            
+                                            // Determine what to show in the field column
+                                            $field_display = 'N/A';
+                                            if (!empty($row['field_name'])) {
+                                                $field_display = htmlspecialchars($row['field_name']);
+                                            } elseif (!empty($row['or_fields'])) {
+                                                $field_display = "<i>Multiple (OR):</i><br>" . htmlspecialchars($row['or_fields']);
+                                            }
+
                                             echo "<tr>
                                                 <td>" . htmlspecialchars($row['standard_name']) . "</td>
                                                 <td>" . htmlspecialchars($row['tab_name']) . "</td>
-                                                <td>" . ($row['field_name'] ? htmlspecialchars($row['field_name']) : 'N/A') . "</td>
+                                                <td>" . ($row['parent_name'] ? htmlspecialchars($row['parent_name']) : '<em>None</em>') . "</td>
+                                                <td>" . $field_display . "</td>
                                                 <td>" . htmlspecialchars(str_replace('_', ' ', $row['requirement_type'])) . "</td>
                                                 <td>" . htmlspecialchars($row['required_value']) . "</td>
                                                 <td>{$status_badge}</td>
@@ -136,7 +154,7 @@ if ($del == "del" && $which > 0) {
         $(document).ready(function() {
             $('#passStandardsTable').DataTable({
                 "pageLength": 25,
-                "order": [[ 1, "asc" ]],
+                "order": [[ 1, "asc" ], [ 2, "asc" ]],
                 "columnDefs": [
                     { "orderable": false, "targets": 6 }
                 ]

@@ -26,6 +26,18 @@ $tables_result = $mysqli->query($tables_query);
 $trainees = array();
 $canViewAll = ($admintype == 'AT' || $admintype == 'DV');
 
+// Fetch trainee subsets (groups)
+$subsets = [];
+$subsets_query = "SELECT setkey, subset, usrkey FROM subset_tbl ORDER BY subset ASC";
+$subsets_result = $mysqli->query($subsets_query);
+if ($subsets_result) {
+    while ($subset = $subsets_result->fetch_assoc()) {
+        if ($canViewAll || $subset['usrkey'] == $usrkey) {
+            $subsets[] = $subset;
+        }
+    }
+}
+
 // Determine which trainees this admin can view
 $trainee_query = "SELECT t.trainkey, t.name, t.uid, t.year, t.supervisor, t.supervisor2, t.supervisor3, t.tutor, u.university 
                  FROM trainee_tbl t 
@@ -140,22 +152,34 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                    <div class="row">
                                        <div class="col-md-4">
                                            <div class="form-group">
-                                               <label class="col-form-label" for="traineeSelect">Select User <span class="text-danger">*</span></label>
+                                               <label class="col-form-label" for="traineeSelect">Select User or Group <span class="text-danger">*</span></label>
                                                <select class="custom-select custom-select-lg mb-3" id="traineeSelect" name="trainee_key" required>
-                                                   <option value="">-- Select a Trainee --</option>
+                                                   <option value="">-- Select a User or Group --</option>
                                                    <option value="ALL_USERS">📊 All Users (Aggregated Data)</option>
+                                                   <?php if (!empty($subsets)): ?>
+                                                   <optgroup label="Trainee Groups">
+                                                       <?php foreach ($subsets as $subset): ?>
+                                                       <option value="subset_<?php echo $subset['setkey']; ?>">
+                                                           <?php echo htmlspecialchars($subset['subset']); ?> (Group)
+                                                       </option>
+                                                       <?php endforeach; ?>
+                                                   </optgroup>
+                                                   <?php endif; ?>
+
+                                                   <?php if (!empty($trainees)): ?>
+                                                   <optgroup label="Individual Trainees">
                                                    <?php
-                                                   if (!empty($trainees)) {
                                                        foreach ($trainees as $trainee) {
                                                            echo '<option value="' . $trainee['trainkey'] . '">' . 
                                                                 htmlspecialchars($trainee['name']) . ' (' . 
                                                                 htmlspecialchars($trainee['university']) . ' - ' . 
                                                                 $trainee['year'] . ')</option>';
                                                        }
-                                                   }
                                                    ?>
+                                                   </optgroup>
+                                                   <?php endif; ?>
                                                </select>
-                                               <small class="form-text text-muted">Select a specific trainee or "All Users" to view aggregated data across all accessible users</small>
+                                               <small class="form-text text-muted">Select a specific trainee, a group of trainees, or "All Users" to view aggregated data across all accessible users</small>
                                            </div>
                                        </div>
                                        <div class="col-md-4">
@@ -442,6 +466,15 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                    $('.trainee-filter-alert').removeClass('alert-warning').addClass('alert-info');
                    $('.trainee-filter-alert i').removeClass('fa-filter').addClass('fa-users');
                    $('.trainee-filter-alert').html('<i class="fas fa-users"></i> <strong>All Users Mode:</strong> Data will be aggregated across all accessible users');
+               } else if (traineeKey.startsWith('subset_')) {
+                   const groupName = traineeName.replace('(Group)', '').trim();
+                   $('#selectedTraineeName').text(groupName);
+                   $('.selected-trainee-name').text(groupName);
+                   $('#traineeFilterIndicator').show();
+                   $('.trainee-filter-alert').show();
+                   $('.trainee-filter-alert').removeClass('alert-info').addClass('alert-warning');
+                   $('.trainee-filter-alert i').removeClass('fa-users').addClass('fa-filter');
+                   $('.trainee-filter-alert').html(`<i class="fas fa-users-cog"></i> <strong>Group Filter Active:</strong> Data is filtered for the "${groupName}" group.`);
                } else if (traineeKey) {
                    $('#selectedTraineeName').text(traineeName);
                    $('.selected-trainee-name').text(traineeName);
