@@ -2,9 +2,9 @@ name: Deploy to AWS ECR and EC2
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, dev ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, dev ]
 
 env:
   AWS_REGION: us-east-1
