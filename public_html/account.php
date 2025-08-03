@@ -255,7 +255,7 @@ $valueyearend = 20991231;
                 // $passtext shows pass/fail/no pass requirement
                    
                    // $situation shows requirements for 'pass'
-                   include 'OXEXadmin/incl/situations.php';
+                   include 'oxex-admin/incl/situations.php';
 // END pass/fail
 
                    
@@ -358,7 +358,7 @@ $valueyearend = 20991231;
                       // Add link to CSV editor for admin users
                       if (isset($_SESSION['admin']) && $_SESSION['admin'] == 1) {
                           echo '<div class="dropdown-divider"></div>';
-                          echo '<a class="dropdown-item text-primary" href="OXEXadmin/csv_editor.php">
+                          echo '<a class="dropdown-item text-primary" href="oxex-admin/csv_editor.php">
                                   <i class="fas fa-cog"></i> Manage CSV Templates</a>';
                       }
                       ?>

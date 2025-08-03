@@ -4,7 +4,7 @@ $passtext = '';
 $howmanyans = 0;
 $howmanyvals = 0; // Initialize howmanyvals
 $allpass = 0; // Initialize allpass
-// this file useed in account.php & OXEXadmin/traineedetail.php
+// this file useed in account.php & oxex-admin/traineedetail.php
 // sets if a trainee has passed a field and sets marks
 
 // Before including situations.php, ensure $valueb and $tothrs are defined

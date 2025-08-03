@@ -1,5 +1,5 @@
 <?php
-// File: public_html/OXEXadmin/migrate_sections.php
+// File: public_html/oxex-admin/migrate_sections.php
 include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();

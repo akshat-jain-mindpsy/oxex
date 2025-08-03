@@ -63,7 +63,7 @@ if ($valid_email != "no") {
   $stmt->bind_result($email_subject, $email_body, $email_body2, $email_body3);
   $stmt->fetch();
   $stmt->close();
-  $link = 'https://www.oxex.co.uk/OXEXadmin/r3.php?t='.$token;
+  $link = 'https://www.oxex.co.uk/oxex-admin/r3.php?t='.$token;
   $email_body = str_replace("[LINK]", $link, $email_body);
   $email_body = str_replace("[TODAY]", $today, $email_body);
   $email_body2 = str_replace("[LINK]", $link, $email_body2);

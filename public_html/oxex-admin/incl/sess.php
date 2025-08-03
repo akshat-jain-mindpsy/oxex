@@ -81,7 +81,7 @@ $adminphoto = $photo;
 
 // Additional page-specific logic remains the same
 $thispage = $_SERVER['REQUEST_URI'];
-$thispage = str_replace("/OXEXadmin/", "", $thispage);
+$thispage = str_replace("/oxex-admin/", "", $thispage);
 $querystr = '?' . $_SERVER['QUERY_STRING'];
 $thispage = str_replace($querystr, "", $thispage);
 

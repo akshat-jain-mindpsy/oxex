@@ -38,7 +38,7 @@ if ($fileType !== 'csv') {
 }
 
 // Define upload directory
-$uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/public_html/OXEXadmin/uploads/';
+$uploadDir = $_SERVER['DOCUMENT_ROOT'] . '/public_html/oxex-admin/uploads/';
 
 // Create directory if it doesn't exist
 if (!is_dir($uploadDir)) {

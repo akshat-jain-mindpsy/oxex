@@ -1,5 +1,5 @@
 <?php
-// File: public_html/OXEXadmin/add_section_links.php
+// File: public_html/oxex-admin/add_section_links.php
 
 include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';

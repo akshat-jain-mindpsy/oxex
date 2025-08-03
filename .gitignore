@@ -21,4 +21,21 @@ logs/
 /public_html/build/
 /node_modules/
 npm-debug.log
-yarn-error.log 
+yarn-error.log
+
+# Documentation files
+DOCKER_SETUP.md 
+GITHUB_SECRETS*
+README-CICD.md
+sdb-b_hosting_stackcp.sql
+
+
+# Tests
+tests/
+
+# Test results
+tests/results/
+
+# Test environment variables
+tests/.env
+tests/test_results.txt

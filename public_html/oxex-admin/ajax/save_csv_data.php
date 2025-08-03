@@ -25,7 +25,7 @@ if (!isset($input['filename']) || !isset($input['data'])) {
 
 // Sanitize filename
 $filename = basename($input['filename']);
-$filepath = $_SERVER['DOCUMENT_ROOT'] . '/public_html/OXEXadmin/' . $filename;
+$filepath = $_SERVER['DOCUMENT_ROOT'] . '/public_html/oxex-admin/' . $filename;
 
 try {
     // Attempt to write the CSV data
