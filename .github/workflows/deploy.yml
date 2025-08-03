@@ -1,4 +1,61 @@
-name: Deploy to AWS
+# name: Deploy to AWS
+
+# on:
+#   push:
+#     branches: [ main, master, dev ]
+
+# env:
+#   AWS_REGION: us-east-1
+#   ECR_REPOSITORY: oxex-app
+
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
+    
+#     steps:
+#     - name: Checkout code
+#       uses: actions/checkout@v4
+
+#     - name: Configure AWS credentials
+#       uses: aws-actions/configure-aws-credentials@v4
+#       with:
+#         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#         aws-region: ${{ env.AWS_REGION }}
+
+#     - name: Login to ECR
+#       id: login-ecr
+#       uses: aws-actions/amazon-ecr-login@v2
+
+#     - name: Build and push to ECR
+#       env:
+#         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+#         IMAGE_TAG: ${{ github.sha }}
+#       run: |
+#         docker build -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG .
+#         docker tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+#         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
+#         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+
+#     - name: Deploy to EC2 using SSM
+#       run: |
+#         echo "Starting deployment via SSM..."
+#         aws ssm send-command \
+#           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+#           --document-name "AWS-RunShellScript" \
+#           --parameters 'commands=[
+#             "echo \"Starting deployment...\"",
+#             "aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}",
+#             "docker stop oxex-app || true",
+#             "docker rm oxex-app || true", 
+#             "docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest",
+#             "docker run -d --name oxex-app --restart unless-stopped -p 80:80 -e MYSQL_HOST=\"${{ secrets.MYSQL_HOST }}\" -e MYSQL_PORT=\"${{ secrets.MYSQL_PORT }}\" -e MYSQL_USER=\"${{ secrets.MYSQL_USER }}\" -e MYSQL_PASSWORD=\"${{ secrets.MYSQL_PASSWORD }}\" -e MYSQL_DATABASE=\"${{ secrets.MYSQL_DATABASE }}\" ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest",
+#             "docker image prune -f",
+#             "echo \"Deployment completed!\""
+#           ]' \
+#           --region ${{ env.AWS_REGION }} 
+
+name: Build and Push to ECR
 
 on:
   push:
@@ -9,7 +66,7 @@ env:
   ECR_REPOSITORY: oxex-app
 
 jobs:
-  deploy:
+  build-and-push:
     runs-on: ubuntu-latest
     
     steps:
@@ -36,21 +93,5 @@ jobs:
         docker tag $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
-
-    - name: Deploy to EC2 using SSM
-      run: |
-        echo "Starting deployment via SSM..."
-        aws ssm send-command \
-          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
-          --document-name "AWS-RunShellScript" \
-          --parameters 'commands=[
-            "echo \"Starting deployment...\"",
-            "aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}",
-            "docker stop oxex-app || true",
-            "docker rm oxex-app || true", 
-            "docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest",
-            "docker run -d --name oxex-app --restart unless-stopped -p 80:80 -e MYSQL_HOST=\"${{ secrets.MYSQL_HOST }}\" -e MYSQL_PORT=\"${{ secrets.MYSQL_PORT }}\" -e MYSQL_USER=\"${{ secrets.MYSQL_USER }}\" -e MYSQL_PASSWORD=\"${{ secrets.MYSQL_PASSWORD }}\" -e MYSQL_DATABASE=\"${{ secrets.MYSQL_DATABASE }}\" ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest",
-            "docker image prune -f",
-            "echo \"Deployment completed!\""
-          ]' \
-          --region ${{ env.AWS_REGION }} 
+        echo "Image pushed successfully! Pull and run manually on EC2:"
+        echo "docker pull $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest" 
