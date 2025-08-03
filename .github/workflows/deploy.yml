@@ -39,21 +39,15 @@ jobs:
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
         docker push $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
 
-    - name: Setup SSH Key
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
-        chmod 600 ~/.ssh/ec2_key
-        echo "SSH key file created. First few lines:"
-        head -3 ~/.ssh/ec2_key
-        echo "SSH key permissions:"
-        ls -la ~/.ssh/ec2_key
-        echo "Testing SSH connection..."
-        ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} "echo 'SSH connection test successful'"
-
     - name: Deploy to EC2
-      run: |
-        ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }} '
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USERNAME }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        port: 22
+        timeout: 60s
+        script: |
           echo "Starting deployment..."
           aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
           docker stop oxex-app || true
@@ -67,5 +61,4 @@ jobs:
             -e MYSQL_DATABASE="${{ secrets.MYSQL_DATABASE }}" \
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
           docker image prune -f
-          echo "Deployment completed!"
-        ' 
+          echo "Deployment completed!" 
