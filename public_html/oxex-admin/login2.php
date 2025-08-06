@@ -103,6 +103,8 @@ if(isset($_POST['email'], $_POST['p'])) {
    $_SESSION['login_string'] = hash('sha512', $hashed_password.$_SERVER['HTTP_USER_AGENT']); 
 
    custom_log("Login successful for user: $realname");
+   custom_log("Session ID after setting variables: " . session_id());
+   custom_log("Session variables set: " . print_r($_SESSION, true));
 
    // Update login status
    $now = time();
@@ -116,6 +118,7 @@ if(isset($_POST['email'], $_POST['p'])) {
    $allowed_admin_types = ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'];
    if (in_array($admintype, $allowed_admin_types)) {
       custom_log("Redirecting to indextable.php for admin type: $admintype");
+      custom_log("Session ID before redirect: " . session_id());
       header('Location: indextable.php');
       exit();
    } else {

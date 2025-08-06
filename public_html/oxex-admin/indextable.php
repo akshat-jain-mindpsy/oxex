@@ -1,7 +1,6 @@
 <?PHP
 include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
-sec_session_start();
 include 'incl/sess.php';
 // new PHP mailer
 //use PHPMailer\PHPMailer\PHPMailer;

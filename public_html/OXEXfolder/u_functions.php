@@ -1,15 +1,52 @@
 <?PHP
 function sec_session_start() {
 	$session_name = 'oxi_session_id'; // Set a custom session name
-	$secure = true; // Set to true if using https.
+	$secure = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on'; // Set to true if using https.
 	$httponly = true; // This stops javascript being able to access the session id. 
 
 	ini_set('session.use_only_cookies', 1); // Forces sessions to only use cookies. 
 	$cookieParams = session_get_cookie_params(); // Gets current cookies params.
-	session_set_cookie_params($cookieParams["lifetime"], $cookieParams["path"], $cookieParams["domain"], $secure, $httponly); 
+	
+	// Set path to root to ensure session works across all subdirectories
+	$cookiePath = '/';
+	
+	// Set domain to current domain or leave empty for current domain
+	$cookieDomain = '';
+	if (isset($_SERVER['HTTP_HOST'])) {
+		$host = $_SERVER['HTTP_HOST'];
+		// Remove port number if present
+		$host = preg_replace('/:\d+$/', '', $host);
+		// For localhost or IP addresses, leave domain empty
+		if ($host !== 'localhost' && !filter_var($host, FILTER_VALIDATE_IP)) {
+			$cookieDomain = $host;
+		}
+	}
+	
+	session_set_cookie_params($cookieParams["lifetime"], $cookiePath, $cookieDomain, $secure, $httponly); 
 	session_name($session_name); // Sets the session name to the one set above.
-	session_start(); // Start the php session
-	session_regenerate_id(true); // regenerated the session, delete the old one.     
+	
+	// Debug logging
+	error_log('[SESSION DEBUG] Cookie params - lifetime: ' . $cookieParams["lifetime"] . ', path: ' . $cookiePath . ', domain: ' . $cookieDomain . ', secure: ' . ($secure ? 'true' : 'false') . ', httponly: ' . ($httponly ? 'true' : 'false'));
+	error_log('[SESSION DEBUG] HTTP_HOST: ' . (isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : 'not set'));
+	
+	// Only start session if not already started
+	if (session_status() === PHP_SESSION_NONE) {
+		session_start(); // Start the php session
+		error_log('[SESSION DEBUG] Session started with ID: ' . session_id());
+		
+		// Only regenerate ID if this is a completely new session (no user_id set)
+		// and we're not in the middle of a login process
+		// and we're not in a redirect after login
+		if (!isset($_SESSION['user_id']) && !isset($_POST['email']) && !isset($_SESSION['login_string'])) {
+			$old_session_id = session_id();
+			session_regenerate_id(true); // regenerated the session, delete the old one.     
+			error_log('[SESSION DEBUG] Session ID regenerated from ' . $old_session_id . ' to ' . session_id());
+		} else {
+			error_log('[SESSION DEBUG] Session ID not regenerated - user_id: ' . (isset($_SESSION['user_id']) ? 'set' : 'not set') . ', POST email: ' . (isset($_POST['email']) ? 'set' : 'not set') . ', login_string: ' . (isset($_SESSION['login_string']) ? 'set' : 'not set'));
+		}
+	} else {
+		error_log('[SESSION DEBUG] Session already active with ID: ' . session_id());
+	}
 }
 
 // for admin registration and logins

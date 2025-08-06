@@ -2,30 +2,46 @@
 function sec_session_start() {
     if (session_status() === PHP_SESSION_NONE) {
         $session_name = 'oxi_member_id';
-        $secure = true;
+        $secure = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on'; // Only true if using https
         $httponly = true;
 
         ini_set('session.use_only_cookies', 1);
         $cookieParams = session_get_cookie_params();
+        
+        // Set path to root to ensure session works across all subdirectories
+        $cookiePath = '/';
+        
+        // Set domain to current domain or leave empty for current domain
+        $cookieDomain = '';
+        if (isset($_SERVER['HTTP_HOST'])) {
+            $host = $_SERVER['HTTP_HOST'];
+            // Remove port number if present
+            $host = preg_replace('/:\d+$/', '', $host);
+            // For localhost or IP addresses, leave domain empty
+            if ($host !== 'localhost' && !filter_var($host, FILTER_VALIDATE_IP)) {
+                $cookieDomain = $host;
+            }
+        }
+        
         session_set_cookie_params(
             $cookieParams["lifetime"],
-            $cookieParams["path"],
-            $cookieParams["domain"],
+            $cookiePath,
+            $cookieDomain,
             $secure,
             $httponly
         );
         session_name($session_name);
         session_start();
-        session_regenerate_id(true);
+        
+        // Only regenerate ID if this is a completely new session
+        if (!isset($_SESSION['trainkey']) && !isset($_POST['ee'])) {
+            session_regenerate_id(true);
+        }
     }
 }
 
 function check_session_timeout() {
-   $max_lifetime = 3600; // Temporarily set to 30 seconds for testing
-   
-   error_log('Current time: ' . time());
-   error_log('Last activity: ' . (isset($_SESSION['last_activity']) ? $_SESSION['last_activity'] : 'not set'));
-   error_log('Difference: ' . (time() - (isset($_SESSION['last_activity']) ? $_SESSION['last_activity'] : time())));
+   $max_lifetime = 3600; // 1 hour session timeout
    
    if (!isset($_SESSION['last_activity'])) {
        $_SESSION['last_activity'] = time();

@@ -17,6 +17,22 @@ if (session_status() === PHP_SESSION_NONE) {
 	sec_session_start();
 }
 
+// Log session status and configuration
+custom_log('Session status: ' . session_status());
+custom_log('Session ID: ' . session_id());
+custom_log('Session name: ' . session_name());
+custom_log('Session save path: ' . session_save_path());
+
+// Check if session cookie is being sent
+if (isset($_COOKIE[session_name()])) {
+	custom_log('Session cookie found: ' . $_COOKIE[session_name()]);
+} else {
+	custom_log('Session cookie not found in request');
+}
+
+// Log all cookies for debugging
+custom_log('All cookies: ' . print_r($_COOKIE, true));
+
 // Log all session variables for debugging
 custom_log('Full Session Data: ' . print_r($_SESSION, true));
 

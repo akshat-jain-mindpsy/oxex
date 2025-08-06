@@ -10,8 +10,11 @@
 <meta name="theme-color" content="#ffffff">
 <?php 
 // remove index.php for canonical
-//if ($canonical == 'index.php') {
-//	$canonical = '';
-//}
+if (!isset($canonical)) {
+    $canonical = $thispage ?? '';
+}
+if ($canonical == 'index.php') {
+	$canonical = '';
+}
 ?>
 <link rel="canonical" href="https://www.oxex.co.uk/<?php echo $canonical ?>">

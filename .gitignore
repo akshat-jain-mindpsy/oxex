@@ -41,3 +41,6 @@ tests/results/
 # Test environment variables
 tests/.env
 tests/test_results.txt
+
+MANUAL_DEPLOYMENT.md
+docker_imf_build.sh

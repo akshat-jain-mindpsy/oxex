@@ -19,8 +19,8 @@ $MailHost = 'mail72.extendcp.co.uk';
 $FromEmail = 'reset@oxex.co.uk';
 $frompassword = 'ZZZ'; 
 
-// Debug the incoming path
-echo "<!-- Original REQUEST_URI: " . htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'not set') . " -->\n";
+// Debug the incoming path - use error_log instead of echo to prevent headers already sent
+error_log("Original REQUEST_URI: " . ($_SERVER['REQUEST_URI'] ?? 'not set'));
 
 // Clean up the path to get correct filename
 $thispage = $_SERVER['REQUEST_URI'];
@@ -48,13 +48,13 @@ if(isset($_SESSION['trainkey'])) {
 	$trainkey = $_SESSION['trainkey'];
 }
 
-echo "<!-- Cleaned thispage value: " . htmlspecialchars($thispage) . " -->\n";
+error_log("Cleaned thispage value: " . $thispage);
 
 // Now proceed with database query
 $stmt = $mysqli->prepare("SELECT pid, page_name, googleTitle, googleDesc, googleKeywords, bannerTitle, bannerTxt, page_title, page_txt1, page_txt2, page_txt3, page_txt4, page_txt5, page_txt6, page_txt7, page_txt8, page_txt9, page_txt10, page_txt11, page_txt12, image, webp, avif FROM pages_tbl WHERE filename = ?");
 
 if (!$stmt) {
-	echo "Prepare failed: " . htmlspecialchars($mysqli->error) . "<br>";
+	error_log("Prepare failed: " . $mysqli->error);
 } else {
 	$stmt->bind_param("s", $thispage);
 	
@@ -69,12 +69,12 @@ if (!$stmt) {
 		);
 
 		if ($stmt->fetch()) {
-			echo "</pre>";
+			// Success - page found
 		} else {
-			echo "No record found for filename = '$thispage'<br>";
+			error_log("No record found for filename = '$thispage'");
 		}
 	} else {
-		echo "Execute failed: " . htmlspecialchars($stmt->error) . "<br>";
+		error_log("Execute failed: " . $stmt->error);
 	}
 }
 
