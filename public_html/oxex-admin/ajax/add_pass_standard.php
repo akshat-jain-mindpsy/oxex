@@ -12,6 +12,10 @@ if (login_check($mysqli) !== true || ($admintype !== 'AT' && $admintype !== 'DV'
 }
 
 header('Content-Type: application/json');
+
+// Log the incoming request for debugging
+error_log("ADD_PASS_STANDARD: Request received - " . json_encode($_POST));
+
 $response = ['status' => 'error', 'message' => 'An unknown error occurred.'];
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -47,12 +51,8 @@ if (!empty($subfield_rules) && is_array($subfield_rules)) {
     }
     
     if (!empty($processed_rules)) {
-        // If field_value already exists, append subfield rules
-        if (!empty($field_value)) {
-            $field_value .= ' | SUBFIELD_RULES:' . json_encode($processed_rules);
-        } else {
-            $field_value = 'SUBFIELD_RULES:' . json_encode($processed_rules);
-        }
+        // Always replace subfield rules - don't append
+        $field_value = 'SUBFIELD_RULES:' . json_encode($processed_rules);
     }
 }
 
@@ -71,20 +71,20 @@ $sql = "INSERT INTO pass_standards
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 if ($stmt = $mysqli->prepare($sql)) {
-    // The type string 'siisisisii' corresponds to the data types:
+    // The type string 'siisisisi' corresponds to the data types:
     // s: standard_name, i: tbid, i: stid, s: requirement_type, i: required_value, 
-    // s: field_value, i: subfield_id, i: is_active, s: who_by, i: date_added
-            $stmt->bind_param("siisisisi", 
-            $standard_name,
-            $tbid,
-            $stid,
-            $requirement_type,
-            $required_value,
-            $field_value,
-            $is_active,
-            $usrkey,
-            $date_added
-        );
+    // s: field_value, i: is_active, s: who_by, i: date_added
+    $stmt->bind_param("siisisisi", 
+        $standard_name,
+        $tbid,
+        $stid,
+        $requirement_type,
+        $required_value,
+        $field_value,
+        $is_active,
+        $usrkey,
+        $date_added
+    );
     
     if ($stmt->execute()) {
         if ($stmt->affected_rows > 0) {

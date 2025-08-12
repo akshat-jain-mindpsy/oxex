@@ -67,8 +67,7 @@ if ($del == "del" && $which > 0) {
                     <div class="card-header">Manage Pass Standards</div>
                     <div class="card-body">
                         <div class="alert alert-info mb-3">
-                            <strong>Tip:</strong> Use "Add New Standards" to create multiple pass standards for different fields in the same table at once. 
-                            This is especially useful when setting up comprehensive requirements for a table with many fields.
+                            <strong>Tip:</strong> Use "Add New Standards" to create pass standards with multiple subfield rules. This allows you to define different requirements for various subfield values within the same field, making your standards more comprehensive and flexible.
                         </div>
                         <div class="table-responsive">
                             <table class="table table-striped my-4 w-100" id="passStandardsTable">
@@ -95,7 +94,7 @@ if ($del == "del" && $which > 0) {
                                             ps.is_active,
                                             t.tab_name,
                                             st.str as field_name,
-                                            st_sub.str as subfield_name,
+                                            ps.field_value,
                                             parent.standard_name as parent_name,
                                             (SELECT GROUP_CONCAT(st_or.str SEPARATOR ', ') 
                                              FROM pass_standard_fields psf 
@@ -107,8 +106,6 @@ if ($del == "del" && $which > 0) {
                                             tabs_tbl t ON ps.tbid = t.tbid
                                         LEFT JOIN
                                             select_types st ON ps.stid = st.stid
-                                        LEFT JOIN
-                                            select_types st_sub ON ps.subfield_id = st_sub.stid
                                         LEFT JOIN
                                             pass_standards parent ON ps.parent_standard_id = parent.psid
                                         ORDER BY 
@@ -125,8 +122,36 @@ if ($del == "del" && $which > 0) {
                                             $field_display = 'N/A';
                                             if (!empty($row['field_name'])) {
                                                 $field_display = htmlspecialchars($row['field_name']);
-                                                if (!empty($row['subfield_name'])) {
-                                                    $field_display .= '<br><small class="text-muted">Subfield: ' . htmlspecialchars($row['subfield_name']) . '</small>';
+                                                
+                                                // Check if there are subfield rules in field_value
+                                                if (!empty($row['field_value']) && strpos($row['field_value'], 'SUBFIELD_RULES:') !== false) {
+                                                    try {
+                                                        $subfield_rules = json_decode(str_replace('SUBFIELD_RULES:', '', $row['field_value']), true);
+                                                        if (is_array($subfield_rules) && !empty($subfield_rules)) {
+                                                            $subfield_names = [];
+                                                            foreach ($subfield_rules as $rule) {
+                                                                if (!empty($rule['subfield_value'])) {
+                                                                    // Get subfield name from select_gen table
+                                                                    $subfield_query = "SELECT select_val FROM select_gen WHERE pid = ?";
+                                                                    if ($subfield_stmt = $mysqli->prepare($subfield_query)) {
+                                                                        $subfield_stmt->bind_param("i", $rule['subfield_value']);
+                                                                        $subfield_stmt->execute();
+                                                                        $subfield_result = $subfield_stmt->get_result();
+                                                                        if ($subfield_row = $subfield_result->fetch_assoc()) {
+                                                                            $subfield_names[] = htmlspecialchars($subfield_row['select_val']);
+                                                                        }
+                                                                        $subfield_stmt->close();
+                                                                    }
+                                                                }
+                                                            }
+                                                            if (!empty($subfield_names)) {
+                                                                $field_display .= '<br><small class="text-muted">Subfields: ' . implode(', ', $subfield_names) . '</small>';
+                                                            }
+                                                        }
+                                                    } catch (Exception $e) {
+                                                        // Log error but don't break the display
+                                                        error_log("Error parsing subfield rules: " . $e->getMessage());
+                                                    }
                                                 }
                                             } elseif (!empty($row['or_fields'])) {
                                                 $field_display = "<i>Multiple (OR):</i><br>" . htmlspecialchars($row['or_fields']);
@@ -142,6 +167,7 @@ if ($del == "del" && $which > 0) {
                                                 <td>{$status_badge}</td>
                                                 <td>
                                                     <div class='btn-group' role='group'>
+                                                        <a href='view_pass_standard.php?which={$row['psid']}' class='btn btn-sm btn-secondary'>View</a>
                                                         <a href='pass_standard_detail.php?which={$row['psid']}' class='btn btn-sm btn-info'>Edit</a>
                                                         <a href='pass_standards.php?del=del&which={$row['psid']}' class='btn btn-sm btn-danger' onclick='return confirm(\"Are you sure you want to delete this standard?\");'>Delete</a>
                                                     </div>

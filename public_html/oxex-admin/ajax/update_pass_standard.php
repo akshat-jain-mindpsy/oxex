@@ -12,6 +12,10 @@ if (login_check($mysqli) !== true || ($admintype !== 'AT' && $admintype !== 'DV'
 }
 
 header('Content-Type: application/json');
+
+// Log the incoming request for debugging
+error_log("UPDATE_PASS_STANDARD: Request received - " . json_encode($_POST));
+
 $response = ['status' => 'error', 'message' => 'An unknown error occurred.'];
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -48,12 +52,8 @@ if (!empty($subfield_rules) && is_array($subfield_rules)) {
     }
     
     if (!empty($processed_rules)) {
-        // If field_value already exists, append subfield rules
-        if (!empty($field_value)) {
-            $field_value .= ' | SUBFIELD_RULES:' . json_encode($processed_rules);
-        } else {
-            $field_value = 'SUBFIELD_RULES:' . json_encode($processed_rules);
-        }
+        // Always replace subfield rules - don't append
+        $field_value = 'SUBFIELD_RULES:' . json_encode($processed_rules);
     }
 }
 
@@ -81,7 +81,8 @@ $sql = "UPDATE pass_standards SET
 
 if ($stmt = $mysqli->prepare($sql)) {
     // The type string 'siisisisi' corresponds to the data types
-    $stmt->bind_param("siisisisi", 
+    // s=string, i=integer, s=string, i=integer, s=string, s=string, i=integer, s=string, i=integer, i=integer
+    $stmt->bind_param("siisisssii", 
         $standard_name, 
         $tbid, 
         $stid, 
