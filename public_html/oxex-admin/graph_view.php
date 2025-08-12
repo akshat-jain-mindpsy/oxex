@@ -234,23 +234,11 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                                </div>
                                            </div>
                                        </div>
-                                       <div class="col-md-8" id="fieldSelectionRow" style="display:none;">
-                                           <div class="row">
-                                               <div class="col-md-6">
-                                                   <div class="form-group">
-                                                       <label class="col-form-label" for="fieldX">X-Axis Field</label>
-                                                       <select class="custom-select custom-select-lg mb-3" id="fieldX" name="field_x">
-                                                           <option value="">Select field first</option>
-                                                       </select>
-                                                   </div>
-                                               </div>
-                                               <div class="col-md-6">
-                                                   <div class="form-group">
-                                                       <label class="col-form-label" for="fieldY">Y-Axis Field</label>
-                                                       <select class="custom-select custom-select-lg mb-3" id="fieldY" name="field_y">
-                                                           <option value="">Select field first</option>
-                                                       </select>
-                                                   </div>
+                                       <div class="col-md-8">
+                                           <div class="form-group">
+                                               <label class="col-form-label">Field Selection</label>
+                                               <div class="alert alert-info">
+                                                   <i class="fas fa-info-circle"></i> Select multiple fields for both X and Y axes to create comprehensive visualizations.
                                                </div>
                                            </div>
                                        </div>
@@ -259,12 +247,13 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                            </div>
                            <div class="card-footer">
                                <div class="float-right">
-                                   <button type="button" id="generateGraphBtn" class="btn btn-info">Generate Graph</button>
+                                   <button type="button" id="generateAllGraphsBtn" class="btn btn-success">Generate Selected Combinations</button>
                                </div>
-                               <div class="float-left" id="traineeFilterIndicator" style="display:none;">
-                                   <span class="badge badge-warning p-2">
-                                      <i class="fas fa-filter"></i> Data filtered for: <span id="selectedTraineeName"></span>
-                                   </span>
+                               <div class="float-left">
+                                   <button type="button" id="selectAllXFields" class="btn btn-outline-secondary btn-sm" style="display:none;">Select All X</button>
+                                   <button type="button" id="clearAllXFields" class="btn btn-outline-secondary btn-sm ml-1" style="display:none;">Clear All X</button>
+                                   <button type="button" id="selectAllYFields" class="btn btn-outline-secondary btn-sm ml-3" style="display:none;">Select All Y</button>
+                                   <button type="button" id="clearAllYFields" class="btn btn-outline-secondary btn-sm ml-1" style="display:none;">Clear All Y</button>
                                </div>
                            </div>
                        </div>
@@ -276,7 +265,7 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                    <div class="col-12">
                        <div class="card border-info mb-4">
                            <div class="card-header bg-info">
-                               <div class="card-title">Generate Custom Graph Combinations</div>
+                               <div class="card-title">Field Combination Visualizations</div>
                            </div>
                            <div class="card-body">
                                <p>Select X-axis and Y-axis fields to generate graphs for all combinations in the selected time frame.</p>
@@ -376,7 +365,7 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                    <div class="col-12">
                        <div class="card border-info mb-4">
                            <div class="card-header bg-info">
-                               <div class="card-title">Graph Visualization</div>
+                               <div class="card-title">Field Combination Results</div>
                            </div>
                            <div class="card-body p-0">
                                <div class="graph-container">
@@ -387,7 +376,7 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                    </div>
                                    <div id="noDataMessage" class="no-data-message">
                                        <i class="fas fa-chart-line fa-3x mb-3"></i>
-                                       <h4>Select data source and generate a graph</h4>
+                                       <h4>Select data source and generate field combinations</h4>
                                        <p class="text-muted">Use the filters above to select your data and visualization options</p>
                                    </div>
                                    <canvas id="graphCanvas" style="display:none;"></canvas>
@@ -494,9 +483,8 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                const tableId = $(this).val();
                
                if (tableId) {
-                   // Show loading state
-                   $('#fieldX, #fieldY').html('<option value="">Loading fields...</option>');
-                   $('#fieldSelectionRow').show();
+                   // Clear and hide single field selection
+                   $('#fieldSelectionRow').hide();
                    
                    // Clear and hide custom field selection
                    $('#xAxisFieldsList, #yAxisFieldsList').empty();
@@ -515,12 +503,6 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                        dataType: 'json',
                        success: function(response) {
                            console.log('Fields response:', response);
-                           // Clear existing options
-                           $('#fieldX, #fieldY').empty();
-                           
-                           // Add default option
-                           $('#fieldX').append('<option value="">Select X-Axis Field</option>');
-                           $('#fieldY').append('<option value="">Select Y-Axis Field</option>');
                            
                            let fields = [];
                            
@@ -528,17 +510,13 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                // For backward compatibility with older API
                                fields = response;
                                response.forEach(function(field) {
-                                   $('#fieldX').append(`<option value="${field.stid}">${field.str}</option>`);
-                                   $('#fieldY').append(`<option value="${field.stid}">${field.str}</option>`);
+                                   // No need to populate single field selects
                                });
                            } else if (response.status === 'success' && response.fields) {
                                // New API format
                                fields = response.fields;
                                response.fields.forEach(function(field) {
-                                   const id = field.id || field.stid;
-                                   const name = field.name || field.str;
-                                   $('#fieldX').append(`<option value="${id}">${name}</option>`);
-                                   $('#fieldY').append(`<option value="${id}">${name}</option>`);
+                                   // No need to populate single field selects
                                });
                            } else {
                                alert('Error loading fields: ' + (response.message || 'Unknown error'));
@@ -561,7 +539,6 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                } else {
                    // Hide and clear field selection
                    $('#fieldSelectionRow').hide();
-                   $('#fieldX, #fieldY').html('<option value="">Select field first</option>');
                    $('#customFieldSelectionSection').hide();
                    $('#fieldSelectionPrompt').show();
                    $('#generateAllGraphsBtn').prop('disabled', true);
@@ -671,231 +648,6 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                $('.y-field-checkbox').prop('checked', false);
                updateCombinationPreview();
            });
-           
-           // Generate graph button click
-           $('#generateGraphBtn').on('click', function() {
-               const dataSource = $('#dataSource').val();
-               const timeFrame = $('#timeFrame').val();
-               const traineeKey = $('#traineeSelect').val();
-               
-               if (!dataSource) {
-                   alert('Please select a data source');
-                   return;
-               }
-               
-               // For admin interface, trainee selection is required
-               if (!traineeKey) {
-                   alert('Please select a trainee or "All Users" to view data');
-                   return;
-               }
-               
-               const fieldX = $('#fieldX').val();
-               const fieldY = $('#fieldY').val();
-               const chartType = $('#chartType').val();
-               
-               // Validate custom date range if selected
-               if (timeFrame === 'custom') {
-                   const startDate = $('#startDate').val();
-                   const endDate = $('#endDate').val();
-                   
-                   if (!startDate || !endDate) {
-                       alert('Please select both start and end dates');
-                       return;
-                   }
-                   
-                   if (new Date(startDate) > new Date(endDate)) {
-                       alert('Start date cannot be after end date');
-                       return;
-                   }
-               }
-               
-               if (!fieldX || !fieldY) {
-                   alert('Please select both X and Y axis fields');
-                   return;
-               }
-               
-               // Show loading indicator
-               $('#graphLoadingIndicator').show();
-               $('#noDataMessage').hide();
-               $('#graphCanvas').hide();
-               $('#dataTableContainer').hide();
-               $('#noTableDataMessage').show();
-               
-               // Prepare data for AJAX request
-               const requestData = {
-                   table_id: dataSource,
-                   field_x: fieldX,
-                   field_y: fieldY,
-                   chart_type: chartType,
-                   time_frame: timeFrame,
-                   trainee_key: traineeKey
-               };
-               
-               // Add custom date range if selected
-               if (timeFrame === 'custom') {
-                   requestData.start_date = $('#startDate').val();
-                   requestData.end_date = $('#endDate').val();
-               }
-               
-               // Fetch graph data
-               $.ajax({
-                   url: 'ajax/get_graph_data.php',
-                   type: 'POST',
-                   data: requestData,
-                   dataType: 'json',
-                   success: function(response) {
-                       // Hide loading indicator
-                       $('#graphLoadingIndicator').hide();
-                       
-                       if (response.status === 'success') {
-                           // Show graph canvas
-                           $('#graphCanvas').show();
-                           
-                           // Display data in the table
-                           displayDataTable(response.data);
-                           
-                           // Render the graph
-                           renderGraph(response.data, chartType, response.labels);
-                       } else {
-                           // Show no data message with error
-                           $('#noDataMessage').show();
-                           $('#noDataMessage').html(`
-                               <i class="fas fa-exclamation-triangle fa-3x mb-3 text-warning"></i>
-                               <h4>Error generating graph</h4>
-                               <p class="text-muted">${response.message}</p>
-                           `);
-                       }
-                   },
-                   error: function(xhr, status, error) {
-                       // Hide loading indicator and show error
-                       $('#graphLoadingIndicator').hide();
-                       $('#noDataMessage').show();
-                       
-                       let errorMessage = error;
-                       // Try to parse error response if it's JSON
-                       try {
-                           const errorResponse = JSON.parse(xhr.responseText);
-                           if (errorResponse && errorResponse.message) {
-                               errorMessage = errorResponse.message;
-                           }
-                       } catch (e) {
-                           // If it's not valid JSON, use the xhr.responseText as is
-                           if (xhr.responseText) {
-                               errorMessage = 'Server error';
-                               console.error('AJAX Error:', xhr.responseText);
-                           }
-                       }
-                       
-                       $('#noDataMessage').html(`
-                           <i class="fas fa-exclamation-circle fa-3x mb-3 text-danger"></i>
-                           <h4>Error generating graph</h4>
-                           <p class="text-muted">${errorMessage}</p>
-                       `);
-                   }
-               });
-           });
-           
-           function renderGraph(data, chartType, labels) {
-               const ctx = document.getElementById('graphCanvas').getContext('2d');
-               
-               // Determine if we're showing data for a specific trainee
-               const traineeName = $('#traineeSelect option:selected').text();
-               const traineeKey = $('#traineeSelect').val();
-               const titleSuffix = traineeKey ? ` - ${traineeName}` : '';
-               
-               // Destroy previous chart if exists
-               if (myChart) {
-                   myChart.destroy();
-               }
-               
-               // Format data for Chart.js
-               const chartData = {
-                   labels: labels || data.map(item => item.label),
-                   datasets: [{
-                       label: 'Data Values',
-                       data: data.map(item => item.value),
-                       backgroundColor: [
-                           'rgba(54, 162, 235, 0.6)',
-                           'rgba(255, 99, 132, 0.6)',
-                           'rgba(255, 206, 86, 0.6)',
-                           'rgba(75, 192, 192, 0.6)',
-                           'rgba(153, 102, 255, 0.6)',
-                           'rgba(255, 159, 64, 0.6)',
-                           'rgba(255, 99, 132, 0.6)',
-                           'rgba(54, 162, 235, 0.6)',
-                           'rgba(255, 206, 86, 0.6)'
-                       ],
-                       borderColor: [
-                           'rgba(54, 162, 235, 1)',
-                           'rgba(255, 99, 132, 1)',
-                           'rgba(255, 206, 86, 1)',
-                           'rgba(75, 192, 192, 1)',
-                           'rgba(153, 102, 255, 1)',
-                           'rgba(255, 159, 64, 1)',
-                           'rgba(255, 99, 132, 1)',
-                           'rgba(54, 162, 235, 1)',
-                           'rgba(255, 206, 86, 1)'
-                       ],
-                       borderWidth: 1
-                   }]
-               };
-               
-               // Create the chart
-               myChart = new Chart(ctx, {
-                   type: chartType,
-                   data: chartData,
-                   options: {
-                       responsive: true,
-                       maintainAspectRatio: false,
-                       scales: {
-                           y: {
-                               beginAtZero: true
-                           }
-                       },
-                       plugins: {
-                           legend: {
-                               position: 'top',
-                           },
-                           title: {
-                               display: true,
-                               text: 'Data Visualization' + titleSuffix
-                           }
-                       }
-                   }
-               });
-           }
-           
-           function displayDataTable(data) {
-               const tableBody = $('#graphDataTableBody');
-               tableBody.empty();
-               
-               if (data && data.length > 0) {
-                   // Calculate total for percentage
-                   const total = data.reduce((sum, item) => sum + parseFloat(item.value || 0), 0);
-                   
-                   // Add rows to table
-                   data.forEach(function(item) {
-                       const value = parseFloat(item.value || 0);
-                       const percentage = total > 0 ? ((value / total) * 100).toFixed(2) + '%' : '0.00%';
-                       
-                       tableBody.append(`
-                           <tr>
-                               <td>${item.label}</td>
-                               <td>${value}</td>
-                               <td>${percentage}</td>
-                           </tr>
-                       `);
-                   });
-                   
-                   // Show data table
-                   $('#dataTableContainer').show();
-                   $('#noTableDataMessage').hide();
-               } else {
-                   // No data available
-                   $('#dataTableContainer').hide();
-                   $('#noTableDataMessage').show();
-               }
-           }
            
            // Handle the Generate All Graphs button
            $('#generateAllGraphsBtn').on('click', function() {

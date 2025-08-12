@@ -90,10 +90,43 @@ function _fetchAllRulesForCompetency($tbid, $mysqli) {
             }
             $or_stmt->close();
         }
+        
+        // Parse subfield rules if they exist
+        if (!empty($row['field_value']) && strpos($row['field_value'], 'SUBFIELD_RULES:') !== false) {
+            $row['subfield_rules'] = _parseSubfieldRules($row['field_value']);
+        }
+        
         $rules[] = $row;
     }
     $stmt->close();
     return $rules;
+}
+
+/**
+ * Parses subfield rules from the field_value column.
+ * 
+ * @param string $field_value The field_value string that may contain SUBFIELD_RULES
+ * @return array Array of subfield rules or empty array if none found
+ */
+function _parseSubfieldRules($field_value) {
+    if (empty($field_value) || strpos($field_value, 'SUBFIELD_RULES:') === false) {
+        return [];
+    }
+    
+    try {
+        // Extract the JSON part after SUBFIELD_RULES:
+        $json_part = str_replace('SUBFIELD_RULES:', '', $field_value);
+        $json_part = trim($json_part);
+        
+        $rules = json_decode($json_part, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($rules)) {
+            return $rules;
+        }
+    } catch (Exception $e) {
+        error_log("Error parsing subfield rules: " . $e->getMessage());
+    }
+    
+    return [];
 }
 
 /**
@@ -130,6 +163,12 @@ function _buildRuleTree(array &$rules) {
  * @return array A detailed result object for this specific rule.
  */
 function _evaluateRule($rule, $traineeKey, $mysqli, $population_logkeys = null) {
+    // Check if this rule has subfield rules
+    if (!empty($rule['subfield_rules'])) {
+        return _evaluateSubfieldRule($rule, $traineeKey, $mysqli, $population_logkeys);
+    }
+    
+    // Original evaluation logic for regular rules
     $params = [$traineeKey];
     $types = 's';
     
@@ -244,6 +283,153 @@ function _evaluateRule($rule, $traineeKey, $mysqli, $population_logkeys = null) 
         'required_value' => $rule['required_value'],
         'children' => $child_results
     ];
+}
+
+/**
+ * Evaluates a rule that has subfield rules.
+ * This is the new evaluation logic for the updated rules system.
+ *
+ * @param array $rule The rule with subfield rules to evaluate.
+ * @param string $traineeKey The trainee's key.
+ * @param mysqli $mysqli The database connection.
+ * @param array|null $population_logkeys A pre-filtered list of logkeys from a parent rule.
+ * @return array A detailed result object for this rule with subfield breakdown.
+ */
+function _evaluateSubfieldRule($rule, $traineeKey, $mysqli, $population_logkeys = null) {
+    $subfield_results = [];
+    $all_subfields_passed = true;
+    
+    // Evaluate each subfield rule
+    foreach ($rule['subfield_rules'] as $subfield_rule) {
+        $subfield_result = _evaluateSubfieldIndividualRule($rule, $subfield_rule, $traineeKey, $mysqli, $population_logkeys);
+        $subfield_results[] = $subfield_result;
+        
+        if (!$subfield_result['is_passed']) {
+            $all_subfields_passed = false;
+        }
+    }
+    
+    // The main rule passes only if ALL subfield rules pass
+    $final_is_passed = $all_subfields_passed;
+    
+    return [
+        'standard_name' => $rule['standard_name'],
+        'is_passed' => $final_is_passed,
+        'current_value' => count(array_filter($subfield_results, function($r) { return $r['is_passed']; })),
+        'required_value' => count($rule['subfield_rules']),
+        'subfield_rules' => $subfield_results,
+        'children' => [] // Subfield rules don't have children in the traditional sense
+    ];
+}
+
+/**
+ * Evaluates an individual subfield rule.
+ *
+ * @param array $main_rule The main rule containing the subfield rules.
+ * @param array $subfield_rule The specific subfield rule to evaluate.
+ * @param string $traineeKey The trainee's key.
+ * @param mysqli $mysqli The database connection.
+ * @param array|null $population_logkeys A pre-filtered list of logkeys from a parent rule.
+ * @return array A detailed result object for this subfield rule.
+ */
+function _evaluateSubfieldIndividualRule($main_rule, $subfield_rule, $traineeKey, $mysqli, $population_logkeys = null) {
+    $params = [$traineeKey];
+    $types = 's';
+    $where_clauses = ["trainkey = ?"];
+    
+    // Add the main field condition
+    if (!is_null($main_rule['stid'])) {
+        $where_clauses[] = "stid = ?";
+        $types .= 'i';
+        $params[] = $main_rule['stid'];
+    }
+    
+    // Add the subfield value condition
+    if (!empty($subfield_rule['subfield_value'])) {
+        $where_clauses[] = "select_val = ?";
+        $types .= 's';
+        $params[] = $subfield_rule['subfield_value'];
+    }
+    
+    // If this is a child rule, constrain the query to the parent's population of logkeys
+    if ($population_logkeys !== null) {
+        if (empty($population_logkeys)) {
+            $current_value = 0;
+        } else {
+            $placeholders = implode(',', array_fill(0, count($population_logkeys), '?'));
+            $where_clauses[] = "logkey IN ($placeholders)";
+            $types .= str_repeat('s', count($population_logkeys));
+            array_push($params, ...$population_logkeys);
+        }
+    }
+    
+    // Build the query based on requirement type
+    $base_query = "";
+    switch ($subfield_rule['requirement_type']) {
+        case 'UNIQUE_VALUES':
+            $base_query = "SELECT COUNT(DISTINCT logkey) FROM trainee_log";
+            break;
+        case 'UNIQUE_VALUES_IN_RANGE':
+            $base_query = "SELECT COUNT(DISTINCT logkey) FROM trainee_log";
+            // Add range condition if specific_value contains a range
+            if (!empty($subfield_rule['specific_value']) && strpos($subfield_rule['specific_value'], '-') !== false) {
+                list($start, $end) = explode('-', $subfield_rule['specific_value']);
+                $where_clauses[] = "CAST(logkey AS SIGNED) BETWEEN ? AND ?";
+                $types .= 'ii';
+                $params[] = trim($start);
+                $params[] = trim($end);
+            }
+            break;
+        case 'TOTAL_COUNT':
+        default:
+            $base_query = "SELECT COUNT(*) FROM trainee_log";
+            break;
+    }
+    
+    // Execute the query
+    $final_query = $base_query . " WHERE " . implode(" AND ", $where_clauses);
+    $stmt = $mysqli->prepare($final_query);
+    $stmt->bind_param($types, ...$params);
+    $stmt->execute();
+    $stmt->bind_result($current_value);
+    $stmt->fetch();
+    $stmt->close();
+    
+    $current_value = $current_value ?? 0;
+    $required_value = (int)($subfield_rule['specific_value'] ?? 0);
+    $is_passed = ($current_value >= $required_value);
+    
+    return [
+        'subfield_value' => $subfield_rule['subfield_value'],
+        'subfield_name' => _getSubfieldName($subfield_rule['subfield_value'], $mysqli),
+        'requirement_type' => $subfield_rule['requirement_type'],
+        'is_passed' => $is_passed,
+        'current_value' => $current_value,
+        'required_value' => $required_value
+    ];
+}
+
+/**
+ * Gets the display name for a subfield value.
+ *
+ * @param string $subfield_value The subfield value ID.
+ * @param mysqli $mysqli The database connection.
+ * @return string The display name for the subfield value.
+ */
+function _getSubfieldName($subfield_value, $mysqli) {
+    if (empty($subfield_value)) {
+        return 'Unknown';
+    }
+    
+    $query = "SELECT select_val FROM select_gen WHERE pid = ?";
+    $stmt = $mysqli->prepare($query);
+    $stmt->bind_param("s", $subfield_value);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+    $stmt->close();
+    
+    return $row ? $row['select_val'] : 'Unknown';
 }
 
 /**

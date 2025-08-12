@@ -7,14 +7,61 @@ include 'incl/sess.php';
 
 // Get trainee information
 $name = '';
-if (isset($trainkey) && !empty($trainkey)) {
-    $trainee_stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
-    if ($trainee_stmt) {
-        $trainee_stmt->bind_param("s", $trainkey);
-        $trainee_stmt->execute();
-        $trainee_stmt->bind_result($name);
-        $trainee_stmt->fetch();
-        $trainee_stmt->close();
+$competencySummary = null;
+$competencyEvaluator = null;
+
+// Temporarily disable competency evaluation to fix the error
+$enableCompetencyEvaluation = false;
+
+// Only initialize competency evaluator if user is logged in and feature is enabled
+if ($enableCompetencyEvaluation && login_check($mysqli) && isset($trainkey) && !empty($trainkey)) {
+    try {
+        // Include the CompetencyEvaluator for pass/fail status
+        $competencyEvaluatorPath = 'OXEXfolder/CompetencyEvaluator.php';
+        if (file_exists($competencyEvaluatorPath)) {
+            require_once $competencyEvaluatorPath;
+            
+            // Initialize the CompetencyEvaluator
+            $competencyEvaluator = new CompetencyEvaluator($mysqli);
+            
+            // Get competency summary for the trainee
+            $competencySummary = $competencyEvaluator->getCompetencySummary($trainkey);
+        } else {
+            error_log("CompetencyEvaluator file not found: " . $competencyEvaluatorPath);
+            $competencySummary = [
+                'competencies' => [],
+                'summary' => [
+                    'total' => 0,
+                    'passed' => 0,
+                    'in_progress' => 0,
+                    'failed' => 0,
+                    'not_applicable' => 0
+                ]
+            ];
+        }
+        
+        // Get trainee name
+        $trainee_stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+        if ($trainee_stmt) {
+            $trainee_stmt->bind_param("s", $trainkey);
+            $trainee_stmt->execute();
+            $trainee_stmt->bind_result($name);
+            $trainee_stmt->fetch();
+            $trainee_stmt->close();
+        }
+    } catch (Exception $e) {
+        // Log error but don't break the page
+        error_log("CompetencyEvaluator error: " . $e->getMessage());
+        $competencySummary = [
+            'competencies' => [],
+            'summary' => [
+                'total' => 0,
+                'passed' => 0,
+                'in_progress' => 0,
+                'failed' => 0,
+                'not_applicable' => 0
+            ]
+        ];
     }
 }
 
@@ -216,6 +263,84 @@ $tables_result = $mysqli->query($tables_query);
             font-weight: 600;
             color: #495057;
         }
+        
+        /* Competency Status Styling */
+        .competency-stat {
+            padding: 15px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border: 1px solid #dee2e6;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .competency-stat:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            line-height: 1;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .competency-status-display {
+            border-left: 4px solid;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .competency-status-display.alert-success {
+            border-left-color: #28a745;
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .competency-status-display.alert-warning {
+            border-left-color: #ffc107;
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        .competency-status-display.alert-danger {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .competency-status-display.alert-secondary {
+            border-left-color: #6c757d;
+            background-color: #e2e3e5;
+            color: #383d41;
+        }
+        
+        .competency-name {
+            font-weight: 500;
+            color: #495057;
+        }
+        
+        /* Progress bar enhancements */
+        .progress {
+            background-color: #e9ecef;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        .progress-bar {
+            transition: width 0.6s ease;
+            font-weight: 600;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
     </style>
 
     <!-- Load Chart.js for data visualization -->
@@ -255,12 +380,125 @@ $tables_result = $mysqli->query($tables_query);
         </div>
       </div>
       
+      <!-- Competency Status Overview Panel -->
+      <?php if ($enableCompetencyEvaluation): ?>
+      <div class="row mt-4">
+        <div class="col-12">
+          <div class="card mb-4" style="border-color: #28a745;">
+            <div class="card-header text-white" style="background-color: #28a745;">
+              <div class="card-title">
+                <i class="fas fa-trophy mr-2"></i>Your Competency Progress
+              </div>
+            </div>
+            <div class="card-body">
+              <?php if ($competencySummary && !empty($competencySummary['summary'])): ?>
+              <div class="row">
+                <div class="col-md-3 text-center">
+                  <div class="competency-stat">
+                    <div class="stat-number text-success"><?php echo $competencySummary['summary']['passed']; ?></div>
+                    <div class="stat-label">Passed</div>
+                  </div>
+                </div>
+                <div class="col-md-3 text-center">
+                  <div class="competency-stat">
+                    <div class="stat-number text-warning"><?php echo $competencySummary['summary']['in_progress']; ?></div>
+                    <div class="stat-label">In Progress</div>
+                  </div>
+                </div>
+                <div class="col-md-3 text-center">
+                  <div class="competency-stat">
+                    <div class="stat-number text-danger"><?php echo $competencySummary['summary']['failed']; ?></div>
+                    <div class="stat-label">Failed</div>
+                  </div>
+                </div>
+                <div class="col-md-3 text-center">
+                  <div class="competency-stat">
+                    <div class="stat-number text-secondary"><?php echo $competencySummary['summary']['total']; ?></div>
+                    <div class="stat-label">Total Competencies</div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Progress Bar -->
+              <?php if ($competencySummary['summary']['total'] > 0): ?>
+              <div class="mt-3">
+                <div class="progress" style="height: 25px;">
+                  <?php 
+                  $passedPercentage = ($competencySummary['summary']['passed'] / $competencySummary['summary']['total']) * 100;
+                  $inProgressPercentage = ($competencySummary['summary']['in_progress'] / $competencySummary['summary']['total']) * 100;
+                  ?>
+                  <div class="progress-bar bg-success" role="progressbar" style="width: <?php echo $passedPercentage; ?>%" 
+                       title="<?php echo $competencySummary['summary']['passed']; ?> passed">
+                    <?php echo round($passedPercentage); ?>%
+                  </div>
+                  <div class="progress-bar bg-warning" role="progressbar" style="width: <?php echo $inProgressPercentage; ?>%" 
+                       title="<?php echo $competencySummary['summary']['in_progress']; ?> in progress">
+                  </div>
+                </div>
+                <small class="text-muted">Overall completion: <?php echo round($passedPercentage); ?>%</small>
+              </div>
+              <?php endif; ?>
+              
+              <!-- Quick Competency List -->
+              <div class="mt-3">
+                <button class="btn btn-outline-success btn-sm" type="button" data-toggle="collapse" data-target="#competencyDetails">
+                  <i class="fas fa-list mr-1"></i>View All Competencies
+                </button>
+                <div class="collapse mt-2" id="competencyDetails">
+                  <div class="card card-body bg-light">
+                    <div class="row">
+                      <?php foreach ($competencySummary['competencies'] as $competency): ?>
+                        <div class="col-md-6 mb-2">
+                          <div class="d-flex align-items-center">
+                            <?php
+                            $statusIcon = '';
+                            $statusClass = '';
+                            switch ($competency['status']) {
+                              case 'Passed':
+                                $statusIcon = '✓';
+                                $statusClass = 'text-success';
+                                break;
+                              case 'In Progress':
+                                $statusIcon = '⟳';
+                                $statusClass = 'text-warning';
+                                break;
+                              case 'Fail':
+                                $statusIcon = '✗';
+                                $statusClass = 'text-danger';
+                                break;
+                              default:
+                                $statusIcon = '−';
+                                $statusClass = 'text-secondary';
+                            }
+                            ?>
+                            <span class="mr-2 <?php echo $statusClass; ?>" style="font-size: 1.2em;"><?php echo $statusIcon; ?></span>
+                            <span class="competency-name"><?php echo htmlspecialchars($competency['name']); ?></span>
+                          </div>
+                        </div>
+                      <?php endforeach; ?>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <?php else: ?>
+              <div class="text-center py-4">
+                <i class="fas fa-info-circle fa-2x mb-3 text-muted"></i>
+                <p class="text-muted">Competency information not available</p>
+                <small class="text-muted">Please log in to view your competency progress</small>
+              </div>
+              <?php endif; ?>
+            </div>
+          </div>
+        </div>
+      </div>
+      <?php endif; ?>
+      
         <!-- Custom Graph Creation Section -->
         <div class="row mt-5">
           <div class="col-12">
             <div class="card mb-4" style="border-color: #025DB8;">
               <div class="card-header text-white" style="background-color: #025DB8;">
-                <div class="card-title">Custom Data Visualization</div>
+                <div class="card-title">Field Combination Visualizations</div>
               </div>
               <div class="card-body">
                 <form id="customGraphFilterForm">
@@ -282,6 +520,16 @@ $tables_result = $mysqli->query($tables_query);
                           }
                           ?>
                         </select>
+                      </div>
+                      
+                      <!-- Competency Status Indicator -->
+                      <div id="dataSourceCompetencyStatus" class="mt-2" style="display:none;">
+                        <div class="alert alert-sm p-2 mb-0">
+                          <div class="d-flex align-items-center">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            <small><strong>Status:</strong> <span id="competencyStatusText"></span></small>
+                          </div>
+                        </div>
                       </div>
                     </div>
                     <div class="col-md-4">
@@ -315,38 +563,15 @@ $tables_result = $mysqli->query($tables_query);
                         </div>
                         <div class="form-group">
                           <label class="col-form-label" for="customEndDate">End Date</label>
-                          <input type="date" class="form-control" id="customEndDate" name="end_date">
+                          <input type="date" class="control" id="customEndDate" name="end_date">
                         </div>
                       </div>
                     </div>
-                  </div>
-                  <div class="row">
-                    <div class="col-md-4">
+                    <div class="col-md-8">
                       <div class="form-group">
-                        <label class="col-form-label" for="customGraphMode">Graph Mode</label>
-                        <select class="form-control" id="customGraphMode" name="graph_mode">
-                          <option value="single">Single Graph</option>
-                          <option value="selected_combinations">Selected Field Combinations</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div class="col-md-8" id="customFieldSelectionRow" style="display:none;">
-                      <div class="row">
-                        <div class="col-md-6">
-                          <div class="form-group">
-                            <label class="col-form-label" for="customFieldX">X-Axis Field</label>
-                            <select class="form-control" id="customFieldX" name="field_x">
-                              <option value="">Select field first</option>
-                            </select>
-                          </div>
-                        </div>
-                        <div class="col-md-6">
-                          <div class="form-group">
-                            <label class="col-form-label" for="customFieldY">Y-Axis Field</label>
-                            <select class="form-control" id="customFieldY" name="field_y">
-                              <option value="">Select field first</option>
-                            </select>
-                          </div>
+                        <label class="col-form-label">Field Selection</label>
+                        <div class="alert alert-info">
+                          <i class="fas fa-info-circle"></i> Select multiple fields for both X and Y axes to create comprehensive visualizations of your data.
                         </div>
                       </div>
                     </div>
@@ -414,7 +639,7 @@ $tables_result = $mysqli->query($tables_query);
               </div>
               <div class="card-footer">
                 <div class="float-right">
-                  <button type="button" id="generateCustomGraphBtn" class="btn text-white" style="background-color: #025DB8; border-color: #025DB8;">Generate Custom Graph</button>
+                  <button type="button" id="generateCustomGraphBtn" class="btn text-white" style="background-color: #025DB8; border-color: #025DB8;">Generate Selected Combinations</button>
                 </div>
               </div>
             </div>
@@ -445,38 +670,12 @@ $tables_result = $mysqli->query($tables_query);
           </div>
         </div>
 
-        <!-- Custom Graph Display -->
-        <div class="row">
-          <div class="col-12">
-            <div class="card mb-4" style="border-color: #025DB8;">
-              <div class="card-header text-white" style="background-color: #025DB8;">
-                <div class="card-title">Custom Graph Visualization</div>
-              </div>
-              <div class="card-body p-0">
-                <div class="graph-container">
-                  <div id="customGraphLoadingIndicator" class="graph-loading" style="display:none;">
-                    <div class="spinner-border text-primary" role="status">
-                      <span class="sr-only">Loading...</span>
-                    </div>
-                  </div>
-                  <div id="customNoDataMessage" class="no-data-message">
-                    <i class="fas fa-chart-line fa-3x mb-3"></i>
-                    <h4>Select data source and generate a custom graph</h4>
-                    <p class="text-muted">Use the filters above to select your data and visualization options</p>
-                  </div>
-                  <canvas id="customGraphCanvas" style="display:none;"></canvas>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Custom Data table section -->
         <div class="row">
           <div class="col-12">
             <div class="card mb-4" style="border-color: #025DB8;">
               <div class="card-header text-white" style="background-color: #025DB8;">
-                <div class="card-title">Custom Data Table</div>
+                <div class="card-title">Field Combination Data Table</div>
               </div>
               <div class="card-body">
                 <div id="customDataTableContainer" style="display:none;">
@@ -496,7 +695,7 @@ $tables_result = $mysqli->query($tables_query);
                   </div>
                 </div>
                 <div id="customNoTableDataMessage" class="text-center py-5">
-                  <p class="text-muted">Generate a custom graph to see the data table</p>
+                  <p class="text-muted">Generate field combinations to see the data table</p>
                 </div>
               </div>
             </div>
@@ -543,6 +742,12 @@ while ($tableset->fetch()){
         let customChart = null;
         
         $(document).ready(function() {
+            // Show initial competency status if a data source is pre-selected
+            const initialDataSource = $('#customDataSource').val();
+            if (initialDataSource) {
+                showDataSourceCompetencyStatus(initialDataSource);
+            }
+            
             // Handle time frame change to show/hide custom date range
             $('#customTimeFrame').on('change', function() {
                 const selectedTimeFrame = $(this).val();
@@ -558,37 +763,21 @@ while ($tableset->fetch()){
                 }
             });
             
-            // Handle graph mode change to show/hide field selection
-            $('#customGraphMode').on('change', function() {
-                const selectedMode = $(this).val();
-                
-                if (selectedMode === 'single') {
-                    $('#customFieldSelectionRow').show();
-                    $('#combinationFieldSelectionSection').hide();
-                    $('#generateCustomGraphBtn').text('Generate Custom Graph');
-                } else if (selectedMode === 'selected_combinations') {
-                    $('#customFieldSelectionRow').hide();
-                    $('#combinationFieldSelectionSection').show();
-                    $('#generateCustomGraphBtn').text('Generate Selected Combinations');
-                    
-                    // Update button state based on field selection
-                    updateGenerateButtonState();
-                }
-            });
-            
             // Handle data source change
             $('#customDataSource').on('change', function() {
                 const tableId = $(this).val();
                 
                 if (tableId) {
-                    // Show loading state
-                    $('#customFieldX, #customFieldY').html('<option value="">Loading fields...</option>');
-                    $('#customFieldSelectionRow').show();
+                    // Clear and hide single field selection
+                    $('#customFieldSelectionRow').hide();
                     
                     // Clear and hide combination field selection
                     $('#xAxisFieldsList, #yAxisFieldsList').empty();
                     $('#combinationFieldSelectionSection').hide();
                     $('#fieldSelectionPrompt').show();
+                    
+                    // Show competency status for selected table
+                    showDataSourceCompetencyStatus(tableId);
                     
                     const ajaxData = {
                         table_id: tableId,
@@ -605,12 +794,6 @@ while ($tableset->fetch()){
                         cache: false,
                         success: function(response) {
                             console.log('Fields response:', response);
-                            // Clear existing options
-                            $('#customFieldX, #customFieldY').empty();
-                            
-                            // Add default option
-                            $('#customFieldX').append('<option value="">Select X-Axis Field</option>');
-                            $('#customFieldY').append('<option value="">Select Y-Axis Field</option>');
                             
                             let fields = [];
                             let fieldsAdded = 0;
@@ -622,8 +805,6 @@ while ($tableset->fetch()){
                                     const id = field.stid;
                                     const name = field.str;
                                     if (id && name) {
-                                        $('#customFieldX').append(`<option value="${id}">${name}</option>`);
-                                        $('#customFieldY').append(`<option value="${id}">${name}</option>`);
                                         fieldsAdded++;
                                     }
                                 });
@@ -634,8 +815,6 @@ while ($tableset->fetch()){
                                     const id = field.id || field.stid;
                                     const name = field.name || field.str;
                                     if (id && name) {
-                                        $('#customFieldX').append(`<option value="${id}">${name}</option>`);
-                                        $('#customFieldY').append(`<option value="${id}">${name}</option>`);
                                         fieldsAdded++;
                                     }
                                 });
@@ -645,24 +824,14 @@ while ($tableset->fetch()){
                             }
                             
                             if (fieldsAdded === 0) {
-                                $('#customFieldX').append('<option value="">No fields available</option>');
-                                $('#customFieldY').append('<option value="">No fields available</option>');
+                                $('#fieldSelectionPrompt').html('<p class="text-muted">No fields available for this data source</p>');
                             } else {
                                 // Populate combination field selection checkboxes
                                 populateFieldCheckboxes(fields);
                                 $('#fieldSelectionPrompt').hide();
                                 
-                                // Show combination section if mode is selected
-                                const currentMode = $('#customGraphMode').val();
-                                if (currentMode === 'selected_combinations') {
-                                    $('#combinationFieldSelectionSection').show();
-                                }
-                            }
-                            
-                            // Update field selection visibility based on current mode
-                            const currentMode = $('#customGraphMode').val();
-                            if (currentMode === 'single') {
-                                $('#customFieldSelectionRow').show();
+                                // Always show combination section
+                                $('#combinationFieldSelectionSection').show();
                             }
                         },
                         error: function(xhr, status, error) {
@@ -692,18 +861,15 @@ while ($tableset->fetch()){
                             
                             alert('Error loading fields: ' + errorMessage);
                             
-                            // Reset fields to error state
-                            $('#customFieldX, #customFieldY').empty();
-                            $('#customFieldX').append('<option value="">Error loading fields</option>');
-                            $('#customFieldY').append('<option value="">Error loading fields</option>');
+                            $('#fieldSelectionPrompt').html('<p class="text-danger">Error loading fields. Please try again.</p>');
                         }
                     });
                 } else {
                     // Hide and clear field selection
                     $('#customFieldSelectionRow').hide();
                     $('#combinationFieldSelectionSection').hide();
-                    $('#customFieldX, #customFieldY').html('<option value="">Select field first</option>');
                     $('#fieldSelectionPrompt').show();
+                    $('#fieldSelectionPrompt').html('<p class="text-muted">Please select a data source first to load available fields</p>');
                 }
             });
             
@@ -824,7 +990,6 @@ while ($tableset->fetch()){
                 const dataSource = $('#customDataSource').val();
                 const timeFrame = $('#customTimeFrame').val();
                 const chartType = $('#customChartType').val();
-                const graphMode = $('#customGraphMode').val();
                 
                 if (!dataSource) {
                     alert('Please select a data source');
@@ -847,127 +1012,28 @@ while ($tableset->fetch()){
                     }
                 }
                 
-                if (graphMode === 'single') {
-                    // Single graph mode - validate field selection
-                    const fieldX = $('#customFieldX').val();
-                    const fieldY = $('#customFieldY').val();
-                    
-                    if (!fieldX || !fieldY) {
-                        alert('Please select both X and Y axis fields');
-                        return;
-                    }
-                    
-                    generateSingleGraph(dataSource, fieldX, fieldY, chartType, timeFrame);
-                } else if (graphMode === 'selected_combinations') {
-                    // Selected combinations mode
-                    const selectedXFields = $('.x-field-checkbox:checked').map(function() {
-                        return {
-                            id: $(this).val(),
-                            name: $(this).next('label').text().trim()
-                        };
-                    }).get();
-                    
-                    const selectedYFields = $('.y-field-checkbox:checked').map(function() {
-                        return {
-                            id: $(this).val(),
-                            name: $(this).next('label').text().trim()
-                        };
-                    }).get();
-                    
-                    if (selectedXFields.length === 0 || selectedYFields.length === 0) {
-                        alert('Please select at least one field from both X and Y axes');
-                        return;
-                    }
-                    
-                    generateSelectedCombinations(dataSource, selectedXFields, selectedYFields, chartType, timeFrame);
+                // Get selected fields for combinations
+                const selectedXFields = $('.x-field-checkbox:checked').map(function() {
+                    return {
+                        id: $(this).val(),
+                        name: $(this).next('label').text().trim()
+                    };
+                }).get();
+                
+                const selectedYFields = $('.y-field-checkbox:checked').map(function() {
+                    return {
+                        id: $(this).val(),
+                        name: $(this).next('label').text().trim()
+                    };
+                }).get();
+                
+                if (selectedXFields.length === 0 || selectedYFields.length === 0) {
+                    alert('Please select at least one field from both X and Y axes');
+                    return;
                 }
+                
+                generateSelectedCombinations(dataSource, selectedXFields, selectedYFields, chartType, timeFrame);
             });
-            
-            function generateSingleGraph(dataSource, fieldX, fieldY, chartType, timeFrame) {
-                // Hide combination container
-                $('#allGraphsContainer').hide();
-                
-                // Show loading indicator
-                $('#customGraphLoadingIndicator').show();
-                $('#customNoDataMessage').hide();
-                $('#customGraphCanvas').hide();
-                $('#customDataTableContainer').hide();
-                $('#customNoTableDataMessage').show();
-                
-                // Prepare data for AJAX request
-                const requestData = {
-                    table_id: dataSource,
-                    field_x: fieldX,
-                    field_y: fieldY,
-                    chart_type: chartType,
-                    time_frame: timeFrame,
-                    trainee_key: '<?php echo $trainkey; ?>'
-                };
-                
-                // Add custom date range if selected
-                if (timeFrame === 'custom') {
-                    requestData.start_date = $('#customStartDate').val();
-                    requestData.end_date = $('#customEndDate').val();
-                }
-                
-                // Fetch graph data
-                $.ajax({
-                    url: 'ajax/get_graph_data.php',
-                    type: 'POST',
-                    data: requestData,
-                    dataType: 'json',
-                    success: function(response) {
-                        // Hide loading indicator
-                        $('#customGraphLoadingIndicator').hide();
-                        
-                        if (response.status === 'success') {
-                            // Show graph canvas
-                            $('#customGraphCanvas').show();
-                            
-                            // Display data in the table
-                            displayCustomDataTable(response.data);
-                            
-                            // Render the graph with additional info
-                            renderCustomGraph(response.data, chartType, response.labels, response);
-                        } else {
-                            // Show no data message with error
-                            $('#customNoDataMessage').show();
-                            $('#customNoDataMessage').html(`
-                                <i class="fas fa-exclamation-triangle fa-3x mb-3 text-warning"></i>
-                                <h4>No data available</h4>
-                                <p class="text-muted">${response.message}</p>
-                                <small class="text-muted">Time period: ${timeFrame}</small>
-                            `);
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        // Hide loading indicator and show error
-                        $('#customGraphLoadingIndicator').hide();
-                        $('#customNoDataMessage').show();
-                        
-                        let errorMessage = error;
-                        // Try to parse error response if it's JSON
-                        try {
-                            const errorResponse = JSON.parse(xhr.responseText);
-                            if (errorResponse && errorResponse.message) {
-                                errorMessage = errorResponse.message;
-                            }
-                        } catch (e) {
-                            // If it's not valid JSON, use a generic message
-                            if (xhr.responseText) {
-                                errorMessage = 'Server error occurred';
-                                console.error('AJAX Error:', xhr.responseText);
-                            }
-                        }
-                        
-                        $('#customNoDataMessage').html(`
-                            <i class="fas fa-exclamation-circle fa-3x mb-3 text-danger"></i>
-                            <h4>Error generating graph</h4>
-                            <p class="text-muted">${errorMessage}</p>
-                        `);
-                    }
-                });
-            }
             
             function generateSelectedCombinations(dataSource, selectedXFields, selectedYFields, chartType, timeFrame) {
                 // Hide single graph elements
@@ -1317,6 +1383,58 @@ while ($tableset->fetch()){
                     $('#customDataTableContainer').hide();
                     $('#customNoTableDataMessage').show();
                 }
+            }
+
+            // Function to show competency status for a specific data source
+            function showDataSourceCompetencyStatus(tableId) {
+                // Check if competency evaluation is enabled
+                <?php if (!$enableCompetencyEvaluation): ?>
+                return; // Exit early if disabled
+                <?php endif; ?>
+                
+                const competency = getCompetencyStatus(tableId);
+                if (competency) {
+                    // Remove any existing competency status display
+                    $('.competency-status-display').remove();
+
+                    // Create competency status display
+                    const statusDisplay = createCompetencyStatusDisplay(competency, tableId);
+
+                    // Insert it above the graph
+                    $('#customGraphCanvas').before(statusDisplay);
+                    
+                    // Update the data source competency status indicator
+                    updateDataSourceCompetencyStatus(competency);
+                } else {
+                    // If no specific competency status, show a general one or nothing
+                    // For now, we'll just remove any existing status display
+                    $('.competency-status-display').remove();
+                    hideDataSourceCompetencyStatus();
+                }
+            }
+            
+            // Function to update the data source competency status indicator
+            function updateDataSourceCompetencyStatus(competency) {
+                const statusText = getStatusText(competency.status);
+                const statusClass = getStatusClass(competency.status);
+                
+                $('#competencyStatusText').text(statusText);
+                $('#dataSourceCompetencyStatus .alert').removeClass('alert-info alert-success alert-warning alert-danger alert-secondary');
+                
+                // Map text classes to alert classes
+                let alertClass = 'alert-info';
+                if (statusClass === 'text-success') alertClass = 'alert-success';
+                else if (statusClass === 'text-warning') alertClass = 'alert-warning';
+                else if (statusClass === 'text-danger') alertClass = 'alert-danger';
+                else if (statusClass === 'text-secondary') alertClass = 'alert-secondary';
+                
+                $('#dataSourceCompetencyStatus .alert').addClass(alertClass);
+                $('#dataSourceCompetencyStatus').show();
+            }
+            
+            // Function to hide the data source competency status indicator
+            function hideDataSourceCompetencyStatus() {
+                $('#dataSourceCompetencyStatus').hide();
             }
         });
     </script>
