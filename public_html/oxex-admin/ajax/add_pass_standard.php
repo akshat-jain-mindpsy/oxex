@@ -31,6 +31,31 @@ $is_active = isset($_POST['is_active']) ? 1 : 0;
 $stid = !empty($_POST['stid']) ? (int)$_POST['stid'] : null;
 $field_value = !empty($_POST['field_value']) ? trim($_POST['field_value']) : null;
 
+// Handle subfield rules - store as JSON in field_value
+$subfield_rules = isset($_POST['subfield_rules']) ? $_POST['subfield_rules'] : [];
+if (!empty($subfield_rules) && is_array($subfield_rules)) {
+    // Process subfield rules and store as JSON
+    $processed_rules = [];
+    foreach ($subfield_rules as $rule) {
+        if (!empty($rule['subfield_values']) && !empty($rule['requirement_type']) && !empty($rule['specific_value'])) {
+            $processed_rules[] = [
+                'subfield_value' => $rule['subfield_values'], // Single value now
+                'requirement_type' => $rule['requirement_type'],
+                'specific_value' => $rule['specific_value']
+            ];
+        }
+    }
+    
+    if (!empty($processed_rules)) {
+        // If field_value already exists, append subfield rules
+        if (!empty($field_value)) {
+            $field_value .= ' | SUBFIELD_RULES:' . json_encode($processed_rules);
+        } else {
+            $field_value = 'SUBFIELD_RULES:' . json_encode($processed_rules);
+        }
+    }
+}
+
 // Basic validation
 if (empty($standard_name) || $tbid === 0 || empty($requirement_type)) {
     $response['message'] = 'Please fill in all required fields: Name, Table, and Requirement Type.';
@@ -46,20 +71,20 @@ $sql = "INSERT INTO pass_standards
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 if ($stmt = $mysqli->prepare($sql)) {
-    // The type string 'siisisisi' corresponds to the data types:
+    // The type string 'siisisisii' corresponds to the data types:
     // s: standard_name, i: tbid, i: stid, s: requirement_type, i: required_value, 
-    // s: field_value, i: is_active, s: who_by, i: date_added
-    $stmt->bind_param("siisisisi", 
-        $standard_name, 
-        $tbid, 
-        $stid, 
-        $requirement_type, 
-        $required_value, 
-        $field_value, 
-        $is_active, 
-        $usrkey, 
-        $date_added
-    );
+    // s: field_value, i: subfield_id, i: is_active, s: who_by, i: date_added
+            $stmt->bind_param("siisisisi", 
+            $standard_name,
+            $tbid,
+            $stid,
+            $requirement_type,
+            $required_value,
+            $field_value,
+            $is_active,
+            $usrkey,
+            $date_added
+        );
     
     if ($stmt->execute()) {
         if ($stmt->affected_rows > 0) {

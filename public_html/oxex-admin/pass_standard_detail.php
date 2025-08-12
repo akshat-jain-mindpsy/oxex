@@ -91,6 +91,78 @@ $fields_result = $mysqli->query($fields_query);
             border: 1px solid #ced4da;
             padding: .375rem .75rem;
         }
+        
+        /* Style for subfield rules table */
+        .subfield-rules-table {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+        
+        .subfield-rules-header {
+            background: #f8f9fa;
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 1.5fr 80px;
+            gap: 15px;
+            padding: 12px 15px;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .subfield-rule-row {
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 1.5fr 80px;
+            gap: 15px;
+            padding: 15px;
+            border-bottom: 1px solid #f1f3f4;
+            align-items: center;
+        }
+        
+        .subfield-rule-row:last-child {
+            border-bottom: none;
+        }
+        
+        .subfield-rule-row:hover {
+            background: #f8f9fa;
+        }
+        
+        .rule-col {
+            min-width: 0;
+        }
+        
+        .rule-col-actions {
+            text-align: center;
+        }
+        
+        .remove-rule-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        
+        .remove-rule-btn:hover {
+            background: #c82333;
+        }
+        
+        @media (max-width: 768px) {
+            .subfield-rules-header,
+            .subfield-rule-row {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            
+            .rule-col-actions {
+                text-align: left;
+            }
+        }
     </style>
 </head>
 
@@ -179,6 +251,25 @@ $fields_result = $mysqli->query($fields_query);
                                 <small class="form-text text-muted">Required for 'Unique Values' and 'Total Count'. Ignored for 'Total Hours'.</small>
                             </div>
 
+                            <div class="form-group" id="subfieldContainer" style="display:none;">
+                                <label>Subfield Rules (Optional)</label>
+                                <div class="subfield-rules-table">
+                                                                    <div class="subfield-rules-header">
+                                    <div class="rule-col">Subfield Value</div>
+                                    <div class="rule-col">Rule Type</div>
+                                    <div class="rule-col">Rule Value</div>
+                                    <div class="rule-col-actions">Actions</div>
+                                </div>
+                                    <div id="subfieldRulesContainer">
+                                        <!-- Rules will be added here dynamically -->
+                                    </div>
+                                </div>
+                                <button type="button" id="addSubfieldRuleBtn" class="btn btn-success btn-sm mt-2">
+                                    <i class="fa fa-plus"></i> Add Rule
+                                </button>
+                                <small class="form-text text-muted">Create specific rules for individual subfield values. Each rule can have different requirement types and values. These rules will be applied to the selected subfield values.</small>
+                            </div>
+
                             <div class="form-group" id="multipleFieldContainer" style="display:none;">
                                 <label for="stids">Fields to Check (OR condition)</label>
                                 <select class="form-control" id="stids" name="stids[]" multiple>
@@ -187,10 +278,10 @@ $fields_result = $mysqli->query($fields_query);
                                 <small class="form-text text-muted">The rule will pass if the condition is met in ANY of the selected fields.</small>
                             </div>
 
-                            <div class="form-group">
-                                <label for="field_value">Specific Value / Range (Optional)</label>
+                            <div class="form-group" id="mainFieldValueContainer">
+                                <label for="field_value">Field Value Filter (Optional)</label>
                                 <input type="text" class="form-control" id="field_value" name="field_value" value="<?php echo htmlspecialchars($standard['field_value'] ?? ''); ?>">
-                                <small id="fieldValueHelp" class="form-text text-muted">If set, only entries matching this value will be counted. For OR conditions, separate values with a pipe (|). For ranges, use a hyphen (e.g., 18-64).</small>
+                                <small class="form-text text-muted">Filter the main field before applying subfield rules. For ranges, use a hyphen (e.g., 18-64). Leave empty to check all field values.</small>
                             </div>
                         </div>
 
@@ -225,6 +316,8 @@ $(document).ready(function() {
         placeholder: '-- Select a Table First --',
         width: '100%'
     });
+
+
 
     var initialTbid = $('#tbid').val();
     var initialStid = '<?php echo $standard['stid'] ?? 'null'; ?>';
@@ -276,6 +369,153 @@ $(document).ready(function() {
             if (callback) callback();
         });
     }
+
+    function loadSubfieldsForField(fieldId, callback) {
+        var $subfieldContainer = $('#subfieldContainer');
+        var $subfieldRulesContainer = $('#subfieldRulesContainer');
+        var $mainFieldValueContainer = $('#mainFieldValueContainer');
+        
+        if (!fieldId) {
+            $subfieldContainer.hide();
+            $mainFieldValueContainer.show();
+            return;
+        }
+
+        // Get the actual subfield values from select_gen table
+        $.getJSON('ajax/get_subfields_for_field.php', { stid: fieldId }, function(subfields) {
+            if (subfields && subfields.length > 0) {
+                // Store subfields globally for use in rule creation
+                window.availableSubfields = subfields;
+                $subfieldContainer.show();
+                $mainFieldValueContainer.hide(); // Hide main field value when using subfield rules
+                // Clear existing rules and add first rule
+                $subfieldRulesContainer.empty();
+                addSubfieldRule();
+            } else {
+                $subfieldContainer.hide();
+                $mainFieldValueContainer.show(); // Show main field value when no subfields
+            }
+            
+            if (callback) callback();
+        }).fail(function() {
+            // If the AJAX call fails, assume no subfields
+            $subfieldContainer.hide();
+            $mainFieldValueContainer.show();
+        });
+    }
+
+    function addSubfieldRule() {
+        var ruleIndex = $('.subfield-rule-row').length;
+        var ruleHtml = `
+            <div class="subfield-rule-row" data-rule="${ruleIndex}">
+                <div class="rule-col">
+                    <select class="form-control subfield-select" name="subfield_rules[${ruleIndex}][subfield_values]">
+                        <option value="">-- Select One Subfield Value --</option>
+                        ${getAvailableSubfieldOptions()}
+                    </select>
+                    <small class="form-text text-muted">Choose one subfield value for this rule</small>
+                </div>
+                <div class="rule-col">
+                    <select class="form-control" name="subfield_rules[${ruleIndex}][requirement_type]" required>
+                        <option value="">-- Select Rule Type --</option>
+                        <option value="TOTAL_COUNT">Total Count</option>
+                        <option value="UNIQUE_VALUES">Unique Values</option>
+                        <option value="UNIQUE_VALUES_IN_RANGE">Unique Values in Range</option>
+                    </select>
+                    <small class="form-text text-muted">What to count for this rule</small>
+                </div>
+                <div class="rule-col">
+                    <input type="text" class="form-control" name="subfield_rules[${ruleIndex}][specific_value]" placeholder="e.g., 100 or 18-64" required>
+                    <small class="form-text text-muted">The value this rule must meet</small>
+                </div>
+                <div class="rule-col-actions">
+                    <button type="button" class="remove-rule-btn" onclick="removeSubfieldRule(${ruleIndex})">×</button>
+                </div>
+            </div>
+        `;
+        
+        $('#subfieldRulesContainer').append(ruleHtml);
+        
+        // Initialize Select2 for the new subfield select
+        var $newSelect = $('#subfieldRulesContainer').find('.subfield-rule-row[data-rule="' + ruleIndex + '"] .subfield-select');
+        $newSelect.select2({
+            placeholder: '-- Select One Subfield Value --',
+            width: '100%',
+            allowClear: true
+        });
+        
+        // Add change event to update available options in other rules
+        $newSelect.on('change', function() {
+            updateAvailableSubfieldOptions();
+        });
+    }
+
+    function getAvailableSubfieldOptions() {
+        if (!window.availableSubfields) return '';
+        
+        var usedValues = getUsedSubfieldValues();
+        var availableOptions = window.availableSubfields.filter(function(subfield) {
+            return !usedValues.includes(subfield.pid);
+        });
+        
+        return availableOptions.map(function(subfield) {
+            return `<option value="${subfield.pid}">${subfield.str}</option>`;
+        }).join('');
+    }
+
+    function getUsedSubfieldValues() {
+        var usedValues = [];
+        $('.subfield-rule-row').each(function() {
+            var selectedValue = $(this).find('.subfield-select').val();
+            if (selectedValue && selectedValue !== '') {
+                usedValues.push(selectedValue);
+            }
+        });
+        return usedValues;
+    }
+
+    function updateAvailableSubfieldOptions() {
+        $('.subfield-rule-row').each(function() {
+            var $select = $(this).find('.subfield-select');
+            var currentValue = $select.val();
+            var usedValues = getUsedSubfieldValues();
+            
+            // Clear current options
+            $select.find('option:not(:first)').remove();
+            
+            // Add available options
+            if (window.availableSubfields) {
+                window.availableSubfields.forEach(function(subfield) {
+                    // Include current value and unused values
+                    if (subfield.pid == currentValue || !usedValues.includes(subfield.pid)) {
+                        var option = new Option(subfield.str, subfield.pid, false, false);
+                        $select.append(option);
+                    }
+                });
+            }
+            
+            // Restore current selection
+            $select.val(currentValue).trigger('change');
+        });
+    }
+
+    function removeSubfieldRule(ruleIndex) {
+        $('.subfield-rule-row[data-rule="' + ruleIndex + '"]').remove();
+        // Reindex remaining rules
+        $('.subfieldRulesContainer').find('.subfield-rule-row').each(function(index) {
+            $(this).attr('data-rule', index);
+            $(this).find('select, input').each(function() {
+                var name = $(this).attr('name');
+                if (name) {
+                    $(this).attr('name', name.replace(/\[\d+\]/, '[' + index + ']'));
+                }
+            });
+            $(this).find('.remove-rule-btn').attr('onclick', 'removeSubfieldRule(' + index + ')');
+        });
+        
+        // Update available options after removing a rule
+        updateAvailableSubfieldOptions();
+    }
     
     function toggleFieldDependent(type) {
         var helpText = "If set, only entries matching this value will be counted. For OR conditions, separate values with a pipe (|).";
@@ -313,6 +553,10 @@ $(document).ready(function() {
             // Restore selections after fields are loaded
             if ($('#logicSingle').is(':checked')) {
                 $('#stid').val(initialStid);
+                // Load subfields if editing and field is selected
+                if (initialStid && initialStid !== 'null') {
+                    loadSubfieldsForField(initialStid);
+                }
             } else {
                 $('#stids').val(selectedOrFields).trigger('change');
             }
@@ -328,10 +572,24 @@ $(document).ready(function() {
         var tableId = $(this).val();
         filterParents(tableId);
         loadFieldsForTable(tableId);
+        // Clear subfields when table changes
+        $('#subfieldContainer').hide();
+        $('#subfieldRulesContainer').empty();
+        $('#mainFieldValueContainer').show();
+    });
+    
+    $('#stid').on('change', function() {
+        var fieldId = $(this).val();
+        loadSubfieldsForField(fieldId);
     });
     
     $('input[name="field_logic_mode"]').on('change', function() {
         toggleFieldLogicMode();
+    });
+
+    // Add Rule button event handler
+    $(document).on('click', '#addSubfieldRuleBtn', function() {
+        addSubfieldRule();
     });
 
     // Handle form submission

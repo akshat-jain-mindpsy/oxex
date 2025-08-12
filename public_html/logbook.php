@@ -200,6 +200,11 @@ $numlinks = $vids->num_rows;
 $vids->close();
 
 function validateAndConvertTime($timeValue) {
+    // Handle null or empty values
+    if ($timeValue === null || $timeValue === '') {
+        return '00:00';
+    }
+    
     // If it's a numeric value (integer or float)
     if (is_numeric($timeValue)) {
         $minutes = floatval($timeValue);
@@ -537,9 +542,9 @@ function validateAndConvertTime($timeValue) {
                               $exselect_val = 'N/A';
                             }
                             if ($ctr == 0) {
-                              echo "<td><a class=\"btn btn-sm btn-nhs\" href=\"$formurl?table=table&amp;tab=$tbid&amp;logkey=$tablelogkey\">$exselect_val</a></td>\n";
+                              echo "<td><a class=\"btn btn-sm btn-nhs\" href=\"$formurl?table=table&amp;tab=$tbid&amp;logkey=$tablelogkey\">" . htmlspecialchars($exselect_val ?? '') . "</a></td>\n";
                             } else {
-                              echo "<td>$exselect_val</td>\n";
+                              echo "<td>" . htmlspecialchars($exselect_val ?? '') . "</td>\n";
                             }
                             
                           }
@@ -553,14 +558,14 @@ function validateAndConvertTime($timeValue) {
                             $stmt->fetch();
                             $stmt->close();
                             if ($ctr == 0) {
-                              echo "<td><a class=\"btn btn-sm btn-nhs\" href=\"$formurl?table=table&amp;tab=$tbid&amp;logkey=$tablelogkey\">$exselect_val</a></td>\n";
+                              echo "<td><a class=\"btn btn-sm btn-nhs\" href=\"$formurl?table=table&amp;tab=$tbid&amp;logkey=$tablelogkey\">" . htmlspecialchars($exselect_val ?? '') . "</a></td>\n";
                             } else {
-                              echo "<td>$exselect_val</td>\n";
+                              echo "<td>" . htmlspecialchars($exselect_val ?? '') . "</td>\n";
                             }
                           }
                           if ($single == 3) {
                             // $exselect_val is date YYYYMMDD
-                            if ($exselect_val > 1) {
+                            if ($exselect_val > 1 && $exselect_val !== null) {
                               // null 01-01/1970 dates
                               $exselect_val = strtotime($exselect_val);
                               echo "<td>".date("d-m-y", $exselect_val)."</td>\n";
@@ -596,14 +601,14 @@ function validateAndConvertTime($timeValue) {
                               $stmt->close();
                               $exselect_val = $exselect_val." ".$mult_val;
                             }
-                            echo "<td>$exselect_val</td>\n";
+                            echo "<td>" . htmlspecialchars($exselect_val ?? '') . "</td>\n";
                             $exselect_val = '';
                             unset($exarruq);
                           }
                           $ctr++; # increment counter
                         }
                         $tableset->close();
-                        echo "<td>$exmoddate</td>";
+                        echo "<td>" . htmlspecialchars($exmoddate ?? '') . "</td>";
                         echo "<td><a class=\"btn btn-sm btn-danger\" href=\"$formurl?del=del&amp;tab=$tbid&amp;logkey=$tablelogkey\" onclick=\"return confirm('Are you sure you want to immediately delete this line in your logbook (there  is NO undo)?')\">Delete</a></td>\n";
                         echo "</tr>";
                           
@@ -675,12 +680,12 @@ function validateAndConvertTime($timeValue) {
             
             // Generate section heading with a clear button
             echo '<div class="col-12 mb-4 d-flex justify-content-between align-items-center">';
-            echo '<h4>' . htmlspecialchars($section_name) . '</h4>';
-            echo '<button type="button" class="btn btn-secondary btn-sm clear-section" data-section="' . md5($section_name) . '">Clear</button>';
+            echo '<h4>' . htmlspecialchars($section_name ?? '') . '</h4>';
+            echo '<button type="button" class="btn btn-secondary btn-sm clear-section" data-section="' . md5($section_name ?? '') . '">Clear</button>';
             echo '</div>';
             
             // Wrap the fields of this section in a container with a unique identifier
-            echo '<div class="row g-4 section-container" id="section-' . md5($section_name) . '">';
+            echo '<div class="row g-4 section-container" id="section-' . md5($section_name ?? '') . '">';
             
             // Get fields for this section AND table
             $fields_query = "
@@ -722,7 +727,7 @@ function validateAndConvertTime($timeValue) {
                 
                 echo '<div class="col-sm-6 col-lg-4">';
                 echo '<div class="form-group mb-4">';
-                echo '<label class="form-label" for="stid' . $stid . '">' . htmlspecialchars($str) . '</label>';
+                echo '<label class="form-label" for="stid' . $stid . '">' . htmlspecialchars($str ?? '') . '</label>';
                 
                 // Render the appropriate input field
                 switch ($single) {
@@ -736,7 +741,7 @@ function validateAndConvertTime($timeValue) {
                     $fieldset->bind_result($pid, $select_val);
                     while ($fieldset->fetch()) {
                       $selected = ($pid == $expid) ? 'selected' : '';
-                      echo "<option value='$pid' $selected>" . htmlspecialchars($select_val) . "</option>";
+                      echo "<option value='$pid' $selected>" . htmlspecialchars($select_val ?? '') . "</option>";
                     }
                     $fieldset->close();
                     echo "</select>";
@@ -762,18 +767,18 @@ function validateAndConvertTime($timeValue) {
                     $fieldset->bind_result($pid, $select_val);
                     while ($fieldset->fetch()) {
                       $selected = in_array($pid, $exarr) ? 'selected' : '';
-                      echo "<option value='$pid' $selected>" . htmlspecialchars($select_val) . "</option>";
+                      echo "<option value='$pid' $selected>" . htmlspecialchars($select_val ?? '') . "</option>";
                     }
                     $fieldset->close();
                     echo "</select>";
                     break;
                     
                   case 2: // Text input
-                    echo "<input type='text' class='form-control' id='stid$stid' name='stid$stid' value='" . htmlspecialchars($exlogvalue) . "'>";
+                    echo "<input type='text' class='form-control' id='stid$stid' name='stid$stid' value='" . htmlspecialchars($exlogvalue ?? '') . "'>";
                     break;
                     
                   case 3: // Date input
-                    $dispdate = ($exlogvalue > 0) ? date("d-m-Y", strtotime($exlogvalue)) : '';
+                    $dispdate = ($exlogvalue > 0 && $exlogvalue !== null) ? date("d-m-Y", strtotime($exlogvalue)) : '';
                     echo "<input type='text' class='form-control datepicker' id='stid$stid' name='stid$stid' value='$dispdate'>";
                     break;
                     
@@ -860,7 +865,7 @@ function validateAndConvertTime($timeValue) {
             
             echo '<div class="col-sm-6 col-lg-4">';
             echo '<div class="form-group mb-4">';
-            echo '<label class="form-label" for="stid' . $stid . '">' . htmlspecialchars($str) . '</label>';
+            echo '<label class="form-label" for="stid' . $stid . '">' . htmlspecialchars($str ?? '') . '</label>';
             
             // Render the appropriate input field (same switch case as above)
             switch ($single) {
@@ -874,7 +879,7 @@ function validateAndConvertTime($timeValue) {
                 $fieldset->bind_result($pid, $select_val);
                 while ($fieldset->fetch()) {
                   $selected = ($pid == $expid) ? 'selected' : '';
-                  echo "<option value='$pid' $selected>" . htmlspecialchars($select_val) . "</option>";
+                  echo "<option value='$pid' $selected>" . htmlspecialchars($select_val ?? '') . "</option>";
                 }
                 $fieldset->close();
                 echo "</select>";
@@ -900,18 +905,18 @@ function validateAndConvertTime($timeValue) {
                 $fieldset->bind_result($pid, $select_val);
                 while ($fieldset->fetch()) {
                   $selected = in_array($pid, $exarr) ? 'selected' : '';
-                  echo "<option value='$pid' $selected>" . htmlspecialchars($select_val) . "</option>";
+                  echo "<option value='$pid' $selected>" . htmlspecialchars($select_val ?? '') . "</option>";
                 }
                 $fieldset->close();
                 echo "</select>";
                 break;
                 
               case 2: // Text input
-                echo "<input type='text' class='form-control' id='stid$stid' name='stid$stid' value='" . htmlspecialchars($exlogvalue) . "'>";
+                echo "<input type='text' class='form-control' id='stid$stid' name='stid$stid' value='" . htmlspecialchars($exlogvalue ?? '') . "'>";
                 break;
                 
               case 3: // Date input
-                $dispdate = ($exlogvalue > 0) ? date("d-m-Y", strtotime($exlogvalue)) : '';
+                $dispdate = ($exlogvalue > 0 && $exlogvalue !== null) ? date("d-m-Y", strtotime($exlogvalue)) : '';
                 echo "<input type='text' class='form-control datepicker' id='stid$stid' name='stid$stid' value='$dispdate'>";
                 break;
                 

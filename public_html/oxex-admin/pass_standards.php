@@ -49,7 +49,7 @@ if ($del == "del" && $which > 0) {
             <div class="content-wrapper">
                 <div class="content-header">
                     <div class="content-title"><?php echo $pagetitle ?>
-                        <a href="pass_standard_detail.php" class="btn btn-sm btn-info ml-5">Add New Standard</a>
+                        <a href="pass_standard_detail.php" class="btn btn-sm btn-info ml-5">Add New Standards</a>
                         <small><?php echo $subtitle ?></small>
                     </div>
                 </div>
@@ -66,6 +66,10 @@ if ($del == "del" && $which > 0) {
                 <div class="card card-default">
                     <div class="card-header">Manage Pass Standards</div>
                     <div class="card-body">
+                        <div class="alert alert-info mb-3">
+                            <strong>Tip:</strong> Use "Add New Standards" to create multiple pass standards for different fields in the same table at once. 
+                            This is especially useful when setting up comprehensive requirements for a table with many fields.
+                        </div>
                         <div class="table-responsive">
                             <table class="table table-striped my-4 w-100" id="passStandardsTable">
                                 <thead>
@@ -91,6 +95,7 @@ if ($del == "del" && $which > 0) {
                                             ps.is_active,
                                             t.tab_name,
                                             st.str as field_name,
+                                            st_sub.str as subfield_name,
                                             parent.standard_name as parent_name,
                                             (SELECT GROUP_CONCAT(st_or.str SEPARATOR ', ') 
                                              FROM pass_standard_fields psf 
@@ -102,6 +107,8 @@ if ($del == "del" && $which > 0) {
                                             tabs_tbl t ON ps.tbid = t.tbid
                                         LEFT JOIN
                                             select_types st ON ps.stid = st.stid
+                                        LEFT JOIN
+                                            select_types st_sub ON ps.subfield_id = st_sub.stid
                                         LEFT JOIN
                                             pass_standards parent ON ps.parent_standard_id = parent.psid
                                         ORDER BY 
@@ -118,6 +125,9 @@ if ($del == "del" && $which > 0) {
                                             $field_display = 'N/A';
                                             if (!empty($row['field_name'])) {
                                                 $field_display = htmlspecialchars($row['field_name']);
+                                                if (!empty($row['subfield_name'])) {
+                                                    $field_display .= '<br><small class="text-muted">Subfield: ' . htmlspecialchars($row['subfield_name']) . '</small>';
+                                                }
                                             } elseif (!empty($row['or_fields'])) {
                                                 $field_display = "<i>Multiple (OR):</i><br>" . htmlspecialchars($row['or_fields']);
                                             }
