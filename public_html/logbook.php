@@ -301,37 +301,41 @@ function validateAndConvertTime($timeValue) {
         border-color: #005eb8;
     }
     
-    .checkbox-group .form-check {
+    /* Custom checkbox styling - completely bypasses Bootstrap */
+    .custom-checkbox-item {
+        position: relative;
         margin-bottom: 8px;
-        padding-left: 0;
-        display: flex;
-        align-items: flex-start;
-        justify-content: flex-start;
+        padding-left: 25px;
+        min-height: 20px;
     }
     
-    .checkbox-group .form-check-input {
-        margin-right: 8px;
-        margin-top: 2px;
-        flex-shrink: 0;
-        order: -1;
+    .custom-checkbox-item input[type="checkbox"] {
+        position: absolute;
+        left: 0;
+        top: 2px;
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        cursor: pointer;
     }
     
-    .checkbox-group .form-check-label {
+    .custom-checkbox-item label {
         cursor: pointer;
         font-size: 0.9rem;
         line-height: 1.4;
-        margin-bottom: 0;
-        padding-left: 0;
-        flex: 1;
-        text-align: left;
+        margin: 0;
+        padding: 0;
+        display: block;
+        word-wrap: break-word;
+        white-space: normal;
     }
     
-    .checkbox-group .form-check-input:checked {
+    .custom-checkbox-item input[type="checkbox"]:checked {
         background-color: #007F3B;
         border-color: #007F3B;
     }
     
-    .checkbox-group .form-check-input:focus {
+    .custom-checkbox-item input[type="checkbox"]:focus {
         box-shadow: 0 0 0 0.2rem rgba(0, 127, 59, 0.25);
         border-color: #007F3B;
     }
@@ -1046,9 +1050,9 @@ function validateAndConvertTime($timeValue) {
                     $fieldset->bind_result($pid, $select_val);
                     while ($fieldset->fetch()) {
                       $checked = in_array($pid, $exarr) ? 'checked' : '';
-                      echo "<div class='form-check mb-2'>";
-                      echo "<input class='form-check-input' type='checkbox' name='stid{$stid}[]' value='$pid' id='stid{$stid}_{$pid}' $checked>";
-                      echo "<label class='form-check-label' for='stid{$stid}_{$pid}' style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</label>";
+                      echo "<div class='custom-checkbox-item'>";
+                      echo "<input type='checkbox' name='stid{$stid}[]' value='$pid' id='stid{$stid}_{$pid}' $checked>";
+                      echo "<label for='stid{$stid}_{$pid}' style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</label>";
                       echo "</div>";
                     }
                     $fieldset->close();
@@ -1189,9 +1193,9 @@ function validateAndConvertTime($timeValue) {
                 $fieldset->bind_result($pid, $select_val);
                 while ($fieldset->fetch()) {
                   $checked = in_array($pid, $exarr) ? 'checked' : '';
-                  echo "<div class='form-check mb-2'>";
-                  echo "<input class='form-check-input' type='checkbox' name='stid{$stid}[]' value='$pid' id='stid{$stid}_{$pid}' $checked>";
-                  echo "<label class='form-check-label' for='stid{$stid}_{$pid}' style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</label>";
+                  echo "<div class='custom-checkbox-item'>";
+                  echo "<input type='checkbox' name='stid{$stid}[]' value='$pid' id='stid{$stid}_{$pid}' $checked>";
+                  echo "<label for='stid{$stid}_{$pid}' style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</label>";
                   echo "</div>";
                 }
                 $fieldset->close();
