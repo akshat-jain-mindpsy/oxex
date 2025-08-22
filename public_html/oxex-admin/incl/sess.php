@@ -48,23 +48,47 @@ foreach ($required_session_vars as $var) {
 
 if (!empty($missing_vars)) {
 	custom_log('Missing session variables: ' . implode(', ', $missing_vars));
-	header('Location: login.html?error=session_incomplete');
-	exit();
+	
+	// Check if this is an AJAX request
+	if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+		header('Content-Type: application/json');
+		echo json_encode(['status' => 'error', 'message' => 'Session incomplete', 'redirect' => 'login.html?error=session_incomplete']);
+		exit();
+	} else {
+		header('Location: login.html?error=session_incomplete');
+		exit();
+	}
 }
 
 // Perform login check
 if (!login_check($mysqli)) {
 	custom_log('Login check failed');
-	header('Location: login.html?error=session_expired');
-	exit();
+	
+	// Check if this is an AJAX request
+	if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+		header('Content-Type: application/json');
+		echo json_encode(['status' => 'error', 'message' => 'Session expired', 'redirect' => 'login.html?error=session_expired']);
+		exit();
+	} else {
+		header('Location: login.html?error=session_expired');
+		exit();
+	}
 }
 
 // Additional admin type validation
 $allowed_admin_types = ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'];
 if (!in_array($_SESSION['admintype'], $allowed_admin_types)) {
 	custom_log('Unauthorized admin type: ' . $_SESSION['admintype']);
-	header('Location: login.html?error=unauthorized');
-	exit();
+	
+	// Check if this is an AJAX request
+	if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+		header('Content-Type: application/json');
+		echo json_encode(['status' => 'error', 'message' => 'Unauthorized access', 'redirect' => 'login.html?error=unauthorized']);
+		exit();
+	} else {
+		header('Location: login.html?error=unauthorized');
+		exit();
+	}
 }
 
 // Fetch additional user details for verification
@@ -76,8 +100,16 @@ $stmt->store_result();
 
 if ($stmt->num_rows === 0) {
 	custom_log('No user found with usrkey: ' . $usrkey);
-	header('Location: login.html?error=user_not_found');
-	exit();
+	
+	// Check if this is an AJAX request
+	if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+		header('Content-Type: application/json');
+		echo json_encode(['status' => 'error', 'message' => 'User not found', 'redirect' => 'login.html?error=user_not_found']);
+		exit();
+	} else {
+		header('Location: login.html?error=user_not_found');
+		exit();
+	}
 }
 
 $stmt->bind_result($realname, $email, $isonline, $photo, $admintype);
@@ -87,8 +119,16 @@ $stmt->close();
 // Verify admin type consistency
 if ($admintype !== $_SESSION['admintype']) {
 	custom_log('Admin type mismatch. Session: ' . $_SESSION['admintype'] . ', Database: ' . $admintype);
-	header('Location: login.html?error=type_mismatch');
-	exit();
+	
+	// Check if this is an AJAX request
+	if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+		header('Content-Type: application/json');
+		echo json_encode(['status' => 'error', 'message' => 'Admin type mismatch', 'redirect' => 'login.html?error=type_mismatch']);
+		exit();
+	} else {
+		header('Location: login.html?error=type_mismatch');
+		exit();
+	}
 }
 
 // Set additional variables

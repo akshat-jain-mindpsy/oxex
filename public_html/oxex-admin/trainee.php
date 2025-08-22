@@ -3,6 +3,40 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+
+// Get session variables
+$usrkey = isset($_SESSION['usrkey']) ? $_SESSION['usrkey'] : '';
+
+// Ensure today variable is defined
+if (!isset($today)) {
+    $today = date('Ymd');
+}
+
+// Ensure database connection is available
+if (!isset($mysqli) || !$mysqli) {
+    die("Database connection not available");
+}
+
+// Ensure adminname variable is defined
+if (!isset($adminname)) {
+    $adminname = 'Admin';
+}
+
+// Ensure all required variables are defined with proper defaults
+if (!isset($value0)) {
+    $value0 = 0;
+}
+if (!isset($value1)) {
+    $value1 = 1;
+}
+
+// Get total trainee count for display (before pagination)
+$total_count_stmt = $mysqli->prepare("SELECT COUNT(*) as total FROM trainee_tbl");
+$total_count_stmt->execute();
+$total_count_stmt->bind_result($total_trainees);
+$total_count_stmt->fetch();
+$total_count_stmt->close();
+
 $pagetitle = "Trainee Clinical Psychologists";
 $subtitle = "Trainees";
 if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
@@ -95,15 +129,21 @@ if ($del == "wipe" && ($admintype == 'AT' || $admintype == 'DV')) {
 }
 
 if ($newadmin == 'newadmin') {
-  $name = isset($_POST['name']) ? $_POST['name'] : '';
-  $email = isset($_POST['email']) ? $_POST['email'] : '';
-  $uid = isset($_POST['uid']) ? $_POST['uid'] : 0;
-  $supervisor = isset($_POST['supervisor']) ? $_POST['supervisor'] : '';
-  $supervisor2 = isset($_POST['supervisor2']) ? $_POST['supervisor2'] : '';
-  $supervisor3 = isset($_POST['supervisor3']) ? $_POST['supervisor3'] : '';
-  $tutor = isset($_POST['tutor']) ? $_POST['tutor'] : '';
-  $syslink = isset($_POST['syslink']) ? $_POST['syslink'] : '';
-  $year = isset($_POST['year']) ? $_POST['year'] : '';
+  // Validate and sanitize all form inputs with proper defaults
+  $name = isset($_POST['name']) && !empty($_POST['name']) ? trim($_POST['name']) : '';
+  $email = isset($_POST['email']) && !empty($_POST['email']) ? trim($_POST['email']) : '';
+  $uid = isset($_POST['uid']) && is_numeric($_POST['uid']) ? (int)$_POST['uid'] : 0;
+  $supervisor = isset($_POST['supervisor']) && !empty($_POST['supervisor']) ? trim($_POST['supervisor']) : '';
+  $supervisor2 = isset($_POST['supervisor2']) && !empty($_POST['supervisor2']) ? trim($_POST['supervisor2']) : '';
+  $supervisor3 = isset($_POST['supervisor3']) && !empty($_POST['supervisor3']) ? trim($_POST['supervisor3']) : '';
+  $tutor = isset($_POST['tutor']) && !empty($_POST['tutor']) ? trim($_POST['tutor']) : '';
+  $syslink = isset($_POST['syslink']) && !empty($_POST['syslink']) ? trim($_POST['syslink']) : '';
+  $year = isset($_POST['year']) && !empty($_POST['year']) ? trim($_POST['year']) : '';
+  
+  // Validate required fields
+  if (empty($name) || empty($email) || empty($uid) || empty($supervisor)) {
+    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Required fields cannot be empty</strong></div></div></div>";
+  } else {
   // create a user key and password
     $txtpw = substr(md5(rand()), 0, 8); # a temp password
     // Create a random salt
@@ -124,13 +164,44 @@ if ($newadmin == 'newadmin') {
       $stmt->close();
     }
 
+  // Set meaningful values for all required columns
+  $name = $name ?: 'Unknown';
+  $email = $email ?: '';
+  $uid = $uid ?: 0;
+  $supervisor = $supervisor ?: '';
+  $supervisor2 = $supervisor2 ?: '';
+  $supervisor3 = $supervisor3 ?: '';
+  $tutor = $tutor ?: '';
+  $syslink = $syslink ?: '';
+  $year = $year ?: date('Y'); // Default to current year
+  $usrkey = $usrkey ?: '';
+  $today = $today ?: date('Ymd');
+  
+  // Set meaningful defaults for database columns
+  $tandc = 0; // Terms and conditions - default to 0 (not accepted)
+  $last_used = $today; // Set last_used to today's date
+  $date_added = $today; // Set date_added to today's date
+  $date_modified = $today; // Set date_modified to today's date
+  
+  // Debug: Log the values being inserted (remove in production)
+  error_log("Trainee insert values - name: '$name', email: '$email', uid: $uid, supervisor: '$supervisor', usrkey: '$usrkey', today: '$today', tandc: $tandc, last_used: $last_used");
+
   // write new record
   $insert_stmt = $mysqli->prepare("INSERT INTO trainee_tbl (name, email, uid, supervisor, supervisor2, supervisor3, syslink, year, trainkey, txtpw, password, salt, who_by, date_added, date_modified, last_used, tandc, tutor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("ssissssisssssiiiis", $name, $email, $uid, $supervisor, $supervisor2, $supervisor3, $syslink, $year, $trainkey, $txtpw, $password, $salt, $usrkey, $today, $today, $value0, $value1, $tutor);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  
+  if (!$insert_stmt) {
+    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to prepare statement: " . $mysqli->error . "</strong></div></div></div>";
+  } else {
+    $insert_stmt->bind_param("ssissssisssssiiiis", $name, $email, $uid, $supervisor, $supervisor2, $supervisor3, $syslink, $year, $trainkey, $txtpw, $password, $salt, $usrkey, $date_added, $date_modified, $last_used, $tandc, $tutor);
+    
+    if (!$insert_stmt->execute()) {
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to insert trainee: " . $insert_stmt->error . "</strong></div></div></div>";
+    } else {
+      $newid = $insert_stmt->insert_id;
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-success\" role=\"alert\"><strong>Trainee added successfully!</strong></div></div></div>";
+    }
+    $insert_stmt->close();
+  }
 
   // create table links
   $tagstmt = $mysqli->prepare("SELECT tbid FROM tabs_tbl");
@@ -150,6 +221,8 @@ if ($newadmin == 'newadmin') {
   }
   $tagstmt->close();
   
+  } // Close the validation if statement
+  
 }
 ?>
 <body>
@@ -163,10 +236,32 @@ if ($newadmin == 'newadmin') {
       <section class="section-container">
          <!-- Page content-->
          <div class="content-wrapper">
-            <div class="content-header">
+            <div class="content-header" id="report">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
             </div>
             <?php echo $delalert ?>
+            <!-- Search and Filter Controls -->
+            <div class="row mb-3">
+               <div class="col-md-6">
+                  <form method="GET" action="" class="form-inline">
+                     <div class="input-group">
+                        <input type="text" class="form-control" name="search" placeholder="Search trainees..." value="<?php echo htmlspecialchars($_GET['search'] ?? ''); ?>">
+                        <div class="input-group-append">
+                           <button class="btn btn-outline-secondary" type="submit">Search</button>
+                        </div>
+                     </div>
+                     <?php if (isset($_GET['search']) && !empty($_GET['search'])): ?>
+                        <a href="?page=1#report" class="btn btn-sm btn-outline-danger ml-2">Clear</a>
+                     <?php endif; ?>
+                  </form>
+               </div>
+               <div class="col-md-6 text-right">
+                  <small class="text-muted">
+                     <?php echo $total_trainees; ?> total trainees
+                  </small>
+               </div>
+            </div>
+            
             <div class="row">
                <div class="col-xl-12">
                   <div class="table-responsive">
@@ -185,9 +280,50 @@ if ($newadmin == 'newadmin') {
                            </thead>
                            <tbody>
 <?php
+// Search and pagination setup
+$items_per_page = 20;
+$current_page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$search_term = isset($_GET['search']) ? trim($_GET['search']) : '';
+
+// Build search conditions
+$search_condition = '';
+$search_params = [];
+$search_types = '';
+
+if (!empty($search_term)) {
+    $search_condition = "WHERE name LIKE ? OR email LIKE ?";
+    $search_params = ["%$search_term%", "%$search_term%"];
+    $search_types = "ss";
+}
+
+// Get filtered count for pagination with search
+$count_query = "SELECT COUNT(*) as total FROM trainee_tbl $search_condition";
+$count_stmt = $mysqli->prepare($count_query);
+
+if (!empty($search_params)) {
+    $count_stmt->bind_param($search_types, ...$search_params);
+}
+$count_stmt->execute();
+$count_stmt->bind_result($filtered_trainees);
+$count_stmt->fetch();
+$count_stmt->close();
+
+$total_pages = ceil($filtered_trainees / $items_per_page);
+$offset = ($current_page - 1) * $items_per_page;
+
 $valueyearstart = date('Y').'0101'; # YYYYMMDD format
 $valueyearend = date('Y').'1231';
-$tableset = $mysqli->prepare("SELECT trainkey, name, uid, year, supervisor, supervisor2, supervisor3, tutor, txtpw, email FROM trainee_tbl");
+
+// Modified query with pagination and search
+$query = "SELECT trainkey, name, uid, year, supervisor, supervisor2, supervisor3, tutor, txtpw, email FROM trainee_tbl $search_condition ORDER BY name LIMIT ? OFFSET ?";
+$tableset = $mysqli->prepare($query);
+
+if (!empty($search_params)) {
+    $all_params = array_merge($search_params, [$items_per_page, $offset]);
+    $tableset->bind_param($search_types . "ii", ...$all_params);
+} else {
+    $tableset->bind_param("ii", $items_per_page, $offset);
+}
 $tableset->execute();
 $tableset->store_result();
 $tableset->bind_result($trainkey, $name, $uid, $year, $supervisor, $supervisor2, $supervisor3, $tutor, $txtpw, $email);
@@ -293,9 +429,99 @@ $tableset->close();
 ?>
                            </tbody>
                         </table>
+                        
+                        <?php if ($filtered_trainees == 0): ?>
+                           <div class="text-center py-4">
+                              <p class="text-muted">
+                                 <?php if (!empty($search_term)): ?>
+                                    No trainees found matching "<?php echo htmlspecialchars($search_term); ?>"
+                                 <?php else: ?>
+                                    No trainees found
+                                 <?php endif; ?>
+                              </p>
+                           </div>
+                        <?php endif; ?>
                      </div>
                </div>
             </div><!-- end table row -->
+            
+            <!-- Pagination Controls -->
+            <?php if ($filtered_trainees > 0 && $total_pages > 1): ?>
+            <div class="row">
+               <div class="col-12">
+                  <nav aria-label="Trainee pagination">
+                     <ul class="pagination justify-content-center">
+                        <?php 
+                        // Build query string for pagination links
+                        $query_params = [];
+                        if (!empty($search_term)) {
+                            $query_params['search'] = $search_term;
+                        }
+                        ?>
+                        
+                        <?php if ($current_page > 1): ?>
+                           <li class="page-item">
+                              <?php $query_params['page'] = $current_page - 1; ?>
+                              <a class="page-link" href="?<?php echo http_build_query($query_params); ?>#report" aria-label="Previous">
+                                 <span aria-hidden="true">&laquo;</span>
+                              </a>
+                           </li>
+                        <?php endif; ?>
+                        
+                        <?php
+                        $start_page = max(1, $current_page - 2);
+                        $end_page = min($total_pages, $current_page + 2);
+                        
+                        if ($start_page > 1): ?>
+                           <li class="page-item">
+                              <?php $query_params['page'] = 1; ?>
+                              <a class="page-link" href="?<?php echo http_build_query($query_params); ?>#report">1</a>
+                           </li>
+                           <?php if ($start_page > 2): ?>
+                              <li class="page-item disabled"><span class="page-link">...</span></li>
+                           <?php endif; ?>
+                        <?php endif; ?>
+                        
+                        <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                           <li class="page-item <?php echo ($i == $current_page) ? 'active' : ''; ?>">
+                              <?php $query_params['page'] = $i; ?>
+                              <a class="page-link" href="?<?php echo http_build_query($query_params); ?>#report"><?php echo $i; ?></a>
+                           </li>
+                        <?php endfor; ?>
+                        
+                        <?php if ($end_page < $total_pages): ?>
+                           <?php if ($end_page < $total_pages - 1): ?>
+                              <li class="page-item disabled"><span class="page-link">...</span></li>
+                           <?php endif; ?>
+                           <li class="page-item">
+                              <?php $query_params['page'] = $total_pages; ?>
+                              <a class="page-link" href="?<?php echo http_build_query($query_params); ?>#report"><?php echo $total_pages; ?></a>
+                           </li>
+                        <?php endif; ?>
+                        
+                        <?php if ($current_page < $total_pages): ?>
+                           <li class="page-item">
+                              <?php $query_params['page'] = $current_page + 1; ?>
+                              <a class="page-link" href="?<?php echo http_build_query($query_params); ?>#report" aria-label="Next">
+                                 <span aria-hidden="true">&raquo;</span>
+                              </a>
+                           </li>
+                        <?php endif; ?>
+                     </ul>
+                  </nav>
+                  
+                  <div class="text-center mt-2">
+                     <small class="text-muted">
+                        <?php if (!empty($search_term)): ?>
+                           Showing <?php echo ($offset + 1); ?> to <?php echo min($offset + $items_per_page, $filtered_trainees); ?> of <?php echo $filtered_trainees; ?> matching trainees (<?php echo $total_trainees; ?> total)
+                        <?php else: ?>
+                           Showing <?php echo ($offset + 1); ?> to <?php echo min($offset + $items_per_page, $filtered_trainees); ?> of <?php echo $filtered_trainees; ?> trainees
+                        <?php endif; ?>
+                     </small>
+                  </div>
+               </div>
+            </div>
+            <?php endif; ?>
             <?php
             if ($admintype == 'AT' || $admintype == 'DV') {
             ?>

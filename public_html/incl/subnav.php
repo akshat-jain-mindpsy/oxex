@@ -32,7 +32,7 @@ if ($thispage == 'contact.php') {
 }
 ?>
 
-<div class="container-fluid bg-white py-3">
+<div class="container-fluid bg-white py-3" style="position: relative; z-index: 1;">
   <div class="container">
     <div class="row">
       <div class="col-xs-12 col-sm-8">

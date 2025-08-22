@@ -285,6 +285,56 @@ function validateAndConvertTime($timeValue) {
         border-color: #005eb8;
         box-shadow: 0 0 0 0.2rem rgba(0, 94, 184, 0.25);
     }
+    
+    /* Checkbox group styling for multiple selection fields */
+    .checkbox-group {
+        background-color: #f8f9fa;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        padding: 15px;
+        max-height: 200px;
+        overflow-y: auto;
+        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    }
+    
+    .checkbox-group:hover {
+        border-color: #005eb8;
+    }
+    
+    .checkbox-group .form-check {
+        margin-bottom: 8px;
+        padding-left: 0;
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-start;
+    }
+    
+    .checkbox-group .form-check-input {
+        margin-right: 8px;
+        margin-top: 2px;
+        flex-shrink: 0;
+        order: -1;
+    }
+    
+    .checkbox-group .form-check-label {
+        cursor: pointer;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        margin-bottom: 0;
+        padding-left: 0;
+        flex: 1;
+        text-align: left;
+    }
+    
+    .checkbox-group .form-check-input:checked {
+        background-color: #007F3B;
+        border-color: #007F3B;
+    }
+    
+    .checkbox-group .form-check-input:focus {
+        box-shadow: 0 0 0 0.2rem rgba(0, 127, 59, 0.25);
+        border-color: #007F3B;
+    }
 
     /* Adjust multiple select box height */
     select[multiple] {
@@ -395,6 +445,233 @@ function validateAndConvertTime($timeValue) {
     <?php include 'incl/meta.php' ?>
     <link rel="stylesheet" href="//code.jquery.com/ui/1.13.1/themes/base/jquery-ui.css">
     <link rel="stylesheet" href="//cdn.datatables.net/1.12.1/css/jquery.dataTables.min.css">
+    <style>
+      /* Improve dropdown readability for long text */
+      select.form-control option {
+        word-wrap: break-word;
+        white-space: normal;
+        padding: 8px;
+        line-height: 1.4;
+      }
+      
+      select.form-control {
+        word-wrap: break-word;
+        white-space: normal;
+      }
+      
+      /* Ensure dropdowns are wide enough for long text */
+      .form-group select {
+        min-width: 200px;
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+      
+      /* Improve option text readability */
+      select option {
+        font-size: 14px;
+        padding: 6px 8px;
+        max-width: 100%;
+        word-wrap: break-word;
+        white-space: normal;
+      }
+      
+      /* Handle extremely long text with ellipsis */
+      select option[title] {
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+        max-width: 100%;
+      }
+      
+      /* Ensure dropdown container can handle long text */
+      .form-group {
+        position: relative;
+        overflow: hidden;
+      }
+      
+      /* Add some spacing between form groups for better readability */
+      .form-group + .form-group {
+        margin-top: 15px;
+      }
+      
+      /* Ensure consistent container structure */
+      .col-sm-6, .col-lg-4 {
+        overflow: hidden;
+        position: relative;
+      }
+      
+      /* Fix dropdown overflow issues */
+      select.form-control {
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+      
+      /* Ensure form fields stay within their containers */
+      .form-group {
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+      }
+      
+      /* Consistent spacing and alignment */
+      .form-group label {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      
+      /* Ensure all form elements respect container boundaries */
+      .form-group input,
+      .form-group select,
+      .form-group textarea {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+      }
+      
+      /* Consistent grid layout */
+      .row {
+        margin-left: 0;
+        margin-right: 0;
+      }
+      
+      .col-sm-6, .col-lg-4 {
+        padding: 10px;
+        margin-bottom: 15px;
+      }
+      
+      /* Ensure form containers have consistent height */
+      .form-group {
+        min-height: 80px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+      }
+      
+      /* Consistent label styling */
+      .form-label {
+        margin-bottom: 8px;
+        font-weight: 500;
+        color: #333;
+        line-height: 1.2;
+      }
+      
+      /* Ensure dropdowns don't break layout */
+      select.form-control:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+      }
+      
+      /* Fix multi-select dropdown overflow */
+      select[multiple] {
+        max-height: 150px;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+      
+      /* Ensure dropdown options stay within bounds */
+      select option {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      
+      /* Container overflow protection */
+      .container, .container-fluid {
+        overflow: hidden;
+        position: relative;
+      }
+      
+      /* Section container consistency */
+      .section-container {
+        overflow: hidden;
+        position: relative;
+        width: 100%;
+      }
+      
+      /* Fix dropdown z-index to appear above banner */
+      select.form-control {
+        z-index: 1000;
+        position: relative;
+      }
+      
+      /* Ensure dropdown options appear above all other elements */
+      select option {
+        z-index: 1001;
+        position: relative;
+      }
+      
+      /* Fix multi-select dropdown z-index */
+      select[multiple] {
+        z-index: 1000;
+        position: relative;
+      }
+      
+      /* Ensure form elements appear above banner */
+      .form-group {
+        z-index: 999;
+        position: relative;
+      }
+      
+      /* Button positioning and styling */
+      .text-left {
+        text-align: left !important;
+      }
+      
+      /* Ensure button container is properly positioned */
+      .form-group.text-left {
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+      }
+      
+      /* Button size adjustments */
+      .btn-sm {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        border-radius: 0.2rem;
+      }
+      
+      /* Additional z-index fixes for complex layouts */
+      .container, .container-fluid {
+        z-index: 1;
+        position: relative;
+      }
+      
+      /* Ensure dropdowns are always on top */
+      select:focus {
+        z-index: 1002 !important;
+      }
+      
+      /* Fix banner z-index interference */
+      .banner, .navbar, .nav {
+        z-index: 100;
+        position: relative;
+      }
+      
+      /* Ensure main content area has proper z-index */
+      #main {
+        z-index: 10;
+        position: relative;
+      }
+      
+      /* Override any conflicting z-index from external CSS */
+      .form-control:focus,
+      .form-control:active,
+      select:focus,
+      select:active {
+        z-index: 1002 !important;
+        position: relative !important;
+      }
+    </style>
   </head>
   <?php
     if (login_check($mysqli) != false) {
@@ -431,13 +708,13 @@ function validateAndConvertTime($timeValue) {
       </div>
 
       <!-- offer to start a new data set -->
-      <form method="post" name="logbook" class="mb-5 full-width-bg" action="<?php echo $formurl ?>">
+      <form method="post" name="logbook" class="mb-3" action="<?php echo $formurl ?>">
           <div class="row">
-              <div class="col-12 full-width-box">
-                  <div class="form-group mt-2">
+              <div class="col-12">
+                  <div class="form-group mb-0">
                       <input type="hidden" name="done" value="date">
                       <input type="hidden" name="tab" value="<?php echo $tbid ?>">
-                      <button type="submit" class="btn btn-lg btn-nhs">Create New Data Set</button>
+                      <button type="submit" class="btn btn-sm btn-nhs px-3 py-2" style="width: 30%; max-width: 400px;">Create New Data Set</button>
                   </div>
               </div>
           </div>
@@ -732,7 +1009,7 @@ function validateAndConvertTime($timeValue) {
                 // Render the appropriate input field
                 switch ($single) {
                   case 0: // Single select menu
-                    echo "<select class='form-control' id='stid$stid' name='stid$stid' $isreqd>";
+                    echo "<select class='form-control' id='stid$stid' name='stid$stid' $isreqd style='word-wrap: break-word; white-space: normal;'>";
                     
                     $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ?");
                     $fieldset->bind_param("i", $stid);
@@ -741,7 +1018,7 @@ function validateAndConvertTime($timeValue) {
                     $fieldset->bind_result($pid, $select_val);
                     while ($fieldset->fetch()) {
                       $selected = ($pid == $expid) ? 'selected' : '';
-                      echo "<option value='$pid' $selected>" . htmlspecialchars($select_val ?? '') . "</option>";
+                      echo "<option value='$pid' $selected style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</option>";
                     }
                     $fieldset->close();
                     echo "</select>";
@@ -758,7 +1035,9 @@ function validateAndConvertTime($timeValue) {
                       $exarr[] = $expid;
                     }
                     $fieldset->close();
-                    echo "<select class='form-control' id='stid$stid' name='stid{$stid}[]' multiple>";
+                    
+                    // Create checkbox options instead of multiple select
+                    echo "<div class='checkbox-group' id='stid$stid' style='max-height: 200px; overflow-y: auto; border: 1px solid #ced4da; border-radius: 4px; padding: 10px; background-color: #f8f9fa;'>";
                     
                     $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ?");
                     $fieldset->bind_param("i", $stid);
@@ -766,11 +1045,14 @@ function validateAndConvertTime($timeValue) {
                     $fieldset->store_result();
                     $fieldset->bind_result($pid, $select_val);
                     while ($fieldset->fetch()) {
-                      $selected = in_array($pid, $exarr) ? 'selected' : '';
-                      echo "<option value='$pid' $selected>" . htmlspecialchars($select_val ?? '') . "</option>";
+                      $checked = in_array($pid, $exarr) ? 'checked' : '';
+                      echo "<div class='form-check mb-2'>";
+                      echo "<input class='form-check-input' type='checkbox' name='stid{$stid}[]' value='$pid' id='stid{$stid}_{$pid}' $checked>";
+                      echo "<label class='form-check-label' for='stid{$stid}_{$pid}' style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</label>";
+                      echo "</div>";
                     }
                     $fieldset->close();
-                    echo "</select>";
+                    echo "</div>";
                     break;
                     
                   case 2: // Text input
@@ -870,7 +1152,7 @@ function validateAndConvertTime($timeValue) {
             // Render the appropriate input field (same switch case as above)
             switch ($single) {
               case 0: // Single select menu
-                echo "<select class='form-control' id='stid$stid' name='stid$stid' $isreqd>";
+                echo "<select class='form-control' id='stid$stid' name='stid$stid' $isreqd style='word-wrap: break-word; white-space: normal;'>";
                 
                 $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ?");
                 $fieldset->bind_param("i", $stid);
@@ -879,7 +1161,7 @@ function validateAndConvertTime($timeValue) {
                 $fieldset->bind_result($pid, $select_val);
                 while ($fieldset->fetch()) {
                   $selected = ($pid == $expid) ? 'selected' : '';
-                  echo "<option value='$pid' $selected>" . htmlspecialchars($select_val ?? '') . "</option>";
+                  echo "<option value='$pid' $selected style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</option>";
                 }
                 $fieldset->close();
                 echo "</select>";
@@ -896,7 +1178,9 @@ function validateAndConvertTime($timeValue) {
                   $exarr[] = $expid;
                 }
                 $fieldset->close();
-                echo "<select class='form-control' id='stid$stid' name='stid{$stid}[]' multiple>";
+                
+                // Create checkbox options instead of multiple select
+                echo "<div class='checkbox-group' id='stid$stid' style='max-height: 200px; overflow-y: auto; border: 1px solid #ced4da; border-radius: 4px; padding: 10px; background-color: #f8f9fa;'>";
                 
                 $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ?");
                 $fieldset->bind_param("i", $stid);
@@ -904,11 +1188,14 @@ function validateAndConvertTime($timeValue) {
                 $fieldset->store_result();
                 $fieldset->bind_result($pid, $select_val);
                 while ($fieldset->fetch()) {
-                  $selected = in_array($pid, $exarr) ? 'selected' : '';
-                  echo "<option value='$pid' $selected>" . htmlspecialchars($select_val ?? '') . "</option>";
+                  $checked = in_array($pid, $exarr) ? 'checked' : '';
+                  echo "<div class='form-check mb-2'>";
+                  echo "<input class='form-check-input' type='checkbox' name='stid{$stid}[]' value='$pid' id='stid{$stid}_{$pid}' $checked>";
+                  echo "<label class='form-check-label' for='stid{$stid}_{$pid}' style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</label>";
+                  echo "</div>";
                 }
                 $fieldset->close();
-                echo "</select>";
+                echo "</div>";
                 break;
                 
               case 2: // Text input
@@ -1071,6 +1358,108 @@ function validateAndConvertTime($timeValue) {
           });
       });
   });
+  </script>
+
+  <script>
+  // Enhance dropdown readability and user experience
+  document.addEventListener('DOMContentLoaded', function() {
+         // Add tooltips to long dropdown options
+     const selectElements = document.querySelectorAll('select.form-control');
+     
+     selectElements.forEach(select => {
+       select.addEventListener('change', function() {
+         const selectedOption = this.options[this.selectedIndex];
+         if (selectedOption && selectedOption.text.length > 50) {
+           // Add title attribute for long text
+           selectedOption.title = selectedOption.text;
+         }
+       });
+       
+       // Add hover effect for better readability
+       select.addEventListener('mouseenter', function() {
+         this.style.cursor = 'pointer';
+       });
+       
+       // Ensure dropdown appears above banner when focused
+       select.addEventListener('focus', function() {
+         this.style.zIndex = '1002';
+         this.style.position = 'relative';
+       });
+       
+       // Reset z-index when not focused
+       select.addEventListener('blur', function() {
+         this.style.zIndex = '1000';
+       });
+     });
+    
+    // Ensure consistent container sizing and prevent overflow
+    const formGroups = document.querySelectorAll('.form-group');
+    formGroups.forEach(group => {
+      const select = group.querySelector('select');
+      const input = group.querySelector('input');
+      const textarea = group.querySelector('textarea');
+      
+      // Handle select elements
+      if (select) {
+        // Ensure select doesn't exceed container width
+        const container = group.closest('.col-sm-6, .col-lg-4');
+        if (container) {
+          const containerWidth = container.offsetWidth;
+          select.style.maxWidth = (containerWidth - 20) + 'px'; // Account for padding
+        }
+        
+        // Set reasonable minimum width for long text
+        const options = Array.from(select.options);
+        const maxLength = Math.max(...options.map(opt => opt.text.length));
+        if (maxLength > 50) {
+          select.style.minWidth = Math.min(maxLength * 6, containerWidth - 20) + 'px';
+        }
+      }
+      
+      // Handle input elements
+      if (input) {
+        input.style.maxWidth = '100%';
+        input.style.boxSizing = 'border-box';
+      }
+      
+      // Handle textarea elements
+      if (textarea) {
+        textarea.style.maxWidth = '100%';
+        textarea.style.boxSizing = 'border-box';
+      }
+    });
+    
+          // Ensure all containers have consistent structure
+      const containers = document.querySelectorAll('.col-sm-6, .col-lg-4');
+      containers.forEach(container => {
+        container.style.overflow = 'hidden';
+        container.style.position = 'relative';
+        
+        // Ensure form groups within containers are properly sized
+        const formGroups = container.querySelectorAll('.form-group');
+        formGroups.forEach(group => {
+          group.style.width = '100%';
+          group.style.maxWidth = '100%';
+          group.style.overflow = 'hidden';
+        });
+      });
+      
+      // Handle window resize to maintain layout consistency
+      window.addEventListener('resize', function() {
+        setTimeout(function() {
+          formGroups.forEach(group => {
+            const select = group.querySelector('select');
+            if (select) {
+              const container = group.closest('.col-sm-6, .col-lg-4');
+              if (container) {
+                const containerWidth = container.offsetWidth;
+                select.style.maxWidth = (containerWidth - 20) + 'px';
+              }
+            }
+          });
+        }, 100);
+      });
+    });
   </script>
 
 

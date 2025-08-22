@@ -1,15 +1,16 @@
 <?php
-require_once '../../OXEXfolder/config.php';
-require_once '../../OXEXfolder/u_functions.php';
+include '../../OXEXfolder/config.php';
+include '../../OXEXfolder/u_functions.php';
 sec_session_start();
+include '../incl/sess.php';
 
-// Basic security check
-if (!isset($_SESSION['admin']) || !$_SESSION['admin']) {
-    header('Content-Type: application/json');
-    echo json_encode([
-        'status' => 'error',
-        'message' => 'Unauthorized access'
-    ]);
+header('Content-Type: application/json');
+
+// Ensure proper access control
+if(!(login_check($mysqli) == true && 
+     ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
+      $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
+    echo json_encode(['status' => 'error', 'message' => 'Access denied']);
     exit();
 }
 

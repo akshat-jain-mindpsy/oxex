@@ -9,6 +9,7 @@ try {
     include '../../OXEXfolder/config.php';
     include '../../OXEXfolder/u_functions.php';
     sec_session_start();
+    include '../incl/sess.php';
 
     // Debug logging for incoming requests
     error_log("Edit field request: " . json_encode($_REQUEST));
@@ -48,7 +49,7 @@ try {
         }
 
         // Use prepared statements for security instead of direct SQL
-        $field_stmt = $mysqli->prepare("SELECT stid, str AS field_name, single AS field_type FROM select_types WHERE stid = ? LIMIT 1");
+        $field_stmt = $mysqli->prepare("SELECT stid, str AS field_name, single AS field_type, section_id FROM select_types WHERE stid = ? LIMIT 1");
         $field_stmt->bind_param("i", $field_id);
         
         if (!$field_stmt->execute()) {
@@ -90,7 +91,8 @@ try {
             'field_name' => $field['field_name'],
             'field_type' => $field['field_type'],
             'options' => $options,
-            'table_id' => $table_id // Include table_id in response
+            'table_id' => $table_id, // Include table_id in response
+            'current_section_id' => $field['section_id'] // Include current section ID
         ]);
     }
     // For POST requests - update field data
@@ -100,6 +102,7 @@ try {
         $field_name = isset($_POST['field_name']) ? trim($_POST['field_name']) : '';
         $field_type = isset($_POST['field_type']) ? (int)$_POST['field_type'] : -1;
         $field_options = isset($_POST['field_options']) ? trim($_POST['field_options']) : '';
+        $field_section = isset($_POST['field_section']) ? $_POST['field_section'] : '';
         $table_id = isset($_POST['table_id']) ? (int)$_POST['table_id'] : 0;
 
         // Validate field_id and at least one of field_name or field_type
@@ -140,6 +143,18 @@ try {
                 throw new Exception("Failed to update field: " . $mysqli->error);
             }
             $update_stmt->close();
+            
+            // Handle section assignment if provided
+            if ($field_section !== '') {
+                $section_id = $field_section === '' ? null : (int)$field_section;
+                $section_stmt = $mysqli->prepare("UPDATE select_types SET section_id = ? WHERE stid = ?");
+                $section_stmt->bind_param("ii", $section_id, $field_id);
+                
+                if (!$section_stmt->execute()) {
+                    throw new Exception("Failed to update field section: " . $mysqli->error);
+                }
+                $section_stmt->close();
+            }
             
             // Handle options for select fields (type 0 or 1)
             if ($field_type == 0 || $field_type == 1) {

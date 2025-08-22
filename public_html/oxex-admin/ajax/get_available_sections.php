@@ -1,17 +1,17 @@
 <?php
-header('Content-Type: application/json');
-
 include '../../OXEXfolder/config.php';
 include '../../OXEXfolder/u_functions.php';
 sec_session_start();
+include '../incl/sess.php';
 
-// Check login and permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
-    echo json_encode([
-        'status' => 'error', 
-        'message' => 'Unauthorized access'
-    ]);
-    exit;
+header('Content-Type: application/json');
+
+// Ensure proper access control
+if(!(login_check($mysqli) == true && 
+     ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
+      $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
+    echo json_encode(['status' => 'error', 'message' => 'Access denied']);
+    exit();
 }
 
 // Validate input

@@ -1,17 +1,17 @@
 <?php
-header('Content-Type: application/json');
-
 include '../../OXEXfolder/config.php';
 include '../../OXEXfolder/u_functions.php';
 sec_session_start();
+include '../incl/sess.php';
 
-// Check login and permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
-    echo json_encode([
-        'status' => 'error', 
-        'message' => 'Unauthorized access'
-    ]);
-    exit;
+header('Content-Type: application/json');
+
+// Ensure proper access control
+if(!(login_check($mysqli) == true && 
+     ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
+      $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
+    echo json_encode(['status' => 'error', 'message' => 'Access denied']);
+    exit();
 }
 
 // Get the table ID from the request
@@ -26,6 +26,8 @@ if ($table_id <= 0) {
 }
 
 try {
+    error_log("get_sections.php: table_id = $table_id");
+    
     // Get all sections and mark if they're used with this table
     $query = "
         SELECT 
@@ -41,14 +43,19 @@ try {
             fs.section_order ASC
     ";
     
+    error_log("get_sections.php: executing query");
+    
     $stmt = $mysqli->prepare($query);
     $stmt->bind_param("i", $table_id);
     $stmt->execute();
     $result = $stmt->get_result();
     $sections = [];
     
+    error_log("get_sections.php: result rows = " . ($result ? $result->num_rows : 'null'));
+    
     if ($result && $result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
+            error_log("get_sections.php: found section - " . json_encode($row));
             $sections[] = [
                 'section_id' => (int)$row['section_id'],
                 'section_name' => $row['section_name'],
@@ -60,6 +67,7 @@ try {
         $result->free();
     }
     
+    error_log("get_sections.php: total sections found = " . count($sections));
     $stmt->close();
     
     echo json_encode([
