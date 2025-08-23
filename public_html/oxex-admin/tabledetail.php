@@ -728,7 +728,7 @@ $changename = htmlspecialchars($tab_name);
                   
                   // Add Manage Options button for select fields (types 0 and 1)
                   if ($field_type == 0 || $field_type == 1) {
-                    echo '<a href="javascript:;" class="btn btn-sm btn-outline-success mr-1 manage-options-btn" data-field-id="' . $field_id . '" data-field-type="' . $field_type . '" data-toggle="modal" data-target="#manageSelectionsModal">';
+                    echo '<a href="javascript:;" class="btn btn-sm btn-outline-success mr-1 manage-options-btn" data-field-id="' . $field_id . '" data-field-type="' . $field_type . '" data-toggle="modal" data-target="#manageSelectionsModal" onclick="console.log(\'DIRECT CLICK: Field ID \' + ' . $field_id . ' + \', Type \' + ' . $field_type . ');">';
                     echo '<i class="fas fa-list"></i>';
                     echo '</a>';
                   }
@@ -764,43 +764,109 @@ $changename = htmlspecialchars($tab_name);
          </div>
       </section>
    </div>
+   <!-- JavaScript will be loaded after jQuery -->
    <script type="text/javascript">
-      // Unified notification function - moved to global scope
-      function showNotification(type, message, autoClose = true) {
-          // Remove any existing notifications
-          $('.notification-toast').remove();
-          
-          // Create notification element
-          const notification = $(`
-              <div class="notification-toast alert alert-${type} alert-dismissible fade show" role="alert">
-                  ${message}
-                  <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                      <span aria-hidden="true">&times;</span>
-                  </button>
-              </div>
-          `);
-          
-          // Append to body
-          $('body').append(notification);
-          
-          // Auto close after 3 seconds if requested
-          if (autoClose) {
-              setTimeout(function() {
-                  notification.alert('close');
-              }, 3000);
-          }
-          
-          return notification;
-      }
-      
-      $(document).ready(function() {
+    $(document).ready(function() {
          console.log("Document ready executed - tabledetail.php");
+         console.log("=== BASIC TEST ===");
+         console.log("Document ready is working!");
+         console.log("jQuery is available:", typeof $ !== 'undefined');
+         console.log("jQuery version:", $.fn.jquery);
          console.log("jQuery version:", $.fn.jquery);
          console.log("Bootstrap version:", typeof $.fn.modal !== 'undefined' ? 'Available' : 'Not available');
+         
+         // Debug: Check if manage options buttons exist
+         console.log("=== DEBUGGING MANAGE OPTIONS BUTTONS ===");
+         const manageButtons = $('.manage-options-btn');
+         console.log("Number of manage options buttons found:", manageButtons.length);
+         
+         // Debug: Check if modal exists
+         console.log("=== DEBUGGING MODAL ELEMENT ===");
+         const modalElement = $('#manageSelectionsModal');
+         console.log("Modal element found:", modalElement.length);
+         if (modalElement.length > 0) {
+             console.log("Modal exists, checking attributes:");
+             console.log("  - ID:", modalElement.attr('id'));
+             console.log("  - Classes:", modalElement.attr('class'));
+             console.log("  - Data attributes:", modalElement.data());
+         } else {
+             console.log("Modal element NOT found!");
+         }
+         
+         // Debug: Check if file is being loaded
+         console.log("=== DEBUGGING FILE LOADING ===");
+         console.log("Current file path:", window.location.pathname);
+         console.log("Current file name:", window.location.pathname.split('/').pop());
+         console.log("Document title:", document.title);
+         console.log("Script tags found:", $('script').length);
+         
+         // Debug: Check if console.log is working
+         console.log("=== TESTING CONSOLE LOGGING ===");
+         console.log("Console.log test 1");
+         console.warn("Console.warn test");
+         console.error("Console.error test");
+         
+         // Debug: Check if jQuery selectors are working
+         console.log("=== TESTING JQUERY SELECTORS ===");
+         console.log("Body element:", $('body').length);
+         console.log("All buttons:", $('button').length);
+         console.log("All links:", $('a').length);
+         console.log("All divs:", $('div').length);
+         manageButtons.each(function(index) {
+             console.log(`Button ${index}:`, {
+                 'element': this,
+                 'HTML': $(this).prop('outerHTML'),
+                 'data-field-id': $(this).data('field-id'),
+                 'data-field-type': $(this).data('field-type'),
+                 'classes': $(this).attr('class')
+             });
+         });
+         
+         // Debug: Check if event handler is bound
+         console.log("Testing event handler binding...");
+         
+         // Debug: Test manual click trigger
+         setTimeout(function() {
+             console.log("=== TESTING MANUAL CLICK TRIGGER ===");
+             const firstButton = $('.manage-options-btn').first();
+             if (firstButton.length > 0) {
+                 console.log("Found first button, attempting to trigger click...");
+                 firstButton.trigger('click');
+             } else {
+                 console.log("No manage options buttons found for testing");
+             }
+         }, 2000);
+         
+         // Debug: Test modal event binding
+         setTimeout(function() {
+             console.log("=== TESTING MODAL EVENT BINDING ===");
+             console.log("Modal element:", $('#manageSelectionsModal'));
+             console.log("Modal event handlers:", $('#manageSelectionsModal').data('events'));
+             
+             // Try to manually trigger the modal event
+             try {
+                 $('#manageSelectionsModal').trigger('shown.bs.modal');
+                 console.log("Modal event manually triggered");
+             } catch (error) {
+                 console.error("Error triggering modal event:", error);
+             }
+         }, 3000);
          
          // Test modal functionality
          console.log("Testing modal elements:");
          console.log("manageSectionsModal element:", $('#manageSectionsModal').length);
+         
+         // Debug: Check for JavaScript errors
+         console.log("=== CHECKING FOR JAVASCRIPT ERRORS ===");
+         window.addEventListener('error', function(e) {
+             console.error("JavaScript error detected:", e.error);
+             console.error("Error details:", {
+                 message: e.message,
+                 filename: e.filename,
+                 lineno: e.lineno,
+                 colno: e.colno
+             });
+         });
          console.log("manageSectionsModal HTML:", $('#manageSectionsModal').html());
          
          // Check if modal exists in body
@@ -865,6 +931,110 @@ $changename = htmlspecialchars($tab_name);
 
          // Initialize empty section placeholders
          refreshEmptySections();
+         
+         // Handle modal shown event for manage selections
+         console.log('=== BINDING MODAL EVENT HANDLER ===');
+         console.log('Modal element exists:', $('#manageSelectionsModal').length);
+         console.log('Modal HTML:', $('#manageSelectionsModal').html());
+         
+         // Test if the modal element is actually found
+         const testModal = $('#manageSelectionsModal');
+         console.log('Test modal variable:', testModal);
+         console.log('Test modal length:', testModal.length);
+         console.log('Test modal HTML:', testModal.html());
+         
+         // Try to bind the event handler
+         try {
+             console.log('Attempting to bind modal event handler...');
+             testModal.on('shown.bs.modal', function() {
+                 console.log('=== MANAGE SELECTIONS MODAL SHOWN ===');
+                 console.log('Modal event triggered!');
+                 console.log('Modal element:', this);
+                 console.log('Modal HTML:', $(this).html());
+                 
+                 // Get the field data from the button that was clicked
+                 const activeButton = $('.manage-options-btn:focus');
+                 if (activeButton.length === 0) {
+                     // Try to get from the last clicked button
+                     const lastClicked = $('.manage-options-btn').last();
+                     console.log('Using last clicked button:', lastClicked);
+                     
+                     const fieldId = lastClicked.data('field-id');
+                     const fieldType = lastClicked.data('field-type');
+                     const fieldName = lastClicked.closest('.card-body').find('.field-name-text').text().trim();
+                     
+                     console.log('Modal shown - Field data:', { fieldId, fieldType, fieldName });
+                     
+                     // Set data on modal
+                     $('#manageSelectionsModal')
+                         .data('field-id', fieldId)
+                         .data('field-name', fieldName)
+                         .data('field-type', fieldType);
+                     
+                     // Set modal title
+                     $('#manageSelectionsModalLabel').text(`Manage Options for ${fieldName}`);
+                     
+                     // Clear existing selections
+                     $('#currentSelectionsList').empty();
+                     
+                     // Show loading state
+                     $('#currentSelectionsList').html('<li class="list-group-item text-center"><i class="fa fa-spinner fa-spin"></i> Loading options...</li>');
+                     
+                     // Load field options via AJAX
+                     const ajaxUrl = 'ajax/get_field_options.php';
+                     console.log('Loading options from:', ajaxUrl);
+                     
+                     $.ajax({
+                         url: ajaxUrl,
+                         type: 'POST',
+                         data: { field_id: fieldId },
+                         dataType: 'json',
+                         success: function(response) {
+                             console.log('AJAX response:', response);
+                             
+                             // Clear loading indicator
+                             $('#currentSelectionsList').empty();
+                             
+                             if (response.status === 'success') {
+                                 const options = response.options ? response.options.split('|') : [];
+                                 
+                                 if (options.length > 0) {
+                                     options.forEach(function(option, index) {
+                                         if (option.trim() !== '') {
+                                             const optionItem = `
+                                                 <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
+                                                     <span class="option-text">${option}</span>
+                                                     <div class="btn-group btn-group-sm">
+                                                         <button type="button" class="btn btn-outline-info edit-option-btn">
+                                                             <i class="fas fa-pencil-alt"></i>
+                                                         </button>
+                                                         <button type="button" class="btn btn-outline-danger delete-option-btn">
+                                                             <i class="fas fa-trash"></i>
+                                                         </button>
+                                                     </div>
+                                                 </li>
+                                             `;
+                                             $('#currentSelectionsList').append(optionItem);
+                                         }
+                                     });
+                                 } else {
+                                     $('#currentSelectionsList').html('<li class="list-group-item text-center text-muted">No options available</li>');
+                                 }
+                             } else {
+                                 $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error: ${response.message}</li>`);
+                             }
+                         },
+                         error: function(xhr, status, error) {
+                             console.error('AJAX error:', error);
+                             $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error loading options: ${error}</li>`);
+                         }
+                     });
+                 }
+             });
+             console.log('Modal event handler bound successfully!');
+         } catch (error) {
+             console.error('Error binding modal event handler:', error);
+         }
 
          // Add a handler for the edit field button click
          $(document).on('click', '.edit-field-btn', function(e) {
@@ -1714,15 +1884,22 @@ $changename = htmlspecialchars($tab_name);
 
         // Handle the manage options button click
         $(document).on('click', '.manage-options-btn', function(e) {
-            e.preventDefault();
-            console.log('Manage options clicked');
+            console.log('=== MANAGE OPTIONS BUTTON CLICKED ===');
+            console.log('Event object:', e);
+            console.log('This element:', this);
+            console.log('Element HTML:', $(this).prop('outerHTML'));
+            
+            // Don't prevent default - let Bootstrap handle the modal opening
+            // e.preventDefault();
             
             const fieldId = $(this).data('field-id');
             const fieldType = $(this).data('field-type');
             const fieldName = $(this).closest('.card-body').find('.field-name-text').text().trim();
             
-            // Alert debug info
-            console.log('Field ID:', fieldId, 'Field Type:', fieldType, 'Field Name:', fieldName);
+            console.log('Step 1 - Data extracted:');
+            console.log('  - Field ID:', fieldId);
+            console.log('  - Field Type:', fieldType);
+            console.log('  - Field Name:', fieldName);
             
             // Set data on modal
             $('#manageSelectionsModal')
@@ -1730,38 +1907,64 @@ $changename = htmlspecialchars($tab_name);
                 .data('field-name', fieldName)
                 .data('field-type', fieldType);
             
+            console.log('Step 2 - Modal data set:', {
+                'field-id': $('#manageSelectionsModal').data('field-id'),
+                'field-name': $('#manageSelectionsModal').data('field-name'),
+                'field-type': $('#manageSelectionsModal').data('field-type')
+            });
+            
             // Set modal title
             $('#manageSelectionsModalLabel').text(`Manage Options for ${fieldName}`);
+            console.log('Step 3 - Modal title set to:', `Manage Options for ${fieldName}`);
             
             // Clear existing selections
             $('#currentSelectionsList').empty();
+            console.log('Step 4 - Cleared existing selections list');
              
-             // Show loading state
+            // Show loading state
             $('#currentSelectionsList').html('<li class="list-group-item text-center"><i class="fa fa-spinner fa-spin"></i> Loading options...</li>');
+            console.log('Step 5 - Added loading indicator to list');
              
             // Load field options via AJAX
-             $.ajax({
-                url: 'ajax/get_field_options.php',
-                 type: 'POST',
+            const ajaxUrl = 'ajax/get_field_options.php';
+            console.log('Step 6 - AJAX URL:', ajaxUrl);
+            console.log('Step 7 - AJAX data being sent:', { field_id: fieldId });
+            
+            console.log('Step 8 - Starting AJAX request...');
+            $.ajax({
+                url: ajaxUrl,
+                type: 'POST',
                 data: {
                     field_id: fieldId
                 },
-                 dataType: 'json',
-                 success: function(response) {
-                    console.log('Options response:', response);
+                dataType: 'json',
+                beforeSend: function() {
+                    console.log('Step 9 - AJAX beforeSend triggered');
+                },
+                success: function(response) {
+                    console.log('Step 10 - AJAX success callback triggered');
+                    console.log('  - Full response:', response);
+                    console.log('  - Response status:', response.status);
+                    console.log('  - Response options:', response.options);
+                    console.log('  - Response count:', response.count);
                     
                     // Clear loading indicator
                     $('#currentSelectionsList').empty();
+                    console.log('Step 11 - Cleared loading indicator');
                     
                     if (response.status === 'success') {
+                        console.log('Step 12 - Response status is success, parsing options...');
                         // Parse options 
                         const options = response.options ? response.options.split('|') : [];
+                        console.log('  - Parsed options array:', options);
+                        console.log('  - Options length:', options.length);
                         
                         if (options.length > 0) {
-                            console.log('Found options:', options);
+                            console.log('Step 13 - Adding options to list...');
                             // Add options to list
                             options.forEach(function(option, index) {
                                 if (option.trim() !== '') {
+                                    console.log(`  - Adding option ${index}: "${option}"`);
                                     const optionItem = `
                                         <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
                                             <span class="option-text">${option}</span>
@@ -1778,29 +1981,42 @@ $changename = htmlspecialchars($tab_name);
                                     $('#currentSelectionsList').append(optionItem);
                                 }
                             });
+                            console.log('Step 14 - All options added to list');
                         } else {
-                            console.log('No options found');
+                            console.log('Step 13 - No options found, showing "No options" message');
                             $('#currentSelectionsList').html('<li class="list-group-item text-center text-muted">No options available</li>');
                         }
                     } else {
+                        console.log('Step 12 - Response status is NOT success');
+                        console.log('  - Response message:', response.message);
+                        console.log('  - Response redirect:', response.redirect);
+                        
                         // Check if redirect is needed for database update
                         if (response.redirect) {
+                            console.log('Step 13a - Redirect needed, showing alert and redirecting');
                             alert('Database update needed. Please run the database update script first.');
-                            // Use direct redirect instead of showNotification
                             window.location.href = 'db_update.php';
-                             } else {
-                                 // Show error message
+                        } else {
+                            console.log('Step 13b - No redirect, showing error notification');
                             showNotification('danger', 'Error updating options: ' + response.message);
                         }
-                     }
-                 },
-                 error: function(xhr, status, error) {
-                    console.error('Error loading options:', error);
-                    console.error('Response text:', xhr.responseText);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.log('Step 10 - AJAX error callback triggered');
+                    console.log('  - XHR object:', xhr);
+                    console.log('  - Status:', status);
+                    console.log('  - Error:', error);
+                    console.log('  - Response text:', xhr.responseText);
+                    console.log('  - Response status code:', xhr.status);
+                    console.log('  - Response headers:', xhr.getAllResponseHeaders());
+                    
                     $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error loading options: ${error}</li>`);
-                 }
-             });
-         });
+                    console.log('Step 11 - Error message displayed in list');
+                }
+            });
+            console.log('Step 9 - AJAX request sent, waiting for response...');
+        });
 
         // Handle adding new options
         $('#addSelectionBtn').on('click', function() {
@@ -2811,6 +3027,257 @@ $changename = htmlspecialchars($tab_name);
     </script>
     
     <?php include 'incl/adminjs.php' ?>
+    
+    <!-- MOVE THE EXISTING JAVASCRIPT BLOCK HERE AFTER JQUERY IS LOADED -->
+    
+    <!-- Original JavaScript code moved here after jQuery is loaded -->
+    <script type="text/javascript">
+    $(document).ready(function() {
+         console.log("Document ready executed - tabledetail.php");
+         console.log("=== BASIC TEST ===");
+         console.log("Document ready is working!");
+         console.log("jQuery is available:", typeof $ !== 'undefined');
+         console.log("jQuery version:", $.fn.jquery);
+         console.log("Bootstrap version:", typeof $.fn.modal !== 'undefined' ? 'Available' : 'Not available');
+         
+         // Debug: Check if manage options buttons exist
+         console.log("=== DEBUGGING MANAGE OPTIONS BUTTONS ===");
+         const manageButtons = $('.manage-options-btn');
+         console.log("Number of manage options buttons found:", manageButtons.length);
+         
+         // Debug: Check if modal exists
+         console.log("=== DEBUGGING MODAL ELEMENT ===");
+         const modalElement = $('#manageSelectionsModal');
+         console.log("Modal element found:", modalElement.length);
+         if (modalElement.length > 0) {
+             console.log("Modal exists, checking attributes:");
+             console.log("  - ID:", modalElement.attr('id'));
+             console.log("  - Classes:", modalElement.attr('class'));
+             console.log("  - Data attributes:", modalElement.data());
+         } else {
+             console.log("Modal element NOT found!");
+         }
+         
+         // Handle the manage options button click
+         $(document).on('click', '.manage-options-btn', function(e) {
+             console.log('=== MANAGE OPTIONS BUTTON CLICKED ===');
+             
+             const fieldId = $(this).data('field-id');
+             const fieldType = $(this).data('field-type');
+             const fieldName = $(this).closest('.card-body').find('.field-name-text').text().trim();
+             
+             console.log('Field data:', { fieldId, fieldType, fieldName });
+             
+             // Set data on modal
+             $('#manageSelectionsModal')
+                 .data('field-id', fieldId)
+                 .data('field-name', fieldName)
+                 .data('field-type', fieldType);
+             
+             // Set modal title
+             $('#manageSelectionsModalLabel').text(`Manage Options for ${fieldName}`);
+             
+             // Clear existing selections
+             $('#currentSelectionsList').empty();
+             
+             // Show loading state
+             $('#currentSelectionsList').html('<li class="list-group-item text-center"><i class="fa fa-spinner fa-spin"></i> Loading options...</li>');
+             
+             // Load field options via AJAX
+             const ajaxUrl = 'ajax/get_field_options.php';
+             console.log('Loading options from:', ajaxUrl);
+             
+             $.ajax({
+                 url: ajaxUrl,
+                 type: 'POST',
+                 data: { field_id: fieldId },
+                 dataType: 'json',
+                 success: function(response) {
+                     console.log('AJAX response:', response);
+                     
+                     // Clear loading indicator
+                     $('#currentSelectionsList').empty();
+                     
+                     if (response.status === 'success') {
+                         const options = response.options ? response.options.split('|') : [];
+                         
+                         if (options.length > 0) {
+                             options.forEach(function(option, index) {
+                                 if (option.trim() !== '') {
+                                     const optionItem = `
+                                         <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
+                                             <span class="option-text">${option}</span>
+                                             <div class="btn-group btn-group-sm">
+                                                 <button type="button" class="btn btn-outline-info edit-option-btn">
+                                                     <i class="fas fa-pencil-alt"></i>
+                                                 </button>
+                                                 <button type="button" class="btn btn-outline-danger delete-option-btn">
+                                                     <i class="fas fa-trash"></i>
+                                                 </button>
+                                             </div>
+                                         </li>
+                                     `;
+                                     $('#currentSelectionsList').append(optionItem);
+                                 }
+                             });
+                         } else {
+                             $('#currentSelectionsList').html('<li class="list-group-item text-center text-muted">No options available</li>');
+                         }
+                     } else {
+                         $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error: ${response.message}</li>`);
+                     }
+                 },
+                 error: function(xhr, status, error) {
+                     console.error('AJAX error:', error);
+                     $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error loading options: ${error}</li>`);
+                 }
+             });
+         });
+    });
+    </script>
+    
+    <!-- Essential JavaScript functions that depend on jQuery -->
+    <script>
+    // Test that jQuery is working
+    $(document).ready(function() {
+        console.log('=== JQUERY TEST ===');
+        console.log('jQuery is available:', typeof $ !== 'undefined');
+        console.log('jQuery version:', $.fn.jquery);
+        console.log('Document ready executed successfully');
+        console.log('=== END JQUERY TEST ===');
+    });
+    
+    // Unified notification function
+    function showNotification(type, message, autoClose = true) {
+        // Remove any existing notifications
+        $('.notification-toast').remove();
+        
+        // Create notification element
+        const notification = $(`
+            <div class="notification-toast alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+        `);
+        
+        // Append to body
+        $('body').append(notification);
+        
+        // Auto close after 3 seconds if requested
+        if (autoClose) {
+            setTimeout(function() {
+                notification.alert('close');
+            }, 3000);
+        }
+        
+        return notification;
+    }
+    
+    // Handle manage options button click
+    $(document).on('click', '.manage-options-btn', function(e) {
+        console.log('=== MANAGE OPTIONS BUTTON CLICKED ===');
+        console.log('Event object:', e);
+        console.log('This element:', this);
+        console.log('Element HTML:', $(this).prop('outerHTML'));
+        
+        const fieldId = $(this).data('field-id');
+        const fieldType = $(this).data('field-type');
+        const fieldName = $(this).closest('.card-body').find('.field-name-text').text().trim();
+        
+        console.log('Field data:', { fieldId, fieldType, fieldName });
+        
+        // Set data on modal
+        $('#manageSelectionsModal')
+            .data('field-id', fieldId)
+            .data('field-name', fieldName)
+            .data('field-type', fieldType);
+        
+        // Set modal title
+        $('#manageSelectionsModalLabel').text(`Manage Options for ${fieldName}`);
+        
+        // Clear existing selections
+        $('#currentSelectionsList').empty();
+        
+        // Show loading state
+        $('#currentSelectionsList').html('<li class="list-group-item text-center"><i class="fa fa-spinner fa-spin"></i> Loading options...</li>');
+        
+        // Load field options via AJAX
+        const ajaxUrl = 'ajax/get_field_options.php';
+        console.log('Loading options from:', ajaxUrl);
+        console.log('AJAX data being sent:', { field_id: fieldId });
+        
+        console.log('Starting AJAX request...');
+        $.ajax({
+            url: ajaxUrl,
+            type: 'POST',
+            data: { field_id: fieldId },
+            dataType: 'json',
+            beforeSend: function() {
+                console.log('AJAX beforeSend triggered');
+            },
+            success: function(response) {
+                console.log('AJAX success callback triggered');
+                console.log('Full response:', response);
+                console.log('Response status:', response.status);
+                console.log('Response options:', response.options);
+                
+                // Clear loading indicator
+                $('#currentSelectionsList').empty();
+                
+                if (response.status === 'success') {
+                    const options = response.options ? response.options.split('|') : [];
+                    console.log('Parsed options array:', options);
+                    console.log('Options length:', options.length);
+                    
+                    if (options.length > 0) {
+                        options.forEach(function(option, index) {
+                            if (option.trim() !== '') {
+                                console.log(`Adding option ${index}: "${option}"`);
+                                const optionItem = `
+                                    <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
+                                        <span class="option-text">${option}</span>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-info edit-option-btn">
+                                                <i class="fas fa-pencil-alt"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-outline-danger delete-option-btn">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </li>
+                                `;
+                                $('#currentSelectionsList').append(optionItem);
+                            }
+                        });
+                        console.log('All options added to list');
+                    } else {
+                        console.log('No options found, showing "No options" message');
+                        $('#currentSelectionsList').html('<li class="list-group-item text-center text-muted">No options available</li>');
+                    }
+                } else {
+                    console.log('Response status is NOT success');
+                    console.log('Response message:', response.message);
+                    $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error: ${response.message}</li>`);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.log('AJAX error callback triggered');
+                console.log('XHR object:', xhr);
+                console.log('Status:', status);
+                console.log('Error:', error);
+                console.log('Response text:', xhr.responseText);
+                console.log('Response status code:', xhr.status);
+                console.log('Response headers:', xhr.getAllResponseHeaders());
+                
+                $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error loading options: ${error}</li>`);
+                console.log('Error message displayed in list');
+            }
+        });
+        console.log('AJAX request sent, waiting for response...');
+    });
+    </script>
     
     <!-- Additional scripts that depend on jQuery -->
     <script src="https://code.jquery.com/ui/1.13.1/jquery-ui.min.js" integrity="sha256-eTyxS0rkjpLEo16uXTS0uVCS4815lc40K2iVpWDvdSY=" crossorigin="anonymous"></script>
