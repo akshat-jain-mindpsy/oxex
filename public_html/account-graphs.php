@@ -793,7 +793,7 @@ while ($tableset->fetch()){
                         timeout: 10000, // 10 second timeout
                         cache: false,
                         success: function(response) {
-                            console.log('Fields response:', response);
+                            // console.log('Fields response:', response);
                             
                             let fields = [];
                             let fieldsAdded = 0;
@@ -835,7 +835,7 @@ while ($tableset->fetch()){
                             }
                         },
                         error: function(xhr, status, error) {
-                            console.error('AJAX Error:', xhr.responseText);
+                            // console.error('AJAX Error:', xhr.responseText);
                             let errorMessage = 'Unknown error occurred';
                             
                             if (status === 'timeout') {
@@ -1161,7 +1161,7 @@ while ($tableset->fetch()){
                             // If it's not valid JSON, use the xhr.responseText as is
                             if (xhr.responseText) {
                                 errorMessage = 'Server error';
-                                console.error('AJAX Error:', xhr.responseText);
+                                // console.error('AJAX Error:', xhr.responseText);
                             }
                         }
                         

@@ -817,7 +817,7 @@ $changename = htmlspecialchars($tab_name);
                   
                   // Add Manage Options button for select fields (types 0 and 1)
                   if ($field_type == 0 || $field_type == 1) {
-                    echo '<a href="javascript:;" class="btn btn-sm btn-outline-success mr-1 manage-options-btn" data-field-id="' . $field_id . '" data-field-type="' . $field_type . '" data-toggle="modal" data-target="#manageSelectionsModal" onclick="console.log(\'DIRECT CLICK: Field ID \' + ' . $field_id . ' + \', Type \' + ' . $field_type . ');">';
+                    echo '<a href="javascript:;" class="btn btn-sm btn-outline-success mr-1 manage-options-btn" data-field-id="' . $field_id . '" data-field-type="' . $field_type . '" data-toggle="modal" data-target="#manageSelectionsModal">';
                     echo '<i class="fas fa-list"></i>';
                     echo '</a>';
                   }
@@ -988,14 +988,10 @@ $changename = htmlspecialchars($tab_name);
          
                   // Handle modal shown event for manage selections
          $('#manageSelectionsModal').on('shown.bs.modal', function() {
-             console.log('=== MANAGE SELECTIONS MODAL SHOWN ===');
-             
              // Get the field data from the modal data attributes
              const fieldId = $(this).data('field-id');
              const fieldType = $(this).data('field-type');
              const fieldName = $(this).data('field-name');
-             
-             console.log('Modal shown - Field data:', { fieldId, fieldType, fieldName });
              
              if (fieldId && fieldName) {
                  // Set modal title
@@ -1009,7 +1005,6 @@ $changename = htmlspecialchars($tab_name);
                  
                  // Load field options via AJAX
                  const ajaxUrl = 'ajax/get_field_options.php';
-                 console.log('Loading options from:', ajaxUrl);
                  
                  $.ajax({
                      url: ajaxUrl,
@@ -1017,8 +1012,6 @@ $changename = htmlspecialchars($tab_name);
                      data: { field_id: fieldId },
                      dataType: 'json',
                      success: function(response) {
-                         console.log('AJAX response:', response);
-                         
                          // Clear loading indicator
                          $('#currentSelectionsList').empty();
                          
@@ -1055,7 +1048,6 @@ $changename = htmlspecialchars($tab_name);
                          }
                      },
                      error: function(xhr, status, error) {
-                         console.error('AJAX error:', error);
                          $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error loading options: ${error}</li>`);
                      }
                  });
@@ -1085,8 +1077,6 @@ $changename = htmlspecialchars($tab_name);
             const fieldId = $(this).data('field-id');
             const tableId = <?php echo $which; ?>;
             
-            console.log('Edit button clicked for field ID:', fieldId);
-            
             // Show loading state in the modal
             $('#editFieldModal .modal-body').append('<div class="text-center field-loading"><i class="fa fa-spinner fa-spin"></i> Loading field data...</div>');
             
@@ -1103,8 +1093,6 @@ $changename = htmlspecialchars($tab_name);
                },
                dataType: 'json',
                success: function(response) {
-                  console.log('Field data loaded:', response);
-                  
                   // Remove loading indicator
                   $('#editFieldModal .field-loading').remove();
                   
@@ -1134,8 +1122,6 @@ $changename = htmlspecialchars($tab_name);
                error: function(xhr, status, error) {
                   // Remove loading indicator
                   $('#editFieldModal .field-loading').remove();
-                  
-                  console.error('AJAX Error:', status, error);
                   
                   // Show error in modal
                   $('#editFieldModal .modal-body').prepend(
@@ -1208,24 +1194,19 @@ $changename = htmlspecialchars($tab_name);
                  },
                  dataType: 'json',
                  success: function(response) {
-                     console.log('Sections response:', response);
                      const $dropdown = $('#edit_field_section');
                      $dropdown.empty();
                      $dropdown.append('<option value="">No Section (Unsectioned)</option>');
                      
                      if (response.status === 'success' && response.sections) {
-                         console.log('Number of sections found:', response.sections.length);
                          response.sections.forEach(function(section) {
                              const selected = (currentSectionId && section.section_id == currentSectionId) ? 'selected' : '';
                              $dropdown.append(`<option value="${section.section_id}" ${selected}>${section.section_name}</option>`);
                          });
-                     } else {
-                         console.log('No sections found or error:', response.message);
                      }
                  },
                  error: function(xhr, status, error) {
-                     console.error('Error loading sections for dropdown:', {xhr, status, error});
-                     console.error('Response text:', xhr.responseText);
+                     // Handle error silently
                  }
              });
          }
@@ -1500,54 +1481,7 @@ $changename = htmlspecialchars($tab_name);
 
          
          
-         // Test if search input responds to events
-         $(document).on('click', '#newSelectionInput', function() {
-             console.log('🔍 SEARCH: Input field clicked');
-         });
-         
-         // Test every keystroke
-         $(document).on('keydown', '#newSelectionInput', function(e) {
-             console.log('🔍 SEARCH: Keydown event - Key:', e.key, 'Code:', e.keyCode, 'Value:', $(this).val());
-         });
-         
-         // Test every keyup event
-         $(document).on('keyup', '#newSelectionInput', function(e) {
-             console.log('🔍 SEARCH: Keyup event - Key:', e.key, 'Code:', e.keyCode, 'Value:', $(this).val());
-         });
-         
-         // Test if get_option_suggestions.php is accessible
-         $(document).on('click', '#newSelectionInput', function() {
-             console.log('🔍 SEARCH: Testing if suggestions file is accessible...');
-             
-             // Test 1: Simple GET request to see if file exists
-             $.get('ajax/get_option_suggestions.php')
-                 .done(function(response) {
-                     console.log('🔍 SEARCH: File exists, GET response:', response);
-                 })
-                 .fail(function(xhr, status, error) {
-                     console.error('❌ SEARCH: File not accessible via GET:', { status, error, responseText: xhr.responseText });
-                 });
-             
-             // Test 2: POST request with proper data
-             $.ajax({
-                 url: 'ajax/get_option_suggestions.php',
-                 method: 'POST',
-                 data: { stid: 2, term: 'test' },
-                 dataType: 'json',
-                 success: function(response) {
-                     console.log('🔍 SEARCH: Test POST request successful:', response);
-                 },
-                 error: function(xhr, status, error) {
-                     console.error('❌ SEARCH: Test POST request failed:', { 
-                         status: xhr.status, 
-                         statusText: xhr.statusText,
-                         error: error, 
-                         responseText: xhr.responseText,
-                         readyState: xhr.readyState
-                     });
-                 }
-             });
-         });
+
          
          // Handle input for suggestions with improved search
          $(document).on('input', '#newSelectionInput', function() {
@@ -1820,12 +1754,7 @@ $changename = htmlspecialchars($tab_name);
             const sectionId = fieldItem.data('section-id') || null;
             const tableId = <?php echo $which; ?>; // Use PHP to get table ID
             
-            // Log all relevant information for debugging
-            console.log('Section dropdown clicked');
-            console.log('Field item:', fieldItem);
-            console.log('Field ID:', fieldId);
-            console.log('Current section ID:', sectionId);
-            console.log('Table ID:', tableId);
+
             
             // Clear existing section options but keep the header and remove option
             dropdown.find('.section-option, .section-loading-placeholder').remove();
@@ -1839,24 +1768,17 @@ $changename = htmlspecialchars($tab_name);
                   table_id: tableId
                  },
                dataType: 'json',
-                 beforeSend: function() {
-                  console.log('Sending request to get_sections.php with table_id:', tableId);
-                 },
+
                success: function(response) {
-                  console.log('Sections response:', response);
                   // Remove loading placeholder
                   dropdown.find('.section-loading-placeholder').remove();
                   
                   if (response.status === 'success') {
-                     // Count sections returned
-                     console.log('Number of sections returned:', response.sections.length);
-                     
                      // Add sections to dropdown
                      let hasOptions = false;
                      $.each(response.sections, function(i, section) {
                         // Skip current section
                         if (sectionId !== null && section.section_id == sectionId) {
-                           console.log('Skipping current section:', section.section_id, section.section_name);
                            return true; // Skip to next iteration
                         }
                         
@@ -1864,25 +1786,19 @@ $changename = htmlspecialchars($tab_name);
                         const item = $('<a class="dropdown-item section-option" href="javascript:void(0)" data-section-id="' + section.section_id + '" data-field-id="' + fieldId + '" data-table-id="' + tableId + '">' + 
                                       section.section_name + '</a>');
                         
-                        console.log('Adding section to dropdown:', section.section_id, section.section_name);
-                        
                         // Insert before the divider
                         dropdown.find('.dropdown-divider').before(item);
                      });
                      
                      if (!hasOptions) {
-                        console.log('No sections available for dropdown');
                         dropdown.find('.dropdown-divider').before('<span class="dropdown-item disabled">No other sections available</span>');
                      }
                      } else {
                      // Show error message in dropdown
-                     console.error('Error in sections response:', response.message);
                      dropdown.find('.dropdown-divider').before('<span class="dropdown-item disabled">Error: ' + response.message + '</span>');
                   }
                },
                error: function(xhr, status, error) {
-                  console.error('Error loading sections:', error);
-                  console.error('Response text:', xhr.responseText);
                   dropdown.find('.section-loading-placeholder').remove();
                   dropdown.find('.dropdown-divider').before('<span class="dropdown-item disabled">Error loading sections</span>');
                }
@@ -1944,11 +1860,8 @@ $changename = htmlspecialchars($tab_name);
 
          // Function to assign field to section
          function assignFieldToSection(fieldId, tableId, sectionId) {
-            console.log('assignFieldToSection called with fieldId:', fieldId, 'tableId:', tableId, 'sectionId:', sectionId);
-            
             // Validate inputs
             if (!fieldId || !tableId || !sectionId) {
-               console.error('Invalid parameters for assignFieldToSection');
                  return;
              }
              
@@ -1966,7 +1879,6 @@ $changename = htmlspecialchars($tab_name);
                          },
                  dataType: 'json',
                  success: function(response) {
-                  console.log('Assignment response:', response);
                   fieldItem.css('opacity', '1');
                   
                   if (response.status === 'success') {
@@ -1985,7 +1897,6 @@ $changename = htmlspecialchars($tab_name);
                      }
                  },
                  error: function(xhr, status, error) {
-                  console.error('AJAX error:', xhr.responseText);
                   fieldItem.css('opacity', '1');
                   fieldItem.css('background-color', '#f8d7da');
                   alert('Network error when assigning field to section. Check console for details.');
@@ -1998,11 +1909,8 @@ $changename = htmlspecialchars($tab_name);
 
          // Function to remove field from section
          function removeFieldFromSection(fieldId, tableId) {
-            console.log('removeFieldFromSection called with fieldId:', fieldId, 'tableId:', tableId);
-            
             // Validate inputs
             if (!fieldId || !tableId) {
-               console.error('Invalid parameters for removeFieldFromSection');
                  return;
              }
              
@@ -2019,7 +1927,6 @@ $changename = htmlspecialchars($tab_name);
                          },
                          dataType: 'json',
                          success: function(response) {
-                  console.log('Remove response:', response);
                   fieldItem.css('opacity', '1');
                   
                   if (response.status === 'success' || response.status === 'warning') {
@@ -2038,7 +1945,6 @@ $changename = htmlspecialchars($tab_name);
                              }
                          },
                          error: function(xhr, status, error) {
-                  console.error('AJAX error:', xhr.responseText);
                   fieldItem.css('opacity', '1');
                   fieldItem.css('background-color', '#f8d7da');
                   alert('Network error when removing field from section. Check console for details.');
@@ -2052,22 +1958,9 @@ $changename = htmlspecialchars($tab_name);
 
         // Handle the manage options button click
         $(document).on('click', '.manage-options-btn', function(e) {
-            console.log('=== MANAGE OPTIONS BUTTON CLICKED ===');
-            console.log('Event object:', e);
-            console.log('This element:', this);
-            console.log('Element HTML:', $(this).prop('outerHTML'));
-            
-            // Don't prevent default - let Bootstrap handle the modal opening
-            // e.preventDefault();
-            
             const fieldId = $(this).data('field-id');
             const fieldType = $(this).data('field-type');
             const fieldName = $(this).closest('.card-body').find('.field-name-text').text().trim();
-            
-            console.log('Step 1 - Data extracted:');
-            console.log('  - Field ID:', fieldId);
-            console.log('  - Field Type:', fieldType);
-            console.log('  - Field Name:', fieldName);
             
             // Set data on modal
             $('#manageSelectionsModal')
@@ -2075,30 +1968,18 @@ $changename = htmlspecialchars($tab_name);
                 .data('field-name', fieldName)
                 .data('field-type', fieldType);
             
-            console.log('Step 2 - Modal data set:', {
-                'field-id': $('#manageSelectionsModal').data('field-id'),
-                'field-name': $('#manageSelectionsModal').data('field-name'),
-                'field-type': $('#manageSelectionsModal').data('field-type')
-            });
-            
             // Set modal title
             $('#manageSelectionsModalLabel').text(`Manage Options for ${fieldName}`);
-            console.log('Step 3 - Modal title set to:', `Manage Options for ${fieldName}`);
             
             // Clear existing selections
             $('#currentSelectionsList').empty();
-            console.log('Step 4 - Cleared existing selections list');
              
             // Show loading state
             $('#currentSelectionsList').html('<li class="list-group-item text-center"><i class="fa fa-spinner fa-spin"></i> Loading options...</li>');
-            console.log('Step 5 - Added loading indicator to list');
              
             // Load field options via AJAX
             const ajaxUrl = 'ajax/get_field_options.php';
-            console.log('Step 6 - AJAX URL:', ajaxUrl);
-            console.log('Step 7 - AJAX data being sent:', { field_id: fieldId });
             
-            console.log('Step 8 - Starting AJAX request...');
             $.ajax({
                 url: ajaxUrl,
                 type: 'POST',
@@ -2106,33 +1987,18 @@ $changename = htmlspecialchars($tab_name);
                     field_id: fieldId
                 },
                 dataType: 'json',
-                beforeSend: function() {
-                    console.log('Step 9 - AJAX beforeSend triggered');
-                },
                 success: function(response) {
-                    console.log('Step 10 - AJAX success callback triggered');
-                    console.log('  - Full response:', response);
-                    console.log('  - Response status:', response.status);
-                    console.log('  - Response options:', response.options);
-                    console.log('  - Response count:', response.count);
-                    
                     // Clear loading indicator
                     $('#currentSelectionsList').empty();
-                    console.log('Step 11 - Cleared loading indicator');
                     
                     if (response.status === 'success') {
-                        console.log('Step 12 - Response status is success, parsing options...');
                         // Parse options 
                         const options = response.options ? response.options.split('|') : [];
-                        console.log('  - Parsed options array:', options);
-                        console.log('  - Options length:', options.length);
                         
                         if (options.length > 0) {
-                            console.log('Step 13 - Adding options to list...');
                             // Add options to list
                             options.forEach(function(option, index) {
                                 if (option.trim() !== '') {
-                                    console.log(`  - Adding option ${index}: "${option}"`);
                                     const optionItem = `
                                         <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
                                             <span class="option-text">${option}</span>
@@ -2149,41 +2015,23 @@ $changename = htmlspecialchars($tab_name);
                                     $('#currentSelectionsList').append(optionItem);
                                 }
                             });
-                            console.log('Step 14 - All options added to list');
                         } else {
-                            console.log('Step 13 - No options found, showing "No options" message');
                             $('#currentSelectionsList').html('<li class="list-group-item text-center text-muted">No options available</li>');
                         }
                     } else {
-                        console.log('Step 12 - Response status is NOT success');
-                        console.log('  - Response message:', response.message);
-                        console.log('  - Response redirect:', response.redirect);
-                        
                         // Check if redirect is needed for database update
                         if (response.redirect) {
-                            console.log('Step 13a - Redirect needed, showing alert and redirecting');
                             alert('Database update needed. Please run the database update script first.');
                             window.location.href = 'db_update.php';
                         } else {
-                            console.log('Step 13b - No redirect, showing error notification');
                             showNotification('danger', 'Error updating options: ' + response.message);
                         }
                     }
                 },
                 error: function(xhr, status, error) {
-                    console.log('Step 10 - AJAX error callback triggered');
-                    console.log('  - XHR object:', xhr);
-                    console.log('  - Status:', status);
-                    console.log('  - Error:', error);
-                    console.log('  - Response text:', xhr.responseText);
-                    console.log('  - Response status code:', xhr.status);
-                    console.log('  - Response headers:', xhr.getAllResponseHeaders());
-                    
                     $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error loading options: ${error}</li>`);
-                    console.log('Step 11 - Error message displayed in list');
                 }
             });
-            console.log('Step 9 - AJAX request sent, waiting for response...');
         });
 
         // Function to update options count
@@ -2394,99 +2242,7 @@ $changename = htmlspecialchars($tab_name);
             }
         });
         
-        // Handle saving all options
-        $('#saveSelectionsBtn').on('click', function() {
-            // Get all option values
-            const options = [];
-            $('#currentSelectionsList').find('li').each(function() {
-                const optionText = $(this).find('.option-text').text().trim();
-                if (optionText !== '' && !$(this).hasClass('text-muted') && !$(this).hasClass('text-danger')) {
-                    options.push(optionText);
-                }
-            });
-            
-            if (options.length === 0) {
-                showNotification('warning', 'No options to save. Please add at least one option.');
-                return;
-            }
-            
-            const fieldId = $('#manageSelectionsModal').data('field-id');
-            const fieldType = $('#manageSelectionsModal').data('field-type');
-            
-            // Show loading state
-            const $btn = $(this);
-            const originalBtnText = $btn.html();
-            $btn.html('<i class="fa fa-spinner fa-spin"></i> Saving...').prop('disabled', true);
-            
-            // Log what we're about to save
-            console.log('Saving options:', {
-                fieldId: fieldId,
-                fieldType: fieldType,
-                options: options,
-                optionsString: options.join('|')
-            });
-            
-            // Send options to server
-            $.ajax({
-                url: 'ajax/update_field_options.php',
-                type: 'POST',
-                data: {
-                    field_id: fieldId,
-                    field_type: fieldType,
-                    options: options.join('|')
-                },
-                dataType: 'json',
-                success: function(response) {
-                    $btn.html(originalBtnText).prop('disabled', false);
-                    
-                    console.log('Save response:', response);
-                    
-                    if (response.status === 'success') {
-                        // Show success message
-                        showNotification('success', 'Options updated successfully');
-                        
-                        // Close modal
-                        $('#manageSelectionsModal').modal('hide');
-                        
-                        // Reload page after success
-                        setTimeout(function() {
-                            location.reload();
-                        }, 1000);
-                    } else {
-                        // Check if redirect is needed for database update
-                        if (response.redirect) {
-                            showNotification('warning', 'Database update needed. Redirecting...');
-                            setTimeout(() => {
-                                window.location.href = 'db_update.php';
-                            }, 2000);
-                        } else {
-                            // Show error message
-                            showNotification('danger', 'Error updating options: ' + response.message);
-                        }
-                    }
-                },
-                error: function(xhr, status, error) {
-                    $btn.html(originalBtnText).prop('disabled', false);
-                    
-                    console.error('Error saving options:', error);
-                    console.error('Response text:', xhr.responseText);
-                    console.error('Status:', status);
-                    console.error('XHR:', xhr);
-                    
-                    let errorMsg = 'Error saving options. Please try again.';
-                    try {
-                        const response = JSON.parse(xhr.responseText);
-                        if (response.message) {
-                            errorMsg = response.message;
-                        }
-                    } catch (e) {
-                        // Parsing failed, use default message
-                    }
-                    
-                    showNotification('danger', errorMsg);
-                }
-            });
-        });
+
 
         // Handle input keypress for adding options
         $('#newSelectionInput').on('keypress', function(e) {
@@ -2576,14 +2332,6 @@ $changename = htmlspecialchars($tab_name);
            // Show a loading indicator
            const loadingToast = showNotification('info', '<i class="fa fa-spinner fa-spin"></i> Updating field order...', false);
            
-           // Log the parameters for debugging
-           console.log('Saving field order with parameters:', {
-             fieldId: fieldId,
-             sectionId: sectionId,
-             tableId: tableId,
-             sectionFields: sectionFields
-           });
-           
            // Ensure sectionId is properly formatted - either a number or null
            const formattedSectionId = sectionId === 'null' ? null : parseInt(sectionId, 10);
            
@@ -2601,8 +2349,6 @@ $changename = htmlspecialchars($tab_name);
                // Remove loading indicator
                loadingToast.alert('close');
                
-               console.log('Server response:', response);
-               
                if (response.status === 'success') {
                  showNotification('success', 'Field order updated successfully', true);
                  
@@ -2610,22 +2356,11 @@ $changename = htmlspecialchars($tab_name);
                  refreshEmptySections();
                } else {
                  showNotification('danger', 'Error updating field order: ' + response.message, true);
-                 
-                 // Log more details if available
-                 if (response.debug) {
-                   console.error('Debug info:', response.debug);
-                 }
                }
              },
              error: function(xhr, status, error) {
                // Remove loading indicator
                loadingToast.alert('close');
-               
-               console.error('AJAX error:', {
-                 status: status,
-                 error: error,
-                 response: xhr.responseText
-               });
                
                try {
                  const response = JSON.parse(xhr.responseText);
@@ -2727,8 +2462,6 @@ $changename = htmlspecialchars($tab_name);
          
          // Test schema button handler
          $('#testSchemaBtn').on('click', function() {
-             console.log('Test schema button clicked');
-             
              $.ajax({
                  url: 'ajax/test_schema.php',
                  method: 'GET',
@@ -2737,8 +2470,6 @@ $changename = htmlspecialchars($tab_name);
                  },
                  dataType: 'json',
                  success: function(response) {
-                     console.log('Schema test response:', response);
-                     
                      if (response.status === 'success') {
                          const message = `Schema test results:
                          - section_id column exists: ${response.section_id_exists}
@@ -2751,7 +2482,6 @@ $changename = htmlspecialchars($tab_name);
                      }
                  },
                  error: function(xhr, status, error) {
-                     console.error('Schema test error:', {xhr, status, error});
                      alert('Schema test network error: ' + error);
                  }
              });
@@ -3527,15 +3257,8 @@ $changename = htmlspecialchars($tab_name);
 
          // Handle focus on search input to ensure proper initialization
          $(document).on('focus', '#newSelectionInput', function() {
-             console.log('🔍 SEARCH: Input field focused');
-             
              // Ensure field ID is available
              const fieldId = $('#manageSelectionsModal').data('field-id');
-             if (!fieldId) {
-                 console.warn('⚠️ SEARCH: No field ID available on focus');
-             } else {
-                 console.log('🔍 SEARCH: Field ID available on focus:', fieldId);
-             }
          });
 
          // Handle keydown for suggestions navigation
@@ -3784,6 +3507,85 @@ $changename = htmlspecialchars($tab_name);
          $('#manageSelectionsModal').on('hidden.bs.modal', function() {
              $('#newSelectionInput').val('');
              $('#suggestions-dropdown').remove();
+         });
+
+         // Handle saving all options
+         $('#saveSelectionsBtn').on('click', function() {
+             // Get all option values
+             const options = [];
+             $('#currentSelectionsList').find('li').each(function() {
+                 const optionText = $(this).find('.option-text').text().trim();
+                 if (optionText !== '' && !$(this).hasClass('text-muted') && !$(this).hasClass('text-danger')) {
+                     options.push(optionText);
+                 }
+             });
+             
+             if (options.length === 0) {
+                 showNotification('warning', 'No options to save. Please add at least one option.');
+                 return;
+             }
+             
+             const fieldId = $('#manageSelectionsModal').data('field-id');
+             const fieldType = $('#manageSelectionsModal').data('field-type');
+             
+             // Show loading state
+             const $btn = $(this);
+             const originalBtnText = $btn.html();
+             $btn.html('<i class="fa fa-spinner fa-spin"></i> Saving...').prop('disabled', true);
+             
+             // Send options to server
+             $.ajax({
+                 url: 'ajax/update_field_options.php',
+                 type: 'POST',
+                 data: {
+                     field_id: fieldId,
+                     field_type: fieldType,
+                     options: options.join('|')
+                 },
+                 dataType: 'json',
+                 success: function(response) {
+                     $btn.html(originalBtnText).prop('disabled', false);
+                     
+                     if (response.status === 'success') {
+                         // Show success message
+                         showNotification('success', 'Options updated successfully');
+                         
+                         // Close modal
+                         $('#manageSelectionsModal').modal('hide');
+                         
+                         // Reload page after success
+                         setTimeout(function() {
+                             location.reload();
+                         }, 1000);
+                     } else {
+                         // Check if redirect is needed for database update
+                         if (response.redirect) {
+                             showNotification('warning', 'Database update needed. Redirecting...');
+                             setTimeout(() => {
+                                 window.location.href = 'db_update.php';
+                             }, 2000);
+                         } else {
+                             // Show error message
+                             showNotification('danger', 'Error updating options: ' + response.message);
+                         }
+                     }
+                 },
+                 error: function(xhr, status, error) {
+                     $btn.html(originalBtnText).prop('disabled', false);
+                     
+                     let errorMsg = 'Error saving options. Please try again.';
+                     try {
+                         const response = JSON.parse(xhr.responseText);
+                         if (response.message) {
+                             errorMsg = response.message;
+                         }
+                     } catch (e) {
+                         // Parsing failed, use default message
+                     }
+                     
+                     showNotification('danger', errorMsg);
+                 }
+             });
          });
     });
     </script>
