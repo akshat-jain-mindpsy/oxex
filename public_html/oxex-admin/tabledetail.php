@@ -360,6 +360,95 @@ $changename = htmlspecialchars($tab_name);
           background-color: #28a745;
       }
       
+              /* Suggestions dropdown styling */
+        #suggestions-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 9999; /* Ensure it appears above modal */
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ced4da;
+            border-top: none;
+            border-radius: 0 0 0.375rem 0.375rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            background-color: white;
+            margin-top: -1px; /* Overlap the border */
+            display: none; /* Hidden by default */
+        }
+        
+        #suggestions-dropdown.show {
+            display: block !important;
+        }
+      
+      #suggestions-dropdown .dropdown-item {
+          padding: 0.5rem 1rem;
+          border-bottom: 1px solid #f8f9fa;
+          cursor: pointer;
+      }
+      
+      #suggestions-dropdown .dropdown-item:hover {
+          background-color: #f8f9fa;
+      }
+      
+      #suggestions-dropdown .dropdown-item:last-child {
+          border-bottom: none;
+      }
+      
+      #suggestions-dropdown .dropdown-divider {
+          margin: 0.25rem 0;
+      }
+      
+      #suggestions-dropdown .add-new-option {
+          color: #28a745;
+          font-weight: 500;
+      }
+      
+      #suggestions-dropdown .add-new-option:hover {
+          background-color: #d4edda;
+          color: #155724;
+      }
+      
+      /* Input field styling for suggestions */
+      #newSelectionInput {
+          position: relative;
+      }
+      
+      .input-group {
+          position: relative;
+      }
+      
+      /* Ensure the input group container has relative positioning for dropdown */
+      .input-group:has(#newSelectionInput) {
+          position: relative;
+      }
+      
+      /* Fallback for browsers that don't support :has() */
+      .input-group {
+          position: relative;
+      }
+      
+      /* Ensure the modal body has proper positioning context */
+      .modal-body {
+          position: relative;
+      }
+      
+      /* Invalid feedback styling */
+      .invalid-feedback {
+          display: block;
+          color: #dc3545;
+          font-size: 0.875rem;
+          margin-top: 0.25rem;
+      }
+      
+              .is-invalid {
+            border-color: #dc3545;
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+        }
+        
+
+      
       
    </style>
 </head>
@@ -767,67 +856,32 @@ $changename = htmlspecialchars($tab_name);
    <!-- JavaScript will be loaded after jQuery -->
    <script type="text/javascript">
     $(document).ready(function() {
-         console.log("Document ready executed - tabledetail.php");
-         console.log("=== BASIC TEST ===");
-         console.log("Document ready is working!");
-         console.log("jQuery is available:", typeof $ !== 'undefined');
-         console.log("jQuery version:", $.fn.jquery);
-         console.log("jQuery version:", $.fn.jquery);
-         console.log("Bootstrap version:", typeof $.fn.modal !== 'undefined' ? 'Available' : 'Not available');
+ 
          
          // Debug: Check if manage options buttons exist
-         console.log("=== DEBUGGING MANAGE OPTIONS BUTTONS ===");
          const manageButtons = $('.manage-options-btn');
-         console.log("Number of manage options buttons found:", manageButtons.length);
          
          // Debug: Check if modal exists
-         console.log("=== DEBUGGING MODAL ELEMENT ===");
          const modalElement = $('#manageSelectionsModal');
-         console.log("Modal element found:", modalElement.length);
-         if (modalElement.length > 0) {
-             console.log("Modal exists, checking attributes:");
-             console.log("  - ID:", modalElement.attr('id'));
-             console.log("  - Classes:", modalElement.attr('class'));
-             console.log("  - Data attributes:", modalElement.data());
-         } else {
-             console.log("Modal element NOT found!");
-         }
          
          // Debug: Check if file is being loaded
-         console.log("=== DEBUGGING FILE LOADING ===");
-         console.log("Current file path:", window.location.pathname);
-         console.log("Current file name:", window.location.pathname.split('/').pop());
-         console.log("Document title:", document.title);
-         console.log("Script tags found:", $('script').length);
+         
          
          // Debug: Check if console.log is working
-         console.log("=== TESTING CONSOLE LOGGING ===");
-         console.log("Console.log test 1");
-         console.warn("Console.warn test");
-         console.error("Console.error test");
+         
          
          // Debug: Check if jQuery selectors are working
-         console.log("=== TESTING JQUERY SELECTORS ===");
-         console.log("Body element:", $('body').length);
-         console.log("All buttons:", $('button').length);
-         console.log("All links:", $('a').length);
-         console.log("All divs:", $('div').length);
+         
          manageButtons.each(function(index) {
-             console.log(`Button ${index}:`, {
-                 'element': this,
-                 'HTML': $(this).prop('outerHTML'),
-                 'data-field-id': $(this).data('field-id'),
-                 'data-field-type': $(this).data('field-type'),
-                 'classes': $(this).attr('class')
-             });
+             
          });
          
          // Debug: Check if event handler is bound
-         console.log("Testing event handler binding...");
+         
          
          // Debug: Test manual click trigger
          setTimeout(function() {
-             console.log("=== TESTING MANUAL CLICK TRIGGER ===");
+              
              const firstButton = $('.manage-options-btn').first();
              if (firstButton.length > 0) {
                  console.log("Found first button, attempting to trigger click...");
@@ -932,110 +986,98 @@ $changename = htmlspecialchars($tab_name);
          // Initialize empty section placeholders
          refreshEmptySections();
          
-         // Handle modal shown event for manage selections
-         console.log('=== BINDING MODAL EVENT HANDLER ===');
-         console.log('Modal element exists:', $('#manageSelectionsModal').length);
-         console.log('Modal HTML:', $('#manageSelectionsModal').html());
-         
-         // Test if the modal element is actually found
-         const testModal = $('#manageSelectionsModal');
-         console.log('Test modal variable:', testModal);
-         console.log('Test modal length:', testModal.length);
-         console.log('Test modal HTML:', testModal.html());
-         
-         // Try to bind the event handler
-         try {
-             console.log('Attempting to bind modal event handler...');
-             testModal.on('shown.bs.modal', function() {
-                 console.log('=== MANAGE SELECTIONS MODAL SHOWN ===');
-                 console.log('Modal event triggered!');
-                 console.log('Modal element:', this);
-                 console.log('Modal HTML:', $(this).html());
+                  // Handle modal shown event for manage selections
+         $('#manageSelectionsModal').on('shown.bs.modal', function() {
+             console.log('=== MANAGE SELECTIONS MODAL SHOWN ===');
+             
+             // Get the field data from the modal data attributes
+             const fieldId = $(this).data('field-id');
+             const fieldType = $(this).data('field-type');
+             const fieldName = $(this).data('field-name');
+             
+             console.log('Modal shown - Field data:', { fieldId, fieldType, fieldName });
+             
+             if (fieldId && fieldName) {
+                 // Set modal title
+                 $('#manageSelectionsModalLabel').text(`Manage Options for ${fieldName}`);
                  
-                 // Get the field data from the button that was clicked
-                 const activeButton = $('.manage-options-btn:focus');
-                 if (activeButton.length === 0) {
-                     // Try to get from the last clicked button
-                     const lastClicked = $('.manage-options-btn').last();
-                     console.log('Using last clicked button:', lastClicked);
-                     
-                     const fieldId = lastClicked.data('field-id');
-                     const fieldType = lastClicked.data('field-type');
-                     const fieldName = lastClicked.closest('.card-body').find('.field-name-text').text().trim();
-                     
-                     console.log('Modal shown - Field data:', { fieldId, fieldType, fieldName });
-                     
-                     // Set data on modal
-                     $('#manageSelectionsModal')
-                         .data('field-id', fieldId)
-                         .data('field-name', fieldName)
-                         .data('field-type', fieldType);
-                     
-                     // Set modal title
-                     $('#manageSelectionsModalLabel').text(`Manage Options for ${fieldName}`);
-                     
-                     // Clear existing selections
-                     $('#currentSelectionsList').empty();
-                     
-                     // Show loading state
-                     $('#currentSelectionsList').html('<li class="list-group-item text-center"><i class="fa fa-spinner fa-spin"></i> Loading options...</li>');
-                     
-                     // Load field options via AJAX
-                     const ajaxUrl = 'ajax/get_field_options.php';
-                     console.log('Loading options from:', ajaxUrl);
-                     
-                     $.ajax({
-                         url: ajaxUrl,
-                         type: 'POST',
-                         data: { field_id: fieldId },
-                         dataType: 'json',
-                         success: function(response) {
-                             console.log('AJAX response:', response);
+                 // Clear existing selections
+                 $('#currentSelectionsList').empty();
+                 
+                 // Show loading state
+                 $('#currentSelectionsList').html('<li class="list-group-item text-center"><i class="fa fa-spinner fa-spin"></i> Loading options...</li>');
+                 
+                 // Load field options via AJAX
+                 const ajaxUrl = 'ajax/get_field_options.php';
+                 console.log('Loading options from:', ajaxUrl);
+                 
+                 $.ajax({
+                     url: ajaxUrl,
+                     type: 'POST',
+                     data: { field_id: fieldId },
+                     dataType: 'json',
+                     success: function(response) {
+                         console.log('AJAX response:', response);
+                         
+                         // Clear loading indicator
+                         $('#currentSelectionsList').empty();
+                         
+                         if (response.status === 'success') {
+                             const options = response.options ? response.options.split('|') : [];
                              
-                             // Clear loading indicator
-                             $('#currentSelectionsList').empty();
-                             
-                             if (response.status === 'success') {
-                                 const options = response.options ? response.options.split('|') : [];
-                                 
-                                 if (options.length > 0) {
-                                     options.forEach(function(option, index) {
-                                         if (option.trim() !== '') {
-                                             const optionItem = `
-                                                 <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
-                                                     <span class="option-text">${option}</span>
-                                                     <div class="btn-group btn-group-sm">
-                                                         <button type="button" class="btn btn-outline-info edit-option-btn">
-                                                             <i class="fas fa-pencil-alt"></i>
-                                                         </button>
-                                                         <button type="button" class="btn btn-outline-danger delete-option-btn">
-                                                             <i class="fas fa-trash"></i>
-                                                         </button>
-                                                     </div>
-                                                 </li>
-                                             `;
-                                             $('#currentSelectionsList').append(optionItem);
-                                         }
-                                     });
-                                 } else {
-                                     $('#currentSelectionsList').html('<li class="list-group-item text-center text-muted">No options available</li>');
-                                 }
+                             if (options.length > 0) {
+                                 options.forEach(function(option, index) {
+                                     if (option.trim() !== '') {
+                                         const optionItem = `
+                                             <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
+                                                 <span class="option-text">${option}</span>
+                                                 <div class="btn-group btn-group-sm">
+                                                     <button type="button" class="btn btn-outline-info edit-option-btn">
+                                                         <i class="fas fa-pencil-alt"></i>
+                                                     </button>
+                                                     <button type="button" class="btn btn-outline-danger delete-option-btn">
+                                                         <i class="fas fa-trash"></i>
+                                                     </button>
+                                                 </div>
+                                             </li>
+                                         `;
+                                         $('#currentSelectionsList').append(optionItem);
+                                     }
+                                 });
                              } else {
-                                 $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error: ${response.message}</li>`);
+                                 $('#currentSelectionsList').html('<li class="list-group-item text-center text-muted">No options available</li>');
                              }
-                         },
-                         error: function(xhr, status, error) {
-                             console.error('AJAX error:', error);
-                             $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error loading options: ${error}</li>`);
+                             
+                             // Update options count after loading
+                             updateOptionsCount();
+                         } else {
+                             $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error: ${response.message}</li>`);
                          }
-                     });
-                 }
-             });
-             console.log('Modal event handler bound successfully!');
-         } catch (error) {
-             console.error('Error binding modal event handler:', error);
-         }
-
+                     },
+                     error: function(xhr, status, error) {
+                         console.error('AJAX error:', error);
+                         $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error loading options: ${error}</li>`);
+                     }
+                 });
+                 
+                 // Clear and focus the search input
+                 $('#newSelectionInput').val('').focus();
+                 
+                 // Remove any existing suggestions dropdown
+                 $('#suggestions-dropdown').remove();
+             }
+                  });
+         
+         // Handle modal hidden event to clean up search
+         $('#manageSelectionsModal').on('hidden.bs.modal', function() {
+             // Clear search input and remove suggestions dropdown
+             $('#newSelectionInput').val('');
+             $('#suggestions-dropdown').remove();
+             
+             // Clear modal data
+             $(this).removeData('field-id field-name field-type');
+         });
+         
          // Add a handler for the edit field button click
          $(document).on('click', '.edit-field-btn', function(e) {
             e.preventDefault();
@@ -1456,61 +1498,187 @@ $changename = htmlspecialchars($tab_name);
              };
          }
 
-         // Handle input for suggestions
-         $(document).on('input', '.new-option-input', debounce(function() {
-             const $input = $(this);
-             const stid = $input.data('stid');
-             const searchTerm = $input.val().trim();
-             const $suggestionMenu = $(`#suggestions-${stid}`);
-
-             if (searchTerm.length < 2) {
-                 $suggestionMenu.removeClass('show');
-               return;
-            }
-            
-             // Fetch suggestions from server
-                     $.ajax({
-                 url: 'get_option_suggestions.php',
+         
+         
+         // Test if search input responds to events
+         $(document).on('click', '#newSelectionInput', function() {
+             console.log('🔍 SEARCH: Input field clicked');
+         });
+         
+         // Test every keystroke
+         $(document).on('keydown', '#newSelectionInput', function(e) {
+             console.log('🔍 SEARCH: Keydown event - Key:', e.key, 'Code:', e.keyCode, 'Value:', $(this).val());
+         });
+         
+         // Test every keyup event
+         $(document).on('keyup', '#newSelectionInput', function(e) {
+             console.log('🔍 SEARCH: Keyup event - Key:', e.key, 'Code:', e.keyCode, 'Value:', $(this).val());
+         });
+         
+         // Test if get_option_suggestions.php is accessible
+         $(document).on('click', '#newSelectionInput', function() {
+             console.log('🔍 SEARCH: Testing if suggestions file is accessible...');
+             
+             // Test 1: Simple GET request to see if file exists
+             $.get('ajax/get_option_suggestions.php')
+                 .done(function(response) {
+                     console.log('🔍 SEARCH: File exists, GET response:', response);
+                 })
+                 .fail(function(xhr, status, error) {
+                     console.error('❌ SEARCH: File not accessible via GET:', { status, error, responseText: xhr.responseText });
+                 });
+             
+             // Test 2: POST request with proper data
+             $.ajax({
+                 url: 'ajax/get_option_suggestions.php',
                  method: 'POST',
-                         data: {
-                  stid: stid,
-                     term: searchTerm
-                         },
-                         dataType: 'json',
-                         success: function(response) {
-                     if (response.suggestions && response.suggestions.length > 0) {
-                         // Build suggestions HTML
-                         const suggestionsHtml = response.suggestions.map(suggestion => 
-                             `<a class="dropdown-item suggestion-item" href="#" data-value="${suggestion.value}">
-                                 ${suggestion.value}
-                                 <small class="text-muted">${suggestion.count} uses</small>
-                             </a>`
-                         ).join('');
-                         
-                         $suggestionMenu.html(suggestionsHtml).addClass('show');
-                             } else {
-                         $suggestionMenu.removeClass('show');
-                             }
-                         },
-                         error: function() {
-                     $suggestionMenu.removeClass('show');
+                 data: { stid: 2, term: 'test' },
+                 dataType: 'json',
+                 success: function(response) {
+                     console.log('🔍 SEARCH: Test POST request successful:', response);
+                 },
+                 error: function(xhr, status, error) {
+                     console.error('❌ SEARCH: Test POST request failed:', { 
+                         status: xhr.status, 
+                         statusText: xhr.statusText,
+                         error: error, 
+                         responseText: xhr.responseText,
+                         readyState: xhr.readyState
+                     });
                  }
              });
-         }, 300)); // 300ms debounce
-
+         });
+         
+         // Handle input for suggestions with improved search
+         $(document).on('input', '#newSelectionInput', function() {
+             console.log('🔍 SEARCH: Input event triggered - Value:', $(this).val());
+             
+             // Log every keystroke
+             const currentValue = $(this).val();
+             console.log('🔍 SEARCH: Current input value:', currentValue, 'Length:', currentValue.length);
+             
+             const $input = $(this);
+             const fieldId = $('#manageSelectionsModal').data('field-id');
+             const searchTerm = $input.val().trim();
+             
+             console.log('🔍 SEARCH: Field ID:', fieldId, 'Search term:', searchTerm);
+             
+             if (!fieldId) {
+                 console.error('❌ SEARCH: No field ID found in modal data');
+                 return;
+             }
+             
+             if (searchTerm.length < 2) {
+                 console.log('🔍 SEARCH: Term too short, hiding dropdown');
+                 $('#suggestions-dropdown').remove();
+                 return;
+             }
+             
+             // Clear any existing suggestions dropdown
+             $('#suggestions-dropdown').remove();
+             
+             // Create suggestions dropdown
+             $input.after('<div id="suggestions-dropdown" class="dropdown-menu w-100" style="position: absolute; z-index: 9999;"></div>');
+             const $suggestionsDropdown = $('#suggestions-dropdown');
+             
+             // Show loading state
+             $suggestionsDropdown.html('<div class="dropdown-item"><i class="fa fa-spinner fa-spin"></i> Searching...</div>').addClass('show');
+             
+             console.log('🔍 SEARCH: Making AJAX request to get_option_suggestions.php');
+             
+             // Fetch suggestions from server
+             $.ajax({
+                 url: 'ajax/get_option_suggestions.php',
+                 method: 'POST',
+                 data: {
+                     stid: fieldId,
+                     term: searchTerm
+                 },
+                 dataType: 'json',
+                 success: function(response) {
+                     console.log('🔍 SEARCH: Response received:', response);
+                     $suggestionsDropdown.empty();
+                     
+                     if (response.status === 'success' && response.suggestions && response.suggestions.length > 0) {
+                         console.log('🔍 SEARCH: Found', response.suggestions.length, 'suggestions');
+                         response.suggestions.forEach(function(suggestion) {
+                             const suggestionItem = `
+                                 <a class="dropdown-item suggestion-item" href="#" data-value="${suggestion.value}">
+                                     <div class="d-flex justify-content-between align-items-center">
+                                         <span>${suggestion.value}</span>
+                                         <small class="text-muted">${suggestion.count} uses</small>
+                                     </div>
+                                 </a>
+                             `;
+                             $suggestionsDropdown.append(suggestionItem);
+                         });
+                         
+                         $suggestionsDropdown.addClass('show');
+                         console.log('🔍 SEARCH: Dropdown shown with', response.suggestions.length, 'items');
+                     } else {
+                         console.log('🔍 SEARCH: No suggestions found');
+                         $suggestionsDropdown.html(`
+                             <div class="dropdown-item text-muted">
+                                 <i class="fa fa-info-circle"></i> No similar options found
+                             </div>
+                         `).addClass('show');
+                     }
+                 },
+                 error: function(xhr, status, error) {
+                     console.error('❌ SEARCH: AJAX error:', { status, error, responseText: xhr.responseText });
+                     
+                     // Show a more helpful error message
+                     if (xhr.status === 404) {
+                         $suggestionsDropdown.html(`
+                             <div class="dropdown-item text-warning">
+                                 <i class="fa fa-exclamation-triangle"></i> Suggestions service not available
+                             </div>
+                             <div class="dropdown-item text-muted">
+                                 <small>You can still type and add new options manually</small>
+                             </div>
+                         `).addClass('show');
+                     } else {
+                         $suggestionsDropdown.html('<div class="dropdown-item text-danger"><i class="fa fa-exclamation-triangle"></i> Error loading suggestions</div>').addClass('show');
+                     }
+                 }
+             });
+         });
+         
+         // Handle focus on search input to ensure proper initialization
+         $(document).on('focus', '#newSelectionInput', function() {
+             console.log('🔍 SEARCH: Input field focused');
+             const fieldId = $('#manageSelectionsModal').data('field-id');
+             if (fieldId) {
+                 console.log('🔍 SEARCH: Field ID available for search:', fieldId);
+             } else {
+                 console.error('❌ SEARCH: No field ID available when input focused');
+             }
+         });
+         
+         // Handle keydown events for search input
+         $(document).on('keydown', '#newSelectionInput', function(e) {
+             if (e.key === 'Escape') {
+                 // Close suggestions dropdown on Escape key
+                 $('#suggestions-dropdown').remove();
+                 $(this).blur();
+             }
+         });
+         
          // Handle suggestion selection
          $(document).on('click', '.suggestion-item', function(e) {
              e.preventDefault();
-            const selectedValue = $(this).data('value');
-            const $input = $(this).closest('.dropdown').find('.new-option-input');
-            $input.val(selectedValue);
-            $(this).closest('.dropdown-menu').removeClass('show');
+             const selectedValue = $(this).data('value');
+             $('#newSelectionInput').val(selectedValue);
+             $('#suggestions-dropdown').removeClass('show');
+             
+             // Auto-click add button
+             $('#addSelectionBtn').click();
          });
-
+         
          // Hide suggestions when clicking outside
          $(document).on('click', function(e) {
-             if (!$(e.target).closest('.dropdown').length) {
-                 $('.suggestion-menu').removeClass('show');
+             if (!$(e.target).closest('#newSelectionInput, #suggestions-dropdown').length) {
+                 $('#suggestions-dropdown').removeClass('show');
              }
          });
 
@@ -2018,6 +2186,24 @@ $changename = htmlspecialchars($tab_name);
             console.log('Step 9 - AJAX request sent, waiting for response...');
         });
 
+        // Function to update options count
+        function updateOptionsCount() {
+            const count = $('#currentSelectionsList').find('li').filter(function() {
+                const optionText = $(this).find('.option-text').text().trim();
+                return optionText !== '' && !$(this).hasClass('text-muted') && !$(this).hasClass('text-danger');
+            }).length;
+            
+            $('#optionsCount').text(count).removeClass('badge-secondary badge-warning badge-success');
+            
+            if (count === 0) {
+                $('#optionsCount').addClass('badge-warning').text('0');
+            } else if (count > 10) {
+                $('#optionsCount').addClass('badge-success').text(count);
+            } else {
+                $('#optionsCount').addClass('badge-secondary').text(count);
+            }
+        }
+        
         // Handle adding new options
         $('#addSelectionBtn').on('click', function() {
             const newOption = $('#newSelectionInput').val().trim();
@@ -2026,6 +2212,27 @@ $changename = htmlspecialchars($tab_name);
                 // Highlight input if empty
                 $('#newSelectionInput').addClass('is-invalid');
                 setTimeout(() => $('#newSelectionInput').removeClass('is-invalid'), 2000);
+                return;
+            }
+            
+            // Check if option already exists
+            const existingOptions = [];
+            $('#currentSelectionsList').find('li').each(function() {
+                const optionText = $(this).find('.option-text').text().trim();
+                if (optionText !== '' && !$(this).hasClass('text-muted') && !$(this).hasClass('text-danger')) {
+                    existingOptions.push(optionText.toLowerCase());
+                }
+            });
+            
+            if (existingOptions.includes(newOption.toLowerCase())) {
+                // Option already exists
+                $('#newSelectionInput').addClass('is-invalid');
+                $('#newSelectionInput').next('.invalid-feedback').remove();
+                $('#newSelectionInput').after('<div class="invalid-feedback">This option already exists</div>');
+                setTimeout(() => {
+                    $('#newSelectionInput').removeClass('is-invalid');
+                    $('#newSelectionInput').next('.invalid-feedback').remove();
+                }, 3000);
                 return;
             }
             
@@ -2049,8 +2256,19 @@ $changename = htmlspecialchars($tab_name);
             `;
             $('#currentSelectionsList').append(optionItem);
             
-            // Clear input
+            // Clear input and hide suggestions
             $('#newSelectionInput').val('').focus();
+            $('#suggestions-dropdown').removeClass('show').empty();
+            
+            // Show success indicator
+            const $newItem = $('#currentSelectionsList').find('li').last();
+            $newItem.css('background-color', '#d4edda');
+            setTimeout(() => {
+                $newItem.css('background-color', '');
+            }, 1000);
+            
+            // Update options count
+            updateOptionsCount();
         });
         
         // Handle editing options
@@ -2077,8 +2295,25 @@ $changename = htmlspecialchars($tab_name);
                 </div>
             `);
             
-            // Focus on input
-            $optionText.find('input').focus().select();
+            // Focus on input and select all text
+            const $input = $optionText.find('input');
+            $input.focus().select();
+            
+            // Handle Enter key in edit mode
+            $input.on('keypress', function(e) {
+                if (e.which === 13) { // Enter key
+                    e.preventDefault();
+                    $item.find('.save-option-edit').click();
+                }
+            });
+            
+            // Handle Escape key in edit mode
+            $input.on('keydown', function(e) {
+                if (e.which === 27) { // Escape key
+                    e.preventDefault();
+                    $item.find('.cancel-option-edit').click();
+                }
+            });
         });
         
         // Save option edit
@@ -2088,8 +2323,40 @@ $changename = htmlspecialchars($tab_name);
             const newText = $optionText.find('input').val().trim();
             
             if (newText !== '') {
+                // Check if the new text already exists (case-insensitive)
+                const existingOptions = [];
+                $('#currentSelectionsList').find('li').each(function() {
+                    if ($(this) !== $item) { // Exclude current item
+                        const optionText = $(this).find('.option-text').text().trim();
+                        if (optionText !== '' && !$(this).hasClass('text-muted') && !$(this).hasClass('text-danger')) {
+                            existingOptions.push(optionText.toLowerCase());
+                        }
+                    }
+                });
+                
+                if (existingOptions.includes(newText.toLowerCase())) {
+                    // Option already exists, show error
+                    $optionText.html(`
+                        <span class="text-danger">${newText}</span>
+                        <small class="d-block text-danger">Option already exists</small>
+                    `);
+                    setTimeout(() => {
+                        $optionText.text(newText);
+                    }, 2000);
+                    return;
+                }
+                
                 $optionText.text(newText);
-             } else {
+                
+                // Show success indicator
+                $item.css('background-color', '#d4edda');
+                setTimeout(() => {
+                    $item.css('background-color', '');
+                }, 1000);
+                
+                // Update options count
+                updateOptionsCount();
+            } else {
                 // If empty, restore original text
                 const originalText = $optionText.data('original-text') || 'Option';
                 $optionText.text(originalText);
@@ -2108,11 +2375,22 @@ $changename = htmlspecialchars($tab_name);
         
         // Handle deleting options
         $(document).on('click', '.delete-option-btn', function() {
-            $(this).closest('li').remove();
+            const $item = $(this).closest('li');
+            const optionText = $item.find('.option-text').text().trim();
             
-            // If no options left, show message
-            if ($('#currentSelectionsList').children().length === 0) {
-                $('#currentSelectionsList').html('<li class="list-group-item text-center text-muted">No options available</li>');
+            // Show confirmation dialog
+            if (confirm(`Are you sure you want to delete the option "${optionText}"?`)) {
+                $item.fadeOut(300, function() {
+                    $(this).remove();
+                    
+                    // If no options left, show message
+                    if ($('#currentSelectionsList').children().length === 0) {
+                        $('#currentSelectionsList').html('<li class="list-group-item text-center text-muted">No options available</li>');
+                    }
+                    
+                    // Update options count
+                    updateOptionsCount();
+                });
             }
         });
         
@@ -2127,6 +2405,11 @@ $changename = htmlspecialchars($tab_name);
                 }
             });
             
+            if (options.length === 0) {
+                showNotification('warning', 'No options to save. Please add at least one option.');
+                return;
+            }
+            
             const fieldId = $('#manageSelectionsModal').data('field-id');
             const fieldType = $('#manageSelectionsModal').data('field-type');
             
@@ -2135,21 +2418,31 @@ $changename = htmlspecialchars($tab_name);
             const originalBtnText = $btn.html();
             $btn.html('<i class="fa fa-spinner fa-spin"></i> Saving...').prop('disabled', true);
             
+            // Log what we're about to save
+            console.log('Saving options:', {
+                fieldId: fieldId,
+                fieldType: fieldType,
+                options: options,
+                optionsString: options.join('|')
+            });
+            
             // Send options to server
-                     $.ajax({
+            $.ajax({
                 url: 'ajax/update_field_options.php',
                 type: 'POST',
-                         data: {
+                data: {
                     field_id: fieldId,
                     field_type: fieldType,
                     options: options.join('|')
-                         },
+                },
                 dataType: 'json',
-                         success: function(response) {
+                success: function(response) {
                     $btn.html(originalBtnText).prop('disabled', false);
-                             
-                             if (response.status === 'success') {
-                                 // Show success message
+                    
+                    console.log('Save response:', response);
+                    
+                    if (response.status === 'success') {
+                        // Show success message
                         showNotification('success', 'Options updated successfully');
                         
                         // Close modal
@@ -2162,23 +2455,38 @@ $changename = htmlspecialchars($tab_name);
                     } else {
                         // Check if redirect is needed for database update
                         if (response.redirect) {
-                            window.location.href = 'db_update.php';
-                             } else {
-                                 // Show error message
+                            showNotification('warning', 'Database update needed. Redirecting...');
+                            setTimeout(() => {
+                                window.location.href = 'db_update.php';
+                            }, 2000);
+                        } else {
+                            // Show error message
                             showNotification('danger', 'Error updating options: ' + response.message);
                         }
-                             }
-                         },
-                         error: function(xhr, status, error) {
+                    }
+                },
+                error: function(xhr, status, error) {
                     $btn.html(originalBtnText).prop('disabled', false);
                     
                     console.error('Error saving options:', error);
                     console.error('Response text:', xhr.responseText);
+                    console.error('Status:', status);
+                    console.error('XHR:', xhr);
                     
-                    showNotification('danger', 'Error saving options. Please try again.');
+                    let errorMsg = 'Error saving options. Please try again.';
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        if (response.message) {
+                            errorMsg = response.message;
+                        }
+                    } catch (e) {
+                        // Parsing failed, use default message
+                    }
+                    
+                    showNotification('danger', errorMsg);
                 }
-         });
-      });
+            });
+        });
 
         // Handle input keypress for adding options
         $('#newSelectionInput').on('keypress', function(e) {
@@ -2448,6 +2756,10 @@ $changename = htmlspecialchars($tab_name);
                  }
              });
          });
+         
+
+        
+
    </script>
 
    <!-- Edit Section Modal -->
@@ -2622,7 +2934,7 @@ $changename = htmlspecialchars($tab_name);
             <div class="modal-body">
                <div class="row">
                   <div class="col-md-6">
-                     <h6 class="mb-3">Current Selections</h6>
+                     <h6 class="mb-3">Current Selections <span id="optionsCount" class="badge badge-secondary ml-2">0</span></h6>
                      <div class="alert alert-info mb-2">
                         <small>Click <i class="fas fa-pencil-alt"></i> to edit an option, or <i class="fas fa-trash"></i> to delete it</small>
                      </div>
@@ -2634,16 +2946,19 @@ $changename = htmlspecialchars($tab_name);
                   <div class="col-md-6">
                      <h6 class="mb-3">Add New Selection</h6>
                      <div class="alert alert-info mb-3">
-                        <small>Add new selection options one at a time. Press Enter or click the Add button to add each option.</small>
+                        <small>Type to search existing options, select one, then click Add. Repeat for each option, then Save.</small>
                      </div>
-                     <div class="input-group mb-3">
-                        <input type="text" class="form-control" id="newSelectionInput" placeholder="Enter selection option">
+                     <div class="input-group mb-3" style="position: relative;">
+                        <input type="text" class="form-control" id="newSelectionInput" placeholder="Type to search existing options">
                         <div class="input-group-append">
                            <button class="btn btn-success" id="addSelectionBtn" type="button">
                               <i class="fa fa-plus"></i> Add
                            </button>
                         </div>
+                        <!-- Suggestions dropdown will be dynamically inserted here -->
                      </div>
+                     
+
                   </div>
                </div>
             </div>
@@ -3033,40 +3348,19 @@ $changename = htmlspecialchars($tab_name);
     <!-- Original JavaScript code moved here after jQuery is loaded -->
     <script type="text/javascript">
     $(document).ready(function() {
-         console.log("Document ready executed - tabledetail.php");
-         console.log("=== BASIC TEST ===");
-         console.log("Document ready is working!");
-         console.log("jQuery is available:", typeof $ !== 'undefined');
-         console.log("jQuery version:", $.fn.jquery);
-         console.log("Bootstrap version:", typeof $.fn.modal !== 'undefined' ? 'Available' : 'Not available');
          
          // Debug: Check if manage options buttons exist
-         console.log("=== DEBUGGING MANAGE OPTIONS BUTTONS ===");
          const manageButtons = $('.manage-options-btn');
-         console.log("Number of manage options buttons found:", manageButtons.length);
          
          // Debug: Check if modal exists
-         console.log("=== DEBUGGING MODAL ELEMENT ===");
          const modalElement = $('#manageSelectionsModal');
-         console.log("Modal element found:", modalElement.length);
-         if (modalElement.length > 0) {
-             console.log("Modal exists, checking attributes:");
-             console.log("  - ID:", modalElement.attr('id'));
-             console.log("  - Classes:", modalElement.attr('class'));
-             console.log("  - Data attributes:", modalElement.data());
-         } else {
-             console.log("Modal element NOT found!");
-         }
-         
+
          // Handle the manage options button click
          $(document).on('click', '.manage-options-btn', function(e) {
-             console.log('=== MANAGE OPTIONS BUTTON CLICKED ===');
              
              const fieldId = $(this).data('field-id');
              const fieldType = $(this).data('field-type');
              const fieldName = $(this).closest('.card-body').find('.field-name-text').text().trim();
-             
-             console.log('Field data:', { fieldId, fieldType, fieldName });
              
              // Set data on modal
              $('#manageSelectionsModal')
@@ -3085,7 +3379,6 @@ $changename = htmlspecialchars($tab_name);
              
              // Load field options via AJAX
              const ajaxUrl = 'ajax/get_field_options.php';
-             console.log('Loading options from:', ajaxUrl);
              
              $.ajax({
                  url: ajaxUrl,
@@ -3093,7 +3386,6 @@ $changename = htmlspecialchars($tab_name);
                  data: { field_id: fieldId },
                  dataType: 'json',
                  success: function(response) {
-                     console.log('AJAX response:', response);
                      
                      // Clear loading indicator
                      $('#currentSelectionsList').empty();
@@ -3126,12 +3418,372 @@ $changename = htmlspecialchars($tab_name);
                      } else {
                          $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error: ${response.message}</li>`);
                      }
+                     
+                     // Update options count after loading
+                     updateOptionsCount();
+                     
                  },
                  error: function(xhr, status, error) {
-                     console.error('AJAX error:', error);
+                     
                      $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error loading options: ${error}</li>`);
                  }
              });
+         });
+
+         // Handle input for suggestions with improved search
+         $(document).on('input', '#newSelectionInput', function() {
+             console.log('🔍 SEARCH: Input event triggered - Value:', $(this).val());
+             
+             // Log every keystroke
+             const currentValue = $(this).val();
+             console.log('🔍 SEARCH: Current input value:', currentValue, 'Length:', currentValue.length);
+             
+             const $input = $(this);
+             const fieldId = $('#manageSelectionsModal').data('field-id');
+             const searchTerm = $input.val().trim();
+             
+             console.log('🔍 SEARCH: Field ID:', fieldId, 'Search term:', searchTerm);
+             
+             if (!fieldId) {
+                 console.error('❌ SEARCH: No field ID found in modal data');
+                 return;
+             }
+             
+             if (searchTerm.length < 2) {
+                 console.log('🔍 SEARCH: Term too short, hiding dropdown');
+                 $('#suggestions-dropdown').remove();
+                 return;
+             }
+             
+             // Clear any existing suggestions dropdown
+             $('#suggestions-dropdown').remove();
+             
+             // Create suggestions dropdown
+             $input.after('<div id="suggestions-dropdown" class="dropdown-menu w-100" style="position: absolute; z-index: 9999;"></div>');
+             const $suggestionsDropdown = $('#suggestions-dropdown');
+             
+             // Show loading state
+             $suggestionsDropdown.html('<div class="dropdown-item"><i class="fa fa-spinner fa-spin"></i> Searching...</div>').addClass('show');
+             
+             console.log('🔍 SEARCH: Making AJAX request to get_option_suggestions.php');
+             
+             // Fetch suggestions from server
+             $.ajax({
+                 url: 'ajax/get_option_suggestions.php',
+                 method: 'POST',
+                 data: {
+                     stid: fieldId,
+                     term: searchTerm
+                 },
+                 dataType: 'json',
+                 success: function(response) {
+                     console.log('🔍 SEARCH: Response received:', response);
+                     $suggestionsDropdown.empty();
+                     
+                     if (response.status === 'success' && response.suggestions && response.suggestions.length > 0) {
+                         console.log('🔍 SEARCH: Found', response.suggestions.length, 'suggestions');
+                         response.suggestions.forEach(function(suggestion) {
+                             const suggestionItem = `
+                                 <a class="dropdown-item suggestion-item" href="#" data-value="${suggestion.value}">
+                                     <div class="d-flex justify-content-between align-items-center">
+                                         <span>${suggestion.value}</span>
+                                         <small class="text-muted">${suggestion.count} uses</small>
+                                     </div>
+                                 </a>
+                             `;
+                             $suggestionsDropdown.append(suggestionItem);
+                         });
+                         
+                         $suggestionsDropdown.addClass('show');
+                         console.log('🔍 SEARCH: Dropdown shown with', response.suggestions.length, 'items');
+                     } else {
+                         console.log('🔍 SEARCH: No suggestions found');
+                         $suggestionsDropdown.html(`
+                             <div class="dropdown-item text-muted">
+                                 <i class="fa fa-info-circle"></i> No similar options found
+                             </div>
+                         `).addClass('show');
+                     }
+                 },
+                 error: function(xhr, status, error) {
+                     console.error('❌ SEARCH: AJAX error:', { status, error, responseText: xhr.responseText });
+                     
+                     // Show a more helpful error message
+                     if (xhr.status === 404) {
+                         $suggestionsDropdown.html(`
+                             <div class="dropdown-item text-warning">
+                                 <i class="fa fa-exclamation-triangle"></i> Suggestions service not available
+                             </div>
+                             <div class="dropdown-item text-muted">
+                                 <small>You can still type and add new options manually</small>
+                             </div>
+                         `).addClass('show');
+                     } else {
+                         $suggestionsDropdown.html('<div class="dropdown-item text-danger"><i class="fa fa-exclamation-triangle"></i> Error loading suggestions</div>').addClass('show');
+                     }
+                 }
+             });
+         });
+
+         // Handle focus on search input to ensure proper initialization
+         $(document).on('focus', '#newSelectionInput', function() {
+             console.log('🔍 SEARCH: Input field focused');
+             
+             // Ensure field ID is available
+             const fieldId = $('#manageSelectionsModal').data('field-id');
+             if (!fieldId) {
+                 console.warn('⚠️ SEARCH: No field ID available on focus');
+             } else {
+                 console.log('🔍 SEARCH: Field ID available on focus:', fieldId);
+             }
+         });
+
+         // Handle keydown for suggestions navigation
+         $(document).on('keydown', '#newSelectionInput', function(e) {
+             const $suggestionsDropdown = $('#suggestions-dropdown');
+             
+             if (!$suggestionsDropdown.length || !$suggestionsDropdown.hasClass('show')) {
+                 return;
+             }
+             
+             const $items = $suggestionsDropdown.find('.suggestion-item');
+             const $activeItem = $suggestionsDropdown.find('.suggestion-item.active');
+             
+             switch(e.keyCode) {
+                 case 38: // Up arrow
+                     e.preventDefault();
+                     if ($activeItem.length === 0) {
+                         $items.last().addClass('active');
+                     } else {
+                         $activeItem.removeClass('active').prev('.suggestion-item').addClass('active');
+                         if ($activeItem.prev('.suggestion-item').length === 0) {
+                             $items.last().addClass('active');
+                         }
+                     }
+                     break;
+                     
+                 case 40: // Down arrow
+                     e.preventDefault();
+                     if ($activeItem.length === 0) {
+                         $items.first().addClass('active');
+                     } else {
+                         $activeItem.removeClass('active').next('.suggestion-item').addClass('active');
+                         if ($activeItem.next('.suggestion-item').length === 0) {
+                             $items.first().addClass('active');
+                         }
+                     }
+                     break;
+                     
+                 case 13: // Enter
+                     e.preventDefault();
+                     if ($activeItem.length > 0) {
+                         const selectedValue = $activeItem.data('value');
+                         $('#newSelectionInput').val(selectedValue);
+                         $('#addSelectionBtn').click();
+                     }
+                     break;
+                     
+                 case 27: // Escape
+                     e.preventDefault();
+                     $suggestionsDropdown.removeClass('show').empty();
+                     break;
+             }
+         });
+
+         // Handle clicking outside to close suggestions
+         $(document).on('click', function(e) {
+             if (!$(e.target).closest('#newSelectionInput, #suggestions-dropdown').length) {
+                 $('#suggestions-dropdown').remove();
+             }
+         });
+
+         // Handle suggestion item clicks
+         $(document).on('click', '.suggestion-item', function(e) {
+             e.preventDefault();
+             const selectedValue = $(this).data('value');
+             $('#newSelectionInput').val(selectedValue);
+             $('#addSelectionBtn').click();
+         });
+
+         // Handle adding new options
+         $('#addSelectionBtn').on('click', function() {
+             const newOption = $('#newSelectionInput').val().trim();
+             
+             if (newOption === '') {
+                 // Highlight input if empty
+                 $('#newSelectionInput').addClass('is-invalid');
+                 setTimeout(() => $('#newSelectionInput').removeClass('is-invalid'), 2000);
+                 return;
+             }
+             
+             // Check if option already exists
+             const existingOptions = [];
+             $('#currentSelectionsList').find('li').each(function() {
+                 const optionText = $(this).find('.option-text').text().trim();
+                 if (optionText !== '' && !$(this).hasClass('text-muted') && !$(this).hasClass('text-danger')) {
+                     existingOptions.push(optionText.toLowerCase());
+                 }
+             });
+             
+             if (existingOptions.includes(newOption.toLowerCase())) {
+                 // Option already exists
+                 $('#newSelectionInput').addClass('is-invalid');
+                 $('#newSelectionInput').next('.invalid-feedback').remove();
+                 $('#newSelectionInput').after('<div class="invalid-feedback">This option already exists</div>');
+                 setTimeout(() => {
+                     $('#newSelectionInput').removeClass('is-invalid');
+                     $('#newSelectionInput').next('.invalid-feedback').remove();
+                 }, 3000);
+                 return;
+             }
+             
+             // Remove "no options" message if present
+             $('#currentSelectionsList').find('li.text-muted, li.text-danger').remove();
+             
+             // Add to list
+             const index = $('#currentSelectionsList').children().length;
+             const optionItem = `
+                 <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
+                     <span class="option-text">${newOption}</span>
+                     <div class="btn-group btn-group-sm">
+                         <button type="button" class="btn btn-outline-info edit-option-btn">
+                             <i class="fas fa-pencil-alt"></i>
+                         </button>
+                         <button type="button" class="btn btn-outline-danger delete-option-btn">
+                             <i class="fas fa-trash"></i>
+                         </button>
+                     </div>
+                 </li>
+             `;
+             $('#currentSelectionsList').append(optionItem);
+             
+             // Clear input and hide suggestions
+             $('#newSelectionInput').val('').focus();
+             $('#suggestions-dropdown').removeClass('show').empty();
+             
+             // Show success indicator
+             const $newItem = $('#currentSelectionsList').find('li').last();
+             $newItem.css('background-color', '#d4edda');
+             setTimeout(() => {
+                 $newItem.css('background-color', '');
+             }, 1000);
+             
+             // Update options count
+             updateOptionsCount();
+         });
+
+         // Handle editing options
+         $(document).on('click', '.edit-option-btn', function() {
+             const $item = $(this).closest('li');
+             const $optionText = $item.find('.option-text');
+             const currentText = $optionText.text();
+             
+             // Save original text for cancelling
+             $optionText.data('original-text', currentText);
+             
+             // Replace text with input
+             $optionText.html(`
+                 <div class="input-group input-group-sm">
+                     <input type="text" class="form-control edit-option-input" value="${currentText}">
+                     <div class="input-group-append">
+                         <button class="btn btn-success save-option-edit" type="button">
+                             <i class="fas fa-check"></i>
+                         </button>
+                         <button class="btn btn-secondary cancel-option-edit" type="button">
+                             <i class="fas fa-times"></i>
+                         </button>
+                     </div>
+                 </div>
+             `);
+             
+             // Focus on input and select all text
+             const $input = $optionText.find('input');
+             $input.focus().select();
+         });
+
+         // Handle saving option edits
+         $(document).on('click', '.save-option-edit', function() {
+             const $item = $(this).closest('li');
+             const $optionText = $item.find('.option-text');
+             const newText = $optionText.find('input').val().trim();
+             
+             if (newText === '') {
+                 return;
+             }
+             
+             // Check if option already exists
+             const existingOptions = [];
+             $('#currentSelectionsList').find('li').each(function() {
+                 if ($(this) !== $item) {
+                     const optionText = $(this).find('.option-text').text().trim();
+                     if (optionText !== '' && !$(this).hasClass('text-muted') && !$(this).hasClass('text-danger')) {
+                         existingOptions.push(optionText.toLowerCase());
+                     }
+                 }
+             });
+             
+             if (existingOptions.includes(newText.toLowerCase())) {
+                 // Option already exists
+                 $optionText.find('input').addClass('is-invalid');
+                 return;
+             }
+             
+             // Update text
+             $optionText.text(newText);
+         });
+
+         // Handle cancelling option edits
+         $(document).on('click', '.cancel-option-edit', function() {
+             const $item = $(this).closest('li');
+             const $optionText = $item.find('.option-text');
+             const originalText = $optionText.data('original-text');
+             
+             $optionText.text(originalText);
+         });
+
+         // Handle deleting options
+         $(document).on('click', '.delete-option-btn', function() {
+             const $item = $(this).closest('li');
+             
+             // Confirm deletion
+             if (confirm('Are you sure you want to delete this option?')) {
+                 $item.remove();
+                 updateOptionsCount();
+             }
+         });
+
+         // Handle Enter key in edit input
+         $(document).on('keypress', '.edit-option-input', function(e) {
+             if (e.which === 13) {
+                 $(this).closest('.input-group').find('.save-option-edit').click();
+             }
+         });
+
+         // Update options count function
+         function updateOptionsCount() {
+             const count = $('#currentSelectionsList').find('li:not(.text-muted):not(.text-danger)').length;
+             $('#optionsCount').text(count);
+             
+             if (count === 0) {
+                 $('#optionsCount').removeClass().addClass('badge badge-secondary').text('0');
+             } else if (count > 10) {
+                 $('#optionsCount').addClass('badge-success').text(count);
+             } else {
+                 $('#optionsCount').addClass('badge-secondary').text(count);
+             }
+         }
+
+         // Handle Enter key in new selection input
+         $('#newSelectionInput').on('keypress', function(e) {
+             if (e.which === 13) {
+                 $('#addSelectionBtn').click();
+             }
+         });
+
+         // Clear input when modal is hidden
+         $('#manageSelectionsModal').on('hidden.bs.modal', function() {
+             $('#newSelectionInput').val('');
+             $('#suggestions-dropdown').remove();
          });
     });
     </script>
@@ -3140,11 +3792,7 @@ $changename = htmlspecialchars($tab_name);
     <script>
     // Test that jQuery is working
     $(document).ready(function() {
-        console.log('=== JQUERY TEST ===');
-        console.log('jQuery is available:', typeof $ !== 'undefined');
-        console.log('jQuery version:', $.fn.jquery);
-        console.log('Document ready executed successfully');
-        console.log('=== END JQUERY TEST ===');
+        
     });
     
     // Unified notification function
@@ -3175,108 +3823,7 @@ $changename = htmlspecialchars($tab_name);
         return notification;
     }
     
-    // Handle manage options button click
-    $(document).on('click', '.manage-options-btn', function(e) {
-        console.log('=== MANAGE OPTIONS BUTTON CLICKED ===');
-        console.log('Event object:', e);
-        console.log('This element:', this);
-        console.log('Element HTML:', $(this).prop('outerHTML'));
-        
-        const fieldId = $(this).data('field-id');
-        const fieldType = $(this).data('field-type');
-        const fieldName = $(this).closest('.card-body').find('.field-name-text').text().trim();
-        
-        console.log('Field data:', { fieldId, fieldType, fieldName });
-        
-        // Set data on modal
-        $('#manageSelectionsModal')
-            .data('field-id', fieldId)
-            .data('field-name', fieldName)
-            .data('field-type', fieldType);
-        
-        // Set modal title
-        $('#manageSelectionsModalLabel').text(`Manage Options for ${fieldName}`);
-        
-        // Clear existing selections
-        $('#currentSelectionsList').empty();
-        
-        // Show loading state
-        $('#currentSelectionsList').html('<li class="list-group-item text-center"><i class="fa fa-spinner fa-spin"></i> Loading options...</li>');
-        
-        // Load field options via AJAX
-        const ajaxUrl = 'ajax/get_field_options.php';
-        console.log('Loading options from:', ajaxUrl);
-        console.log('AJAX data being sent:', { field_id: fieldId });
-        
-        console.log('Starting AJAX request...');
-        $.ajax({
-            url: ajaxUrl,
-            type: 'POST',
-            data: { field_id: fieldId },
-            dataType: 'json',
-            beforeSend: function() {
-                console.log('AJAX beforeSend triggered');
-            },
-            success: function(response) {
-                console.log('AJAX success callback triggered');
-                console.log('Full response:', response);
-                console.log('Response status:', response.status);
-                console.log('Response options:', response.options);
-                
-                // Clear loading indicator
-                $('#currentSelectionsList').empty();
-                
-                if (response.status === 'success') {
-                    const options = response.options ? response.options.split('|') : [];
-                    console.log('Parsed options array:', options);
-                    console.log('Options length:', options.length);
-                    
-                    if (options.length > 0) {
-                        options.forEach(function(option, index) {
-                            if (option.trim() !== '') {
-                                console.log(`Adding option ${index}: "${option}"`);
-                                const optionItem = `
-                                    <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
-                                        <span class="option-text">${option}</span>
-                                        <div class="btn-group btn-group-sm">
-                                            <button type="button" class="btn btn-outline-info edit-option-btn">
-                                                <i class="fas fa-pencil-alt"></i>
-                                            </button>
-                                            <button type="button" class="btn btn-outline-danger delete-option-btn">
-                                                <i class="fas fa-trash"></i>
-                                            </button>
-                                        </div>
-                                    </li>
-                                `;
-                                $('#currentSelectionsList').append(optionItem);
-                            }
-                        });
-                        console.log('All options added to list');
-                    } else {
-                        console.log('No options found, showing "No options" message');
-                        $('#currentSelectionsList').html('<li class="list-group-item text-center text-muted">No options available</li>');
-                    }
-                } else {
-                    console.log('Response status is NOT success');
-                    console.log('Response message:', response.message);
-                    $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error: ${response.message}</li>`);
-                }
-            },
-            error: function(xhr, status, error) {
-                console.log('AJAX error callback triggered');
-                console.log('XHR object:', xhr);
-                console.log('Status:', status);
-                console.log('Error:', error);
-                console.log('Response text:', xhr.responseText);
-                console.log('Response status code:', xhr.status);
-                console.log('Response headers:', xhr.getAllResponseHeaders());
-                
-                $('#currentSelectionsList').html(`<li class="list-group-item text-center text-danger">Error loading options: ${error}</li>`);
-                console.log('Error message displayed in list');
-            }
-        });
-        console.log('AJAX request sent, waiting for response...');
-    });
+
     </script>
     
     <!-- Additional scripts that depend on jQuery -->

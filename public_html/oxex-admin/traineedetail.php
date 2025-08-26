@@ -23,9 +23,25 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
    <link rel="icon" type="image/x-icon" href="favicon.ico">
    <title><?php echo $pagetitle ?> - <?php echo $adminname ?></title>
    <?php include 'incl/admincss.php' ?>
+   <style>
+      .password-strength, .password-match {
+         font-size: 0.875rem;
+         font-weight: 500;
+      }
+      .password-strength i, .password-match i {
+         margin-right: 0.25rem;
+      }
+      .card.border-warning {
+         border-color: #ffc107 !important;
+      }
+      .card.border-warning .card-header {
+         border-color: #ffc107 !important;
+      }
+   </style>
 </head>
 <?php 
 // page actions
+$thisyear = date("Y"); // Define this first before using it
 $graph = isset($_GET['graph']) ? $_GET['graph'] : 'bar';
 $start = isset($_GET['start']) ? $_GET['start'] : $thisyear;
 $end = isset($_GET['end']) ? $_GET['end'] : $thisyear;
@@ -36,7 +52,6 @@ $delicon = isset($_GET['delicon']) ? $_GET['delicon'] : '';
 $which = isset($_GET['which']) ? $_GET['which'] : '';
 
 // set up dates for js array data
-$thisyear = date("Y");
 $datestart = $start.'0101';
 $dateend = $end.'1231';
 $datestart = 20200101; #TEMP DATES
@@ -119,6 +134,45 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   }
   $tagstmt->close();
 }
+
+// Handle password reset
+if ($done == "resetpassword" && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+  $which = isset($_POST['which']) ? $_POST['which'] : ''; # 32 char str
+  $new_password = isset($_POST['new_password']) ? $_POST['new_password'] : '';
+  $confirm_password = isset($_POST['confirm_password']) ? $_POST['confirm_password'] : '';
+  
+  if (empty($new_password) || empty($confirm_password)) {
+    $password_alert = "<div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Both password fields are required</strong></div>";
+  } elseif ($new_password !== $confirm_password) {
+    $password_alert = "<div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Passwords do not match</strong></div>";
+  } elseif (strlen($new_password) < 6) {
+    $password_alert = "<div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Password must be at least 6 characters long</strong></div>";
+  } else {
+    // Generate new salt and hash password
+    $new_salt = hash('sha512', uniqid(mt_rand(1, mt_getrandmax()), true));
+    $hashed_password = hash('sha512', $new_password.$new_salt);
+    
+    // Update the trainee's password and clear txtpw
+    $update_stmt = $mysqli->prepare("UPDATE trainee_tbl SET password = ?, salt = ?, txtpw = '', who_by = ?, date_modified = ? WHERE trainkey = ?");
+    $update_stmt->bind_param("sssss", $hashed_password, $new_salt, $usrkey, $today, $which);
+    
+    if ($update_stmt->execute()) {
+      $password_alert = "<div class=\"alert alert-success\" role=\"alert\"><strong>Password reset successfully! The trainee can now log in with their new password.</strong></div>";
+      // Refresh the page data to show updated password status
+      $refresh_stmt = $mysqli->prepare("SELECT name, email, uid, supervisor, supervisor2, supervisor3, tutor, syslink, year, trainkey, txtpw, who_by, date_added, date_modified, last_used, tandc FROM trainee_tbl WHERE trainkey = ?");
+      $refresh_stmt->bind_param("s", $which);
+      $refresh_stmt->execute();
+      $refresh_stmt->store_result();
+      $refresh_stmt->bind_result($name, $email, $uid, $supervisor, $supervisor2, $supervisor3, $tutor, $syslink, $year, $trainkey, $txtpw, $who_by, $date_added, $date_modified, $last_used, $tandc);
+      $refresh_stmt->fetch();
+      $refresh_stmt->close();
+      $update_stmt->close();
+    } else {
+      $password_alert = "<div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to reset password</strong></div>";
+      $update_stmt->close();
+    }
+  }
+}
 ?>
 <?php
   // find the required record
@@ -159,8 +213,16 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small> </div>
-                <a href="#reports" class="btn btn-purple ml-5">Reports</a> <a href="#stats" class="btn btn-primary ml-5">Statistics</a> <a href="#passfail" class="btn btn-pink ml-5">Supervisor sign off</a> <a href="traineelogbook.php?which=<?php echo $which ?>" class="btn btn-secondary ml-5">Logbook</a>
+                <a href="#reports" class="btn btn-purple ml-5">Reports</a> <a href="#stats" class="btn btn-primary ml-5">Statistics</a> <a href="#passfail" class="btn btn-pink ml-5">Supervisor sign off</a> <a href="traineelogbook.php?which=<?php echo $which ?>" class="btn btn-secondary ml-5">Logbook</a> <a href="#password-reset" class="btn btn-warning ml-5">Password Reset</a>
             </div>
+
+            <?php if (isset($password_alert)): ?>
+            <div class="row">
+               <div class="col">
+                  <?php echo $password_alert; ?>
+               </div>
+            </div>
+            <?php endif; ?>
 
             <div class="row my-5">
                <div class="col-xl-7">
@@ -178,8 +240,10 @@ $stmt->close();
                            }
                            if ($txtpw != '') {
                               echo "<p>The trainee has <em>not</em> changed their temporary password, which is <strong>$txtpw</strong></p>";
+                              echo "<p class=\"text-warning\"><small><i class=\"fa fa-info-circle\"></i> You can reset this password using the form below.</small></p>";
                            } else {
                               echo "<p>The trainee has changed their temporary password which is not held to view.</p>";
+                              echo "<p class=\"text-info\"><small><i class=\"fa fa-info-circle\"></i> You can still reset their password using the form below if needed.</small></p>";
                            }
                            ?>
                            <div class="form-group">
@@ -410,6 +474,41 @@ $stmt->close();
                         </div>
                      </div><!-- END card-->
                   </form>
+                  
+                  <!-- Password Reset Form -->
+                  <div class="card border-warning mt-4" id="password-reset">
+                     <div class="card-header bg-warning">
+                        <div class="card-title">Reset Trainee Password</div>
+                     </div>
+                     <div class="card-body">
+                        <?php if (isset($password_alert)) echo $password_alert; ?>
+                        <p class="text-muted">Use this form to reset the trainee's password. The trainee will be able to log in with the new password immediately.</p>
+                        <?php if ($admintype == 'AT' || $admintype == 'DV'): ?>
+                        <p class="text-info"><small><i class="fa fa-shield-alt"></i> You have full admin access to reset passwords.</small></p>
+                        <?php elseif ($admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE'): ?>
+                        <p class="text-info"><small><i class="fa fa-user-check"></i> You have permission to reset passwords for trainees under your supervision.</small></p>
+                        <?php endif; ?>
+                        <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>" data-parsley-validate="" novalidate="" onsubmit="return confirmPasswordReset()">
+                           <div class="form-group">
+                              <label class="col-form-label" for="new_password">New Password</label>
+                              <input class="form-control" type="password" id="new_password" name="new_password" minlength="6" required>
+                              <small class="form-text text-muted">Password must be at least 6 characters long</small>
+                              <div class="password-strength mt-2" id="password-strength"></div>
+                           </div>
+                           <div class="form-group">
+                              <label class="col-form-label" for="confirm_password">Confirm New Password</label>
+                              <input class="form-control" type="password" id="confirm_password" name="confirm_password" minlength="6" required>
+                              <div class="password-match mt-2" id="password-match"></div>
+                           </div>
+                           <input type="hidden" name="done" value="resetpassword">
+                           <input type="hidden" name="which" value="<?PHP echo $which ?>">
+                           <div class="float-right">
+                              <button class="btn btn-warning" type="submit">Reset Password</button>
+                           </div>
+                        </form>
+                     </div>
+                  </div>
+                  
                   <div class="card border-purple">
                      <div class="card-header bg-purple">
                         <div class="card-title">
@@ -885,6 +984,74 @@ $stmt->close();
       $('#maintable').dataTable( {
         "pageLength": 10
       });
+      
+      // Password reset form validation
+      $('#confirm_password').on('input', function() {
+         var password = $('#new_password').val();
+         var confirm = $(this).val();
+         
+         if (password !== confirm) {
+            $(this).get(0).setCustomValidity('Passwords do not match');
+            $('#password-match').html('<span class="text-danger"><i class="fa fa-times"></i> Passwords do not match</span>');
+         } else {
+            $(this).get(0).setCustomValidity('');
+            $('#password-match').html('<span class="text-success"><i class="fa fa-check"></i> Passwords match</span>');
+         }
+      });
+      
+      $('#new_password').on('input', function() {
+         var password = $(this).val();
+         var confirm = $('#confirm_password').val();
+         
+         // Password strength checking
+         var strength = 0;
+         var feedback = '';
+         
+         if (password.length >= 6) strength++;
+         if (password.length >= 8) strength++;
+         if (/[a-z]/.test(password)) strength++;
+         if (/[A-Z]/.test(password)) strength++;
+         if (/[0-9]/.test(password)) strength++;
+         if (/[^A-Za-z0-9]/.test(password)) strength++;
+         
+         if (strength < 2) {
+            feedback = '<span class="text-danger"><i class="fa fa-times"></i> Weak password</span>';
+         } else if (strength < 4) {
+            feedback = '<span class="text-warning"><i class="fa fa-exclamation-triangle"></i> Fair password</span>';
+         } else if (strength < 6) {
+            feedback = '<span class="text-info"><i class="fa fa-thumbs-up"></i> Good password</span>';
+         } else {
+            feedback = '<span class="text-success"><i class="fa fa-star"></i> Strong password</span>';
+         }
+         
+         $('#password-strength').html(feedback);
+         
+         if (confirm && password !== confirm) {
+            $('#confirm_password').get(0).setCustomValidity('Passwords do not match');
+            $('#password-match').html('<span class="text-danger"><i class="fa fa-times"></i> Passwords do not match</span>');
+         } else if (confirm) {
+            $('#confirm_password').get(0).setCustomValidity('');
+            $('#password-match').html('<span class="text-success"><i class="fa fa-check"></i> Passwords match</span>');
+         }
+      });
+      
+      // Password reset confirmation
+      window.confirmPasswordReset = function() {
+         var password = $('#new_password').val();
+         var confirm = $('#confirm_password').val();
+         
+         if (password !== confirm) {
+            alert('Passwords do not match. Please correct this before proceeding.');
+            return false;
+         }
+         
+         if (password.length < 6) {
+            alert('Password must be at least 6 characters long.');
+            return false;
+         }
+         
+         return confirm('Are you sure you want to reset the password for <?php echo htmlspecialchars($name); ?>? This action cannot be undone and the trainee will need to use the new password immediately.');
+      };
    });
    </script>
    

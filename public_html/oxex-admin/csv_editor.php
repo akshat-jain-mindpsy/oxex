@@ -678,6 +678,29 @@ $session_timeout_js = "";
         </div>
     </div>
 
+    <!-- Delete Item Confirmation Modal -->
+    <div class="modal fade" id="deleteConfirmModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title">Confirm Removal</h5>
+                    <button type="button" class="close text-dark" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p id="deleteConfirmMessage">Are you sure you want to remove this item from the template?</p>
+                    <input type="hidden" id="deleteItemId">
+                    <input type="hidden" id="deleteTableId">
+                    <input type="hidden" id="deleteTemplateId">
+                    <input type="hidden" id="deleteItemType">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-warning" id="confirmDeleteItemBtn">Remove Item</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <?php include 'incl/adminjs.php'; ?>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -1153,10 +1176,28 @@ $session_timeout_js = "";
         });
 
         // Remove field from template
-        document.querySelectorAll('.remove-field-btn').forEach(button => {
+        const removeFieldButtons = document.querySelectorAll('.remove-field-btn');
+        console.log('Found', removeFieldButtons.length, 'remove field buttons');
+        
+        // Check if modal exists
+        const deleteConfirmModal = document.getElementById('deleteConfirmModal');
+        console.log('Delete confirm modal element:', deleteConfirmModal);
+        
+        // Check if Bootstrap is available
+        if (typeof $ !== 'undefined' && $.fn && $.fn.modal) {
+            console.log('Bootstrap modal is available');
+        } else {
+            console.error('Bootstrap modal is NOT available');
+        }
+        
+        removeFieldButtons.forEach(button => {
+            console.log('Adding event listener to remove field button:', button);
             button.addEventListener('click', function() {
+                console.log('Remove field button clicked');
                 const fieldId = this.getAttribute('data-field-id');
                 const tableId = this.getAttribute('data-table-id');
+                
+                console.log('Field ID:', fieldId, 'Table ID:', tableId);
                 
                 document.getElementById('deleteItemId').value = fieldId;
                 document.getElementById('deleteTableId').value = tableId;
@@ -1169,10 +1210,16 @@ $session_timeout_js = "";
         });
         
         // Remove table from template
-        document.querySelectorAll('.remove-table-from-template-btn').forEach(button => {
+        const removeTableButtons = document.querySelectorAll('.remove-table-from-template-btn');
+        console.log('Found', removeTableButtons.length, 'remove table buttons');
+        removeTableButtons.forEach(button => {
+            console.log('Adding event listener to remove table button:', button);
             button.addEventListener('click', function() {
+                console.log('Remove table button clicked');
                 const tableId = this.getAttribute('data-table-id');
                 const templateId = this.getAttribute('data-template-id');
+                
+                console.log('Table ID:', tableId, 'Template ID:', templateId);
                 
                 document.getElementById('deleteTableId').value = tableId;
                 document.getElementById('deleteTemplateId').value = templateId;
@@ -1180,7 +1227,48 @@ $session_timeout_js = "";
                 document.getElementById('deleteConfirmMessage').textContent = 'Are you sure you want to remove this table and all its fields from the template?';
                 
                 $('#deleteConfirmModal').modal('show');
+                console.log('Modal should be shown now');
             });
+        });
+        
+        // Add event delegation as fallback for dynamically added buttons
+        document.addEventListener('click', function(event) {
+            if (event.target.classList.contains('remove-field-btn') || event.target.closest('.remove-field-btn')) {
+                const button = event.target.classList.contains('remove-field-btn') ? event.target : event.target.closest('.remove-field-btn');
+                console.log('Event delegation: Remove field button clicked');
+                
+                const fieldId = button.getAttribute('data-field-id');
+                const tableId = button.getAttribute('data-table-id');
+                
+                console.log('Field ID:', fieldId, 'Table ID:', tableId);
+                
+                document.getElementById('deleteItemId').value = fieldId;
+                document.getElementById('deleteTableId').value = tableId;
+                document.getElementById('deleteTemplateId').value = <?php echo $template_id ?: 0; ?>;
+                document.getElementById('deleteItemType').value = 'field';
+                document.getElementById('deleteConfirmMessage').textContent = 'Are you sure you want to remove this field from the template?';
+                
+                $('#deleteConfirmModal').modal('show');
+                console.log('Modal should be shown now (event delegation)');
+            }
+            
+            if (event.target.classList.contains('remove-table-from-template-btn') || event.target.closest('.remove-table-from-template-btn')) {
+                const button = event.target.classList.contains('remove-table-from-template-btn') ? event.target : event.target.closest('.remove-table-from-template-btn');
+                console.log('Event delegation: Remove table button clicked');
+                
+                const tableId = button.getAttribute('data-table-id');
+                const templateId = button.getAttribute('data-template-id');
+                
+                console.log('Table ID:', tableId, 'Template ID:', templateId);
+                
+                document.getElementById('deleteTableId').value = tableId;
+                document.getElementById('deleteTemplateId').value = templateId;
+                document.getElementById('deleteItemType').value = 'table';
+                document.getElementById('deleteConfirmMessage').textContent = 'Are you sure you want to remove this table and all its fields from the template?';
+                
+                $('#deleteConfirmModal').modal('show');
+                console.log('Modal should be shown now (event delegation)');
+            }
         });
         
         // Add selected table from dropdown
@@ -1278,7 +1366,7 @@ $session_timeout_js = "";
         });
         
         // Confirm delete/remove
-        document.getElementById('confirmDeleteBtn')?.addEventListener('click', function() {
+        document.getElementById('confirmDeleteItemBtn')?.addEventListener('click', function() {
             const itemType = document.getElementById('deleteItemType').value;
             const fieldId = document.getElementById('deleteItemId').value;
             const tableId = document.getElementById('deleteTableId').value;
