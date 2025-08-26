@@ -27,13 +27,13 @@ $done = isset($_POST['done']) ? $_POST['done'] : 'no';
 $dupe = isset($_POST['dupe']) ? $_POST['dupe'] : 'no';
   $dupe = preg_replace("/[^A-Z, a-z]/", "", $dupe);
 
-if ($done == 'done') {# if from data form
+if ($done == 'done'){# if from data form
   $tbid = isset($_POST['tab']) ? $_POST['tab'] : 0; # which table
     $tbid = (int)$tbid;
   $logkey = isset($_POST['logkey']) ? $_POST['logkey'] : ''; # which data set
 
 }
-if ($done == 'date' || $dupe == 'dupe') {# if from new data button or duplication
+if ($done == 'date' || $dupe == 'dupe'){# if from new data button or duplication
   $tbid = isset($_POST['tab']) ? $_POST['tab'] : 0;
     $tbid = (int)$tbid;
     // new data set so create new logkey
@@ -60,7 +60,7 @@ $logdate = isset($_POST['logdate']) ? $_POST['logdate'] : $checkhol;
   $logdate = $fromyyyy.$frommm.$fromddd; # convert to yyyymmdd
   $todaydisp = strtotime($logdate);
 
-if ($table == 'table') {# if from table
+if ($table == 'table'){# if from table
   $logkey = isset($_GET['logkey']) ? $_GET['logkey'] : ''; # unique ID for data set
   $logdate = isset($_GET['logdate']) ? $_GET['logdate'] : $checkhol;
   $logdate = preg_replace("/[^0-9]/", "", $logdate); #29032022
@@ -215,8 +215,61 @@ $vids->close();
           <div class="col-xs-12">
             <?php
             if ($tab_name != '') {
-              echo "<h2 class=\"text-center\">".htmlentities($tab_name)."</h2>";
+              echo "<div class=\"row justify-content-center mb-4\">";
+              echo "<div class=\"col-md-10\">";
+              echo "<div class=\"card border-primary\">";
+              echo "<div class=\"card-header bg-primary text-white d-flex justify-content-between align-items-center\" style=\"cursor: pointer; z-index: 1100; position: relative;\" onclick=\"toggleNotes()\">";
+              echo "<h2 class=\"mb-0\" style=\"z-index: 1101; position: relative;\">" . htmlentities($tab_name) . "</h2>";
+              echo "<div class=\"d-flex align-items-center\" style=\"z-index: 1102; position: relative;\">";
+              echo "<i class=\"fa fa-arrow-down text-white mr-2\" style=\"opacity: 0.9; font-size: 1rem; z-index: 1103; position: relative;\"></i>";
+              echo "<i class=\"fa fa-chevron-down text-white\" id=\"notesToggleIcon\" style=\"font-size: 2rem; font-weight: 900; color: #ffffff !important; z-index: 1104; position: relative;\"></i>";
+              echo "</div>";
+              echo "</div>";
+              
+              // Display table notes if available
+              if (!empty($tab_notes)) {
+                echo "<div class=\"card-body\" id=\"notesContent\" style=\"display: block;\">";
+                echo "<div class=\"row\">";
+                echo "<div class=\"col-md-12\">";
+                echo "<div class=\"d-flex align-items-start\">";
+                echo "<i class=\"fa fa-info-circle text-primary mr-3 mt-1\" style=\"font-size: 1.2rem;\"></i>";
+                echo "<div class=\"flex-grow-1\">";
+                echo $tab_notes;
+                echo "</div>";
+                echo "</div>";
+                echo "</div>";
+                echo "</div>";
+                
+                // Add the Create New Data Set button at the bottom of the notes
+                echo "<div class=\"card-footer bg-light text-center\" id=\"notesFooter\" style=\"display: block;\">";
+                echo "<form method=\"post\" name=\"logbook\" action=\"" . $formurl . "\" class=\"mb-0\">";
+                echo "<input type=\"hidden\" name=\"done\" value=\"date\">";
+                echo "<input type=\"hidden\" name=\"tab\" value=\"" . $tbid . "\">";
+                echo "<button type=\"submit\" class=\"btn btn-primary px-4 py-2\">";
+                echo "<i class=\"fa fa-plus mr-2\"></i>Create New Data Set";
+                echo "</button>";
+                echo "</form>";
+                echo "</div>";
+                
+                echo "</div>";
+              } else {
+                // If no notes, still show the button below the header
+                echo "<div class=\"card-footer bg-light text-center\">";
+                echo "<form method=\"post\" name=\"logbook\" action=\"" . $formurl . "\" class=\"mb-0\">";
+                echo "<input type=\"hidden\" name=\"done\" value=\"date\">";
+                echo "<input type=\"hidden\" name=\"tab\" value=\"" . $tbid . "\">";
+                echo "<button type=\"submit\" class=\"btn btn-primary px-4 py-2\">";
+                echo "<i class=\"fa fa-plus mr-2\"></i>Create New Data Set";
+                echo "</button>";
+                echo "</form>";
+                echo "</div>";
+              }
+              
+              echo "</div>";
+              echo "</div>";
+              echo "</div>";
             }
+            
             //echo $tab_notes;
             //echo "modifylog $modifylog";
             ?>
@@ -443,6 +496,37 @@ $vids->close();
           order: [[1, 'asc'], [7, 'asc']],
       });
   });
+    </script>
+    
+    <script>
+    // Toggle notes visibility function - preserve layout flow
+    function toggleNotes() {
+      const notesContent = document.getElementById('notesContent');
+      const notesFooter = document.getElementById('notesFooter');
+      const toggleIcon = document.getElementById('notesToggleIcon');
+      
+      if (notesContent && notesFooter && toggleIcon) {
+        if (notesContent.style.maxHeight === '0px' || notesContent.style.maxHeight === '') {
+          // Show notes
+          notesContent.style.maxHeight = 'none';
+          notesContent.style.overflow = 'visible';
+          notesContent.style.padding = '';
+          notesFooter.style.maxHeight = 'none';
+          notesFooter.style.overflow = 'visible';
+          notesFooter.style.padding = '';
+          toggleIcon.className = 'fa fa-chevron-down text-white';
+        } else {
+          // Hide notes
+          notesContent.style.maxHeight = '0px';
+          notesContent.style.overflow = 'hidden';
+          notesContent.style.padding = '0';
+          notesFooter.style.maxHeight = '0px';
+          notesFooter.style.overflow = 'hidden';
+          notesFooter.style.padding = '0';
+          toggleIcon.className = 'fa fa-chevron-up text-white';
+        }
+      }
+    }
     </script>
   </body>
   <?php

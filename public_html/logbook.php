@@ -694,8 +694,61 @@ function validateAndConvertTime($timeValue) {
           <div class="col-xs-12">
             <?php
             if ($tab_name != '') {
-              echo "<h2 class=\"text-center\">".htmlentities($tab_name)."</h2>";
+              echo "<div class=\"row justify-content-center mb-4\">";
+              echo "<div class=\"col-md-10\">";
+              echo "<div class=\"card border-primary\">";
+              echo "<div class=\"card-header text-white d-flex justify-content-between align-items-center\" style=\"cursor: pointer; z-index: 1100; position: relative; background-color: #025DB8;\" onclick=\"toggleNotes()\">";
+              echo "<h2 class=\"mb-0\" style=\"z-index: 1101; position: relative;\">" . htmlentities($tab_name) . "</h2>";
+              echo "<div class=\"d-flex align-items-center\" style=\"z-index: 1102; position: relative;\">";
+              echo "<i class=\"fa fa-arrow-down text-white mr-2\" style=\"opacity: 0.9; font-size: 1rem; z-index: 1103; position: relative;\"></i>"; 
+              echo "<i class=\"fa fa-chevron-down text-white\" id=\"notesToggleIcon\" style=\"font-size: 2rem; font-weight: 900; color: #ffffff !important; z-index: 1104; position: relative; background-color: #025DB8; padding: 5px;\">⌄</i>";
+              echo "</div>";
+              echo "</div>";
+              
+              // Display table notes if available
+              if (!empty($tab_notes)) {
+                echo "<div class=\"card-body\" id=\"notesContent\" style=\"display: block;\">";
+                echo "<div class=\"row\">";
+                echo "<div class=\"col-md-12\">";
+                echo "<div class=\"d-flex align-items-start\">";
+                echo "<i class=\"fa fa-info-circle text-primary mr-3 mt-1\" style=\"font-size: 1.2rem;\"></i>";
+                echo "<div class=\"flex-grow-1\">";
+                echo $tab_notes;
+                echo "</div>";
+                echo "</div>";
+                echo "</div>";
+                echo "</div>";
+                
+                // Add the Create New Data Set button at the bottom of the notes
+                echo "<div class=\"card-footer bg-light text-center\" id=\"notesFooter\" style=\"display: block;\">";
+                echo "<form method=\"post\" name=\"logbook\" action=\"" . $formurl . "\" class=\"mb-0\">";
+                echo "<input type=\"hidden\" name=\"done\" value=\"date\">";
+                echo "<input type=\"hidden\" name=\"tab\" value=\"" . $tbid . "\">";
+                echo "<button type=\"submit\" class=\"btn px-4 py-2\" style=\"background-color: #027F3A; color: white; border-color: #027F3A;\">";
+                echo "<i class=\"fa fa-plus mr-2\"></i>Create New Data Set";
+                echo "</button>";
+                echo "</form>";
+                echo "</div>";
+                
+                echo "</div>";
+              } else {
+                // If no notes, still show the button below the header
+                echo "<div class=\"card-footer bg-light text-center\">";
+                echo "<form method=\"post\" name=\"logbook\" action=\"" . $formurl . "\" class=\"mb-0\">";
+                echo "<input type=\"hidden\" name=\"done\" value=\"date\">";
+                echo "<input type=\"hidden\" name=\"tab\" value=\"" . $tbid . "\">";
+                echo "<button type=\"submit\" class=\"btn px-4 py-2\" style=\"background-color: #027F3A; color: white; border-color: #027F3A;\">";
+                echo "<i class=\"fa fa-plus mr-2\"></i>Create New Data Set";
+                echo "</button>";
+                echo "</form>";
+                echo "</div>";
+              }
+              
+              echo "</div>";
+              echo "</div>";
+              echo "</div>";
             }
+            
             //echo $tab_notes;
             //echo "modifylog $modifylog";
             ?>
@@ -710,20 +763,6 @@ function validateAndConvertTime($timeValue) {
         </div>
         <?php echo $delalert ?>
       </div>
-
-      <!-- offer to start a new data set -->
-      <form method="post" name="logbook" class="mb-3" action="<?php echo $formurl ?>">
-          <div class="row">
-              <div class="col-12">
-                  <div class="form-group mb-0">
-                      <input type="hidden" name="done" value="date">
-                      <input type="hidden" name="tab" value="<?php echo $tbid ?>">
-                      <button type="submit" class="btn btn-sm btn-nhs px-3 py-2" style="width: 30%; max-width: 400px;">Create New Data Set</button>
-                  </div>
-              </div>
-          </div>
-      </form>
-
 
       <?php
       if ($done == 'no') {
@@ -1466,6 +1505,36 @@ function validateAndConvertTime($timeValue) {
     });
   </script>
 
+  <script>
+    // Toggle notes visibility function - preserve layout flow
+    function toggleNotes() {
+      const notesContent = document.getElementById('notesContent');
+      const notesFooter = document.getElementById('notesFooter');
+      const toggleIcon = document.getElementById('notesToggleIcon');
+      
+      if (notesContent && notesFooter && toggleIcon) {
+        if (notesContent.style.maxHeight === '0px' || notesContent.style.maxHeight === '') {
+          // Show notes
+          notesContent.style.maxHeight = 'none';
+          notesContent.style.overflow = 'visible';
+          notesContent.style.padding = '';
+          notesFooter.style.maxHeight = 'none';
+          notesFooter.style.overflow = 'visible';
+          notesFooter.style.padding = '';
+          toggleIcon.className = 'fa fa-chevron-down text-white';
+        } else {
+          // Hide notes
+          notesContent.style.maxHeight = '0px';
+          notesContent.style.overflow = 'hidden';
+          notesContent.style.padding = '0';
+          notesFooter.style.maxHeight = '0px';
+          notesFooter.style.overflow = 'hidden';
+          notesFooter.style.padding = '0';
+          toggleIcon.className = 'fa fa-chevron-up text-white';
+        }
+      }
+    }
+  </script>
 
 </body>
 <?php
