@@ -235,7 +235,7 @@ while ($groupset->fetch()){
                               // data is in HH:mm format
                               if ($hours > 0) {
                                  $time = explode(':', $hours);
-                                 $minutes = ($time[0] * 60.0 + $time[1] * 1.0);
+                                 $minutes = (intval($time[0]) * 60.0 + intval($time[1]) * 1.0);
                                  $hours = $minutes / 60;
                                  $tothrs = $tothrs + $hours;
                               }

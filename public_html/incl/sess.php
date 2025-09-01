@@ -1,4 +1,6 @@
 <?php
+// include_once __DIR__ . '/../OXEXfolder/config.php';
+// include_once __DIR__ . '/../OXEXfolder/p_functions.php';
 $devtxt = 'TEST # | ';
 $thisdom = "https://www.oxex.co.uk";
 $imgdom = "https://www.oxex.co.uk/";

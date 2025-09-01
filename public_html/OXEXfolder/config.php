@@ -75,8 +75,8 @@ if (!$mysql_host || !$mysql_user || !$mysql_password || !$mysql_database) {
     die('Error: Missing required database environment variables. Please check your .env file.');
 }
 
-// Connect to AWS RDS MySQL database
-$mysqli = new mysqli($mysql_host, $mysql_user, $mysql_password, $mysql_database, $mysql_port);
+// Connect to AWS RDS MySQL database with persistent connection
+$mysqli = new mysqli('p:' . $mysql_host, $mysql_user, $mysql_password, $mysql_database, $mysql_port);
 
 if ($mysqli->connect_error) {
     die('Connect Error (' . $mysqli->connect_errno . ') ' . $mysqli->connect_error);
@@ -84,4 +84,36 @@ if ($mysqli->connect_error) {
 
 // Set charset to ensure proper encoding
 $mysqli->set_charset("utf8mb4");
+
+// Set connection timeout and other settings to prevent "server has gone away"
+$mysqli->query("SET SESSION wait_timeout=28800"); // 8 hours
+$mysqli->query("SET SESSION interactive_timeout=28800"); // 8 hours
+$mysqli->query("SET SESSION net_read_timeout=60"); // 60 seconds
+$mysqli->query("SET SESSION net_write_timeout=60"); // 60 seconds
+
+// Function to check and reconnect if needed
+function ensureConnection($mysqli) {
+    if (!$mysqli->ping()) {
+        error_log("Database connection lost, attempting to reconnect...");
+        $mysqli->close();
+        
+        // Reconnect
+        global $mysql_host, $mysql_user, $mysql_password, $mysql_database, $mysql_port;
+        $mysqli = new mysqli('p:' . $mysql_host, $mysql_user, $mysql_password, $mysql_database, $mysql_port);
+        
+        if ($mysqli->connect_error) {
+            error_log("Reconnection failed: " . $mysqli->connect_error);
+            return false;
+        }
+        
+        $mysqli->set_charset("utf8mb4");
+        $mysqli->query("SET SESSION wait_timeout=28800");
+        $mysqli->query("SET SESSION interactive_timeout=28800");
+        $mysqli->query("SET SESSION net_read_timeout=60");
+        $mysqli->query("SET SESSION net_write_timeout=60");
+        
+        error_log("Database reconnected successfully");
+    }
+    return $mysqli;
+}
 ?>

@@ -1054,6 +1054,10 @@ function validateAndConvertTime($timeValue) {
                   case 0: // Single select menu
                     echo "<select class='form-control' id='stid$stid' name='stid$stid' $isreqd style='word-wrap: break-word; white-space: normal;'>";
                     
+                    // Add default "Please Pick" option
+                    $defaultSelected = ($expid == 0 || $expid == null) ? 'selected' : '';
+                    echo "<option value='' $defaultSelected style='word-wrap: break-word; white-space: normal;'>Please Pick</option>";
+                    
                     $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ?");
                     $fieldset->bind_param("i", $stid);
                     $fieldset->execute();
@@ -1196,6 +1200,10 @@ function validateAndConvertTime($timeValue) {
             switch ($single) {
               case 0: // Single select menu
                 echo "<select class='form-control' id='stid$stid' name='stid$stid' $isreqd style='word-wrap: break-word; white-space: normal;'>";
+                
+                // Add default "Please Pick" option
+                $defaultSelected = ($expid == 0 || $expid == null) ? 'selected' : '';
+                echo "<option value='' $defaultSelected style='word-wrap: break-word; white-space: normal;'>Please Pick</option>";
                 
                 $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ?");
                 $fieldset->bind_param("i", $stid);
@@ -1344,12 +1352,14 @@ function validateAndConvertTime($timeValue) {
   document.addEventListener('DOMContentLoaded', function () {
       // Attach click event to the Save button
       const saveButton = document.getElementById('save-button');
-      saveButton.addEventListener('click', function (e) {
+      if (saveButton) {
+          saveButton.addEventListener('click', function (e) {
           const confirmSave = confirm('Are you sure you want to save these changes?');
           if (!confirmSave) {
               e.preventDefault(); // Prevent form submission if the user cancels
           }
       });
+      }
 
       // Show success message if form is submitted successfully
       const urlParams = new URLSearchParams(window.location.search);

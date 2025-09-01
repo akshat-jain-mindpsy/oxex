@@ -840,9 +840,11 @@ $stmt->close();
                               // data is in HH:mm format
                               if ($hours > 0) {
                                  $time = explode(':', $hours);
-                                 $minutes = ($time[0] * 60.0 + $time[1] * 1.0);
-                                 $hours = $minutes / 60;
-                                 $tothrs = $tothrs + $hours;
+                                 if (isset($time[0]) && isset($time[1])) {
+                                    $minutes = (intval($time[0]) * 60.0 + intval($time[1]) * 1.0);
+                                    $hours = $minutes / 60;
+                                    $tothrs = $tothrs + $hours;
+                                 }
                               }
                               
                            }
@@ -859,7 +861,7 @@ $stmt->close();
                            $vids->close();
                            */
 
-                           array_push($ansarr, $hours);
+                           array_push($ansarr, $tothrs);
                         }
                      }
 
@@ -1305,9 +1307,11 @@ while ($tableset->fetch()){
                // data is in HH:mm format
                if ($hours != 0) {
                   $time = explode(':', $hours);
-                  $minutes = ($time[0] * 60.0 + $time[1] * 1.0);
-                  $hours = $minutes / 60;
-                  $tothours = $tothours + $hours;
+                  if (isset($time[0]) && isset($time[1])) {
+                     $minutes = (intval($time[0]) * 60.0 + intval($time[1]) * 1.0);
+                     $hours = $minutes / 60;
+                     $tothours = $tothours + $hours;
+                  }
                }
                
                

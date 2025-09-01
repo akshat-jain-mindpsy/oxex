@@ -1,4 +1,5 @@
 <?php 
+error_log("CHECKPOINT 1: Account.php starting");
 include 'OXEXfolder/config.php';
 include 'OXEXfolder/p_functions.php';
 sec_session_start();
@@ -18,6 +19,7 @@ $dateend = date('Y') . '1231';
 $valueyearstart = 20200101;
 $valueyearend = 20991231;
 
+error_log("About to start HTML output");
 ?><!doctype html>
 <html lang="en">
   <head>
@@ -30,6 +32,7 @@ $valueyearend = 20991231;
   <?php
     if (login_check($mysqli) != false) {
       // logged in only!
+      error_log("CHECKPOINT 2: Login check passed, starting body");
     ?>
   <body>
     <?php include 'incl/banner.php' ?>
@@ -65,6 +68,13 @@ $valueyearend = 20991231;
           <div class="col-xs-12 col-sm-8 offset-sm-2">
             
             <?php
+            // Ensure database connection is alive
+            $mysqli = ensureConnection($mysqli);
+            if (!$mysqli) {
+                error_log("FATAL: Could not establish database connection in account.php!");
+                die("Database connection failed");
+            }
+            
             // list the coloured task labels
             $tableset = $mysqli->prepare("SELECT dtid, task, colour, textcolor FROM tasks ");
             $tableset->execute();
@@ -87,12 +97,14 @@ $valueyearend = 20991231;
               echo "<div id=\"d$dtid\" class=\"rounded px-3 py-2 mr-1 mb-2\" style=\"background-color:#$colour\">$task <span class=\"badge badge-dark float-right mr-2\" id=\"taskqty$dtid\">$numtasks</span></div>";
             }
             $tableset->close();
+            error_log("CHECKPOINT 3: Task labels section completed");
             ?>
           </div>
         </div>
         <div class="row mt-5">
           <div class="col-xs-12 col-sm-8 offset-sm-2">
             <?php
+            error_log("CHECKPOINT 4: Starting stats section");
             // Stats - as admin traineedetail.php but no output until the stats
             // could be a year or a year range
             if ($start == $end) {
@@ -100,7 +112,6 @@ $valueyearend = 20991231;
             } else {
                $dispyear = "$start to $end";
             }
-            
              // these are for stats at end
              $allpass = 0; # flag for how many passed in total
              $allreports = 0; # flag for how many graphs in total
@@ -116,6 +127,51 @@ $valueyearend = 20991231;
              $tableset->execute();
              $tableset->store_result();
              $tableset->bind_result($thistbid, $tab_name);
+             error_log("CHECKPOINT 5: Starting tables loop, found " . $tableset->num_rows . " tables");
+             
+             // OPTIMIZATION: Pre-collect all trainee_log data for this trainee and date range
+             // This replaces hundreds of individual queries with a single efficient query
+             $allTraineeData = array();
+             $traineeDataQuery = $mysqli->prepare("
+                SELECT tlogid, logkey, stid, pid, select_val, date_added 
+                FROM trainee_log 
+                WHERE trainkey = ? AND date_added >= ? AND date_added <= ?
+                ORDER BY stid, pid
+             ");
+             $traineeDataQuery->bind_param("sii", $trainkey, $datestart, $dateend);
+             $traineeDataQuery->execute();
+             $traineeDataQuery->store_result();
+             $traineeDataQuery->bind_result($tlogid, $logkey, $stid, $pid, $select_val, $date_added);
+             
+             while ($traineeDataQuery->fetch()) {
+                $allTraineeData[] = array(
+                   'tlogid' => $tlogid,
+                   'logkey' => $logkey,
+                   'stid' => $stid,
+                   'pid' => $pid,
+                   'select_val' => $select_val,
+                   'date_added' => $date_added
+                );
+             }
+             $traineeDataQuery->close();
+             
+             // Create lookup arrays for fast access
+             $traineeDataByStidPid = array();
+             $traineeDataByLogkey = array();
+             
+             foreach ($allTraineeData as $data) {
+                $key = $data['stid'] . '_' . $data['pid'];
+                if (!isset($traineeDataByStidPid[$key])) {
+                   $traineeDataByStidPid[$key] = array();
+                }
+                $traineeDataByStidPid[$key][] = $data;
+                
+                if (!isset($traineeDataByLogkey[$data['logkey']])) {
+                   $traineeDataByLogkey[$data['logkey']] = array();
+                }
+                $traineeDataByLogkey[$data['logkey']][] = $data;
+             }
+             
              while ($tableset->fetch()){
                 array_push($namarr, $tab_name);
 
@@ -126,35 +182,41 @@ $valueyearend = 20991231;
                 $reportset->bind_result($rmid, $report_title, $valtype, $situation, $stid);
                 while ($reportset->fetch()){
                    $allreports++; # count No. of reports
+                   if ($allreports % 10 == 0) {
+                      error_log("CHECKPOINT 6: Processed " . $allreports . " reports total, currently on table " . count($namarr) . " (tbid: " . $thistbid . ")");
+                   }
 
-// START data collect
+// START OPTIMIZED data collect
 
                    $ansarr = array();
                    $valarr = array();
                    $valBarr = array();
+                   
                    // look at trainee's data
                    if ($valtype == 0) { # Exact values
-                      // loop through this report's data requirements held in valuea
-                      // and get the matching field name (valuea = pid)
+                      error_log("CHECKPOINT 7: About to process valtype 0 for report " . $allreports . " (rmid: " . $rmid . ")");
+                      
+                      // Get report data requirements
                       $dataset = $mysqli->prepare("SELECT select_gen.select_val, report_data.valuea FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
                       $dataset->bind_param("i", $rmid); 
                       $dataset->execute();
                       $dataset->store_result();
                       $dataset->bind_result($select_val, $valuea);
                       while ($dataset->fetch()){
-                         array_push($valarr,$valuea); # the id's to look for in Trainee's data
+                         array_push($valarr, $valuea); # the id's to look for in Trainee's data
                       }
                       $dataset->close();
-                      // find how many of each type for this trainee and push value to array
+                      
+                      error_log("CHECKPOINT 8: About to start foreach loop for valtype 0, rmid: " . $rmid . ", valarr count: " . count($valarr));
+                      
+                      // Use pre-collected data instead of individual queries
                       foreach ($valarr as $valueA) {
-                         $vids = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ? AND date_added >= ? AND date_added <= ?"); 
-                         $vids->bind_param("siiii", $trainkey, $stid, $valueA, $datestart, $dateend);
-                         $vids->execute();
-                         $vids->store_result();
-                         $numages = $vids->num_rows;
-                         $vids->close();
-                         array_push($ansarr, $numages);
+                         $key = $stid . '_' . $valueA;
+                         $count = isset($traineeDataByStidPid[$key]) ? count($traineeDataByStidPid[$key]) : 0;
+                         array_push($ansarr, $count);
                       }
+                      
+                      error_log("CHECKPOINT 9: Completed foreach loop for valtype 0, rmid: " . $rmid . ", ansarr count: " . count($ansarr));
                       
                    }
                    if ($valtype == 1) { #range of values
@@ -165,32 +227,31 @@ $valueyearend = 20991231;
                       $dataset->bind_result($valuea, $valueb);
                       while ($dataset->fetch()){
                          $select_val = "$valuea - $valueb";
-                         array_push($valarr,$valuea); # the 'from' value to search data
-                         array_push($valBarr,$valueb); # the 'to' value to search data
+                         array_push($valarr, $valuea); # the 'from' value to search data
+                         array_push($valBarr, $valueb); # the 'to' value to search data
                       }
                       $dataset->close();
-                      // find how many of each type for this trainee and push value to array
+                      
+                      // Use pre-collected data for range queries
                       $x = 0;
                       foreach ($valarr as $valueA) {
-                         // find same key for vlueB
                          $valueB = $valBarr[$x];
-
-                         $vids = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND stid = ? AND select_val >= ? AND select_val <= ? AND date_added >= ? AND date_added <= ?"); 
-                         $vids->bind_param("sisiii", $trainkey, $stid, $valueA, $valueB, $datestart, $dateend);
-                         $vids->execute();
-                         $vids->store_result();
-                         $numages = $vids->num_rows;
-                         $vids->close();
-                         array_push($ansarr, $numages);
+                         $count = 0;
+                         
+                         // Count records in range using pre-collected data
+                         foreach ($allTraineeData as $data) {
+                            if ($data['stid'] == $stid && 
+                                $data['select_val'] >= $valueA && 
+                                $data['select_val'] <= $valueB) {
+                               $count++;
+                            }
+                         }
+                         
+                         array_push($ansarr, $count);
                          $x++;
                       }
                    }
                    if ($valtype == 2) { # count of hours
-                      // find select_gen.pid from report_data.valuea
-                      // this gives select_types.stid (and select_types.select_val is the x-axis label)
-                      // 
-                      // loop through this report's data requirements held in valuea
-                      // and get the matching field name (valuea = pid)
                       $value60 = 60;
                       $dataset = $mysqli->prepare("SELECT select_gen.select_val, report_data.valuea, report_data.valueb FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
                       $dataset->bind_param("i", $rmid); 
@@ -199,55 +260,48 @@ $valueyearend = 20991231;
                       $dataset->bind_result($select_val, $valuea, $valueb);
                       while ($dataset->fetch()){
                          $valuea = intval($valuea);
-                         array_push($valarr,$valuea); # the stid's to look for in Trainee's data
+                         array_push($valarr, $valuea); # the stid's to look for in Trainee's data
                       }
                       $dataset->close();
 
-                      // loop through each stid in trainee's data matching array pid
+                      // Calculate hours using pre-collected data
                       $tothrs = 0;
                       foreach ($valarr as $valueA) {
-                         $hrsset = $mysqli->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ? AND date_added >= ? AND date_added <= ?");
-                         $hrsset->bind_param("siiii", $trainkey, $stid, $valueA, $datestart, $dateend);
-                         $hrsset->execute();
-                         $hrsset->store_result();
-                         $hrsset->bind_result($logkey);
-                         while ($hrsset->fetch()){
-                            $hours = 0;
-                            // we'll use the logkey to find the hours for the same session
-                            //echo "logkey $logkey ($trainkey, $stid, $valueA, $datestart, $dateend)<br>";
-                            // for each, find number of hours for the same logkey
-                            // // looking for stid = 60
-                            $stmt = $mysqli->prepare("SELECT select_val FROM trainee_log WHERE logkey = ? AND stid = ?");
-                            $stmt->bind_param("si", $logkey, $value60);
-                            $stmt->execute();
-                            $stmt->store_result();
-                            $stmt->bind_result($hours);
-                            $stmt->fetch();
-                            $stmt->close();
-
-                            //echo "| $hours | ";
-                            // data is in HH:mm format
-                            if ($hours > 0) {
-                               $time = explode(':', $hours);
-                               $minutes = ($time[0] * 60.0 + $time[1] * 1.0);
-                               $hours = $minutes / 60;
-                               $tothrs = $tothrs + $hours;
-                            }
-                            
-                         }
-                         $numrows = $hrsset->num_rows;
-                         $hrsset->close();
-
-                         if (isset($hours)) {
-                            array_push($ansarr, $hours);
-                        }
+                         $hours = 0;
                          
+                         // Find matching logkeys for this stid/pid combination
+                         $key = $stid . '_' . $valueA;
+                         if (isset($traineeDataByStidPid[$key])) {
+                            foreach ($traineeDataByStidPid[$key] as $data) {
+                               $logkey = $data['logkey'];
+                               
+                               // Find hours for this logkey (stid = 60)
+                               if (isset($traineeDataByLogkey[$logkey])) {
+                                  foreach ($traineeDataByLogkey[$logkey] as $logData) {
+                                     if ($logData['stid'] == $value60) {
+                                        $hours = $logData['select_val'];
+                                        break;
+                                     }
+                                  }
+                               }
+                               
+                               // Convert HH:mm format to hours
+                               if ($hours > 0) {
+                                  $time = explode(':', $hours);
+                                  $minutes = (intval($time[0]) * 60.0 + intval($time[1]) * 1.0);
+                                  $hours = $minutes / 60;
+                                  $tothrs = $tothrs + $hours;
+                               }
+                            }
+                         }
+                         
+                         array_push($ansarr, $tothrs);
                       }
                    }
 
                    $howmanyvals = count($valarr); # how many values expected
                    
-// END data collect
+// END OPTIMIZED data collect
 
 
 
@@ -413,6 +467,7 @@ $valueyearend = 20991231;
                   }
                   echo "<hr>";
                }
+               error_log("CHECKPOINT 10: Tables loop completed. Processed " . count($namarr) . " tables and " . $allreports . " reports");
                $numnotes = $tableset->num_rows;
                $tableset->close();
                if ($numnotes == 0) {
@@ -544,6 +599,7 @@ $valueyearend = 20991231;
   </body>
   <?php
     // logged in only!
+    error_log("CHECKPOINT 11: Account.php execution completed successfully");
     }
     ?>
 </html>

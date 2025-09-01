@@ -137,7 +137,7 @@ while ($tableset->fetch()){
             //array_push($temparr,$hours);
             $time = explode(':', $hours); # stored as HH:mm
             if (isset($time[1])) {
-               $minutes = ($time[0] * 60.0 + $time[1] * 1.0);
+               $minutes = (intval($time[0]) * 60.0 + intval($time[1]) * 1.0);
             }
 
          } else {
@@ -286,7 +286,7 @@ echo "<tbody>";
             //array_push($temparr,$hours);
             $time = explode(':', $hours); # stored as HH:mm
             if (isset($time[1])) {
-               $minutes = ($time[0] * 60.0 + $time[1] * 1.0);
+               $minutes = (intval($time[0]) * 60.0 + intval($time[1]) * 1.0);
             }
 
          } else {
@@ -402,7 +402,7 @@ echo "<tbody>";
             //array_push($temparr,$hours);
             $time = explode(':', $hours); # stored as HH:mm
             if (isset($time[1])) {
-               $minutes = ($time[0] * 60.0 + $time[1] * 1.0);
+               $minutes = (intval($time[0]) * 60.0 + intval($time[1]) * 1.0);
             }
 
          } else {

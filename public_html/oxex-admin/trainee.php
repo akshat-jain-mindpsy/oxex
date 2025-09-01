@@ -535,17 +535,20 @@ $tableset->close();
                         </div>
 
                         <div class="card-body">
+                           <div class="alert alert-info">
+                              <small><strong>Note:</strong> Fields marked with <span class="text-danger">*</span> are required.</small>
+                           </div>
                            <div class="form-group">
-                              <label class="col-form-label" for="name">Trainee Name</label>
+                              <label class="col-form-label" for="name">Trainee Name <span class="text-danger">*</span></label>
                               <input class="form-control" type="text" id="name" name="name" required>
                            </div>
                            <div class="form-group">
-                              <label class="col-form-label" for="email">Trainee Email</label>
+                              <label class="col-form-label" for="email">Trainee Email <span class="text-danger">*</span></label>
                               <input class="form-control" type="email" id="email" name="email" required>
                            </div>
                            
                                     <div class="form-group">
-                                       <label class="col-form-label" for="uid">University Course</label>
+                                       <label class="col-form-label" for="uid">University Course <span class="text-danger">*</span></label>
                                        <select class="custom-select custom-select-lg mb-3" id="uid" name="uid" required>
                                          <option selected="selected" value="0">Select...</option>
                                          <?php
@@ -584,7 +587,7 @@ $tableset->close();
                                 ?>
                                 <div class="row">
                                     <div class="col form-group">
-                                        <label class="col-form-label" for="supervisor">Supervisor#1</label>
+                                        <label class="col-form-label" for="supervisor">Supervisor#1 <span class="text-danger">*</span></label>
                                         <select class="custom-select custom-select mb-3" id="supervisor" name="supervisor" required>
                                          <option selected="selected" value="0">Select...</option>
                                          <?php
@@ -643,13 +646,13 @@ $tableset->close();
                                 <div class="row">
                                     <div class="col form-group">
                                         <label class="col-form-label" for="supervisor3">Supervisor #3</label>
-                                        <select class="custom-select custom-select mb-3" id="supervisor" name="supervisor3">
+                                        <select class="custom-select custom-select mb-3" id="supervisor3" name="supervisor3">
                                          <option selected="selected" value="0">Select...</option>
                                          <?php
                                          // list Supervisors Only (& full admin)
                                          $cat_ref = '';
                                          $tableset = $mysqli->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE (admintype = ? OR admintype = ? OR admintype = ?)");
-                                         $tableset->bind_param("sss", $adminAO, $adminAE, $adminAT);
+                                         $tableset->bind_param("sss", $adminSO, $adminSE, $adminAT);
                                          $tableset->execute();
                                          $tableset->store_result();
                                          $tableset->bind_result($supervisor, $realname, $thisadmintype);
@@ -670,7 +673,7 @@ $tableset->close();
                                        </select>
                                     </div>
                                     <div class="col form-group">
-                                        <label class="col-form-label" for="tutor">Tutor</label>
+                                        <label class="col-form-label" for="tutor">Tutor <span class="text-danger">*</span></label>
                                         <select class="custom-select custom-select mb-3" id="tutor" name="tutor" required>
                                          <option selected="selected" value="0">Select...</option>
                                          <?php
@@ -708,7 +711,7 @@ $tableset->close();
                                 </div>
                                 <div class="col">
                                     <div class="form-group">
-                                        <label class="col-form-label" for="year">Cohort Year</label>
+                                        <label class="col-form-label" for="year">Cohort Year <span class="text-danger">*</span></label>
                                         <select class="custom-select custom-select mb-3" id="year" name="year" required>
                                           <?php
                                           $startyear = date("Y");
