@@ -3,8 +3,8 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
-$pagetitle = "Manufacturers";
-$subtitle = "Case Studies";
+$pagetitle = "Categories";
+$subtitle = "Categories";
 if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
@@ -25,9 +25,15 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
+$select_type = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
+   // delete all field links
+   $stmt = $mysqli->prepare("DELETE FROM tab_fields WHERE stid = ?");
+   $stmt->bind_param("i", $which); 
+   $stmt->execute();
+   $stmt->close();
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM proj_cats WHERE catid = ? LIMIT 1");
+  $stmt = $mysqli->prepare("DELETE FROM select_types WHERE stid = ? LIMIT 1");
   $stmt->bind_param("i", $which); 
   $stmt->execute();
   if ($mysqli->affected_rows > 0) {
@@ -39,117 +45,42 @@ if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
 }
 
 if ($newadmin == 'newadmin') {
-  $catproj = isset($_POST['catproj']) ? $_POST['catproj'] : '';
-  // format the string to be used as a URL
-  $semantic_url = preg_replace('/[^A-Za-z0-9-]+/', '-', $catproj);# replace non alphanumeric with a dash
-  $semantic_url = preg_replace('/-+/', '-', $semantic_url);# remove repeated dashes
-  $semantic_url = rtrim($semantic_url, '-');# remove trailing dash
-  // look for any titles with the same url in semantic_url
-  $semantic_title = $semantic_url; # not used
-  $stmt = $mysqli->prepare("SELECT catid FROM proj_cats WHERE semantic_url = ?");
-  $stmt->bind_param("s", $semantic_url);
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($catid);
-  $stmt->fetch();
-  $numrows = $stmt->num_rows;
-  $stmt->close();
+  $str = isset($_POST['str']) ? $_POST['str'] : '';
+  $single = isset($_POST['single']) ? $_POST['single'] : 0;
+  $musthave = isset($_POST['musthave']) ? $_POST['musthave'] : 0;
+  $wouldlike = isset($_POST['wouldlike']) ? $_POST['wouldlike'] : 0;
+  
+  // Determine the next sort order
+  $sort_order_stmt = $mysqli->prepare("SELECT COALESCE(MAX(sort_order) + 1, 1) AS next_sort_order FROM select_types");
+  $sort_order_stmt->execute();
+  $sort_order_stmt->bind_result($next_sort_order);
+  $sort_order_stmt->fetch();
+  $sort_order_stmt->close();
 
-  $urllen = strlen($semantic_url);
-  if ($urllen > 255 && $numrows == 0) {
-    $semantic_url = substr($semantic_url, 0, 255); # don't want more than 255 chars
-  }
-  if ($urllen > 250 && $numrows > 0) {
-    $semantic_url = substr($semantic_url, 0, 250); # don't want more than 251 chars as we need to append a suffix
-  }
-  if ($numrows > 0) {
-    $randsuffix = substr(md5(rand()), 0, 4);
-    $semantic_url = $semantic_url.'-'.$randsuffix;# add suffix to make it different to existing 
-  }
-
-  $cat_txt = isset($_POST['cat_txt']) ? $_POST['cat_txt'] : '';
-  // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO proj_cats (catproj, semantic_url, cat_txt, cat_logo, webp, avif) VALUES (?, ?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("ssssss", $catproj, $semantic_url, $cat_txt, $valueblank, $valueblank, $valueblank);
+  // Write new record
+  $insert_stmt = $mysqli->prepare("INSERT INTO select_types (str, single, musthave, wouldlike, sort_order) VALUES (?, ?, ?, ?, ?)");
+  $insert_stmt->bind_param("siiii", $str, $single, $musthave, $wouldlike, $next_sort_order);
   $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
+  
+  // Check for errors
+  if ($insert_stmt->errno) {
+    error_log("Insert error: " . $insert_stmt->error);
+  }
+  
   $newid = $insert_stmt->insert_id;
   $insert_stmt->close();
-
-  if (is_uploaded_file($_FILES['Image1']['tmp_name'])) {
-    // create project pdf thumb and add filename
-    $generateID = substr(md5(rand()), 0, 16); 
-    ini_set('max_execution_time', 300);
-   function resize_save_jpeg( $source_image_path, $target_image_path, $target_image_width, $target_image_height ) {
-    list( $source_image_width, $source_image_height, $source_image_type ) = getimagesize( $source_image_path );
-    switch ( $source_image_type ) {
-     case IMAGETYPE_GIF:
-      $source_gd_image = imagecreatefromgif( $source_image_path );
-      break;
-     case IMAGETYPE_JPEG:
-      $source_gd_image = imagecreatefromjpeg( $source_image_path );
-      break;
-     case IMAGETYPE_PNG:
-      $source_gd_image = imagecreatefrompng( $source_image_path );
-      break;
-    }
-
-    if ( $source_gd_image === false ) {
-     return false;
-    }
-
-    $source_aspect_ratio = $source_image_width / $source_image_height;
-    $target_aspect_ratio = $target_image_width / $target_image_height;
-    if ( ($source_image_width <= $target_image_width) && ($source_image_height <= $target_image_height) )  {
-     $target_image_width = $source_image_width;
-     $target_image_height = $source_image_height;
-    }  elseif ( $target_aspect_ratio > $source_aspect_ratio )   {
-     $target_image_width = ( int ) ( $target_image_height * $source_aspect_ratio );
-    }   else  {
-     $target_image_height = ( int ) ( $target_image_width / $source_aspect_ratio );
-    }
-
-    $target_gd_image = imagecreatetruecolor( $target_image_width, $target_image_height );
-    imagecopyresampled( $target_gd_image, $source_gd_image, 0, 0, 0, 0, $target_image_width, $target_image_height, $source_image_width, $source_image_height );
-    imagejpeg( $target_gd_image, $target_image_path, 90 );
-    imagedestroy( $source_gd_image );
-    imagedestroy( $target_gd_image );
-    return true;
-
-   }
-
-   $temp_image_path = $_FILES[ 'Image1' ][ 'tmp_name' ];
-   $temp_image_name = $_FILES[ 'Image1' ][ 'name' ];
-   list( , , $temp_image_type ) = getimagesize( $temp_image_path );
-   if ( $temp_image_type === NULL ) {
-    return false;
-   }
-
-   switch ( $temp_image_type ) {
-    case IMAGETYPE_GIF:
-     break;
-    case IMAGETYPE_JPEG:
-     break;
-    case IMAGETYPE_PNG:
-     break;
-    default:
-     return false;
-   }
-   
-   $large_image_path = '../logos/'.$generateID.'.jpg';
-      $actualname = $generateID.'.jpg';
-      $result = resize_save_jpeg( $temp_image_path, $large_image_path, 400, 400 );
-   $isanimage = 0;
-   if ( $result )
-   {
-    $stmt = $mysqli->prepare("UPDATE proj_cats SET cat_logo = ? WHERE catid = ?"); 
-    $stmt->bind_param("si", $actualname, $newid);
-    $stmt->execute();
-    $stmt->close();
-    $isanimage = 1;
-   }
-  }# if image uploaded
 }
+function getSimilarExistingValues($type) {
+    global $mysqli;
+    $stmt = $mysqli->prepare("SELECT select_val FROM select_gen 
+                               WHERE select_type = ? 
+                               ORDER BY SIMILARITY(select_val, ?) 
+                               LIMIT 5");
+    $stmt->bind_param("ss", $type, $newValue);
+    $stmt->execute();
+    return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+}
+
 ?>
 <body>
    <div class="wrapper">
@@ -165,78 +96,146 @@ if ($newadmin == 'newadmin') {
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
             </div>
-            <?php echo $delalert ?>
             <div class="row">
-               <div class="col-xl-12">
-                  <div class="table-responsive">
-                        <table class="table table-striped my-4 w-100" id="maintable">
-                           <thead>
-                              <tr>
-                                 <th class="sort-alpha" data-priority="1">Manufacturers</th>
-                                 <th>Text?</th>
-                                 <th>Logo?</th>
-                              </tr>
-                           </thead>
-                           <tbody>
+               <div class="col-12">
+                  <div class="card border-info mb-4">
+                     <div class="card-header bg-info">
+                        <div class="card-title">Field List</div>
+                     </div>
+                     <div class="card-body">
+                        <div class="table-responsive">
+                           <table class="table table-striped w-100" id="maintable">
+                              <thead>
+                                 <tr>
+                                    <th class="sort-alpha" data-priority="1">List Type</th>
+                                    <th>Single / Multi choice</th>
+                                    <th>No. of Values</th>
+                                    <th>Must Complete?</th>
+                                    <th>Values to complete</th>
+                                 </tr>
+                              </thead>
+                              <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT catid, catproj, cat_logo, cat_txt FROM proj_cats ");
+$tableset = $mysqli->prepare("SELECT stid, str, single, musthave, wouldlike, sort_order FROM select_types ");
 $tableset->execute();
 $tableset->store_result();
-$tableset->bind_result($catid, $catproj, $cat_logo, $cat_txt);
+$tableset->bind_result($stid, $str, $single, $musthave, $wouldlike, $sort_order);
+// 'listselect_type' to avoid intereference with retaining selection
 while ($tableset->fetch()){
-   if ($cat_logo == '') {
-      $cat_logo = '<div class="badge badge-warning">No</div>';
+   if ($musthave == 0) {
+      $musthave = '<div class="badge badge-secondary">No</div>';
    } else {
-      $cat_logo = '<div class="badge badge-info">Yes</div>';
+      $musthave = '<div class="badge badge-purple">Yes</div>';
    }
-   if ($cat_txt == '') {
-      $cat_txt = '<div class="badge badge-warning">No</div>';
+   if ($wouldlike == 0) {
+      $wouldlikeVal = '<div class="badge badge-secondary">0</div>';
    } else {
-      $cat_txt = '<div class="badge badge-info">Yes</div>';
+      $wouldlikeVal = "<div class=\"badge badge-purple\">$wouldlike</div>";
    }
+   if ($sort_order == 0) {
+      $sort_order = '<div class="badge badge-danger">Not displayed</div>';
+   }
+   $listtype = 'Single Selection';
+   if ($single == 1) {
+      $listtype = 'Multiple Selection';
+   }
+   if ($single == 2) {
+      $listtype = 'Text';
+   }
+   if ($single == 3) {
+      $listtype = 'Date';
+   }
+   if ($single == 6) {
+      $listtype = 'Time';
+   }
+   if ($single == 4) {
+      $listtype = 'Numeric (step 0.1)';
+   }
+   if ($single == 5) {
+      $listtype = 'Numeric (step integer)';
+   }
+   // how many values
+   $vids = $mysqli->prepare("SELECT pid FROM select_gen WHERE stid = ? ");
+   $vids->bind_param("i", $stid);
+   $vids->execute();
+   $vids->store_result();
+   $numlinks = $vids->num_rows;
+   $vids->close();
 ?>
 <tr>
-   <td><a href="categorydetail.php?which=<?php echo $catid ?>"><?php echo $catproj ?></a></td>
-    <td><?php echo $cat_txt ?></td>
-     <td><?php echo $cat_logo ?></td>
+   <td><a href="listtypedetail.php?which=<?php echo $stid ?>"><?php echo $str?></a></td>
+   <td><?php echo $listtype ?></td>
+   <td><?php echo $numlinks ?></td>
+   <td><?php echo $musthave ?></td>
+   <td><?php echo $wouldlikeVal ?></td>
 </tr>
  <?php
  }
-$numrows = $tableset->num_rows;
 $tableset->close();
 ?>
-                           </tbody>
-                        </table>
+                              </tbody>
+                           </table>
+                        </div>
                      </div>
+                  </div>
                </div>
-            </div><!-- end table row -->
+            </div>
 
-            <div class="row my-5" id="newform">
-               <div class="col-xl-8">
+            <div class="row" id="newform">
+               <div class="col-12">
                   <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>" data-parsley-validate="" novalidate="">
                      <!-- START card-->
-                     <div class="card border-info">
+                     <div class="card border-info mb-4">
                         <div class="card-header bg-info">
-                           <div class="card-title">Add new Manufacturer</div>
+                           <div class="card-title">Add new Category</div>
                         </div>
-
                         <div class="card-body">
                            <div class="form-group">
-                              <label class="col-form-label" for="catproj">Manufacturer</label>
-                              <input class="form-control" type="text" id="catproj" name="catproj">
+                              <label class="col-form-label" for="str">Category</label>
+                              <input class="form-control" type="text" id="str" name="str" required>
                            </div>
-                           <div class="form-group">
-                            <label class="col-form-label" for="cat_txt">Optional Text</label>
-                              <textarea name="cat_txt" id="cat_txt" class="form-control summernote"></textarea>
-                          </div>
-                           <div class="form-group">
-                              <label class="col-form-label">Logo</label>
-                              <input type="file" class="form-control" name="Image1" id="Image1">
-                          </div>
+                           <div class="row">
+                                <div class="col">
+                                    <div class="form-group">
+                                        <label class="col-form-label" for="single">Field Value Type</label>
+                                        <select class="custom-select custom-select mb-3" id="single" name="single">
+                                          <option selected value="0">Single Select</option>
+                                          <option value="1">Multi Select</option>
+                                          <option value="2">Text</option>
+                                          <option value="4">Numeric (step 0.1)</option>
+                                          <option value="5">Numeric (step integer)</option>
+                                          <option value="3">Date</option>
+                                          <option value="6">Time</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <h6>Reporting Data</h6>
+                            <p>here we select competencies trainees must achieve/complete by the end of their three years of training. We also record how many different values are required for completion, if applicable (0 otherwise). NOTE; This section may be superceded by an improved method!!</p>
+                            <div class="row">
+                                <div class="col">
+                                    <div class="form-group">
+                                        <label class="col-form-label" for="musthave">Must Complete?</label>
+                                        <select class="custom-select custom-select mb-3" id="musthave" name="musthave">
+                                          <option selected value="0">No</option>
+                                          <option value="1">Yes</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col">
+                                 <div class="form-group">
+                                    <label class="col-form-label" for="wouldlike">Qty  values to reach</label>
+                                    <input class="form-control" type="number" id="wouldlike" name="wouldlike" min="0" step="1" value="0" >
+                                 </div>
+                                </div>
+                            </div>
+                           
                         </div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
-                           <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
+                           <div class="float-right">
+                              <button class="btn btn-info" type="submit">Add</button>
+                           </div>
                         </div>
                      </div><!-- END card-->
                   </form>
@@ -249,36 +248,7 @@ $tableset->close();
    <script>
    $(document).ready(function() {
       $('#maintable').dataTable( {
-        "pageLength": 10
-      });
-     $('.summernote').summernote({
-        tabsize: 2,
-        height: 160,
-        spellCheck: true,
-        dialogsInBody: true,
-        cleaner:{
-              action: 'both', // both|button|paste 'button' only cleans via toolbar button, 'paste' only clean when pasting content, both does both options.
-              newline: '<br>', // Summernote's default is to use '<p><br></p>'
-              notStyle: 'position:absolute;top:0;left:0;right:0', // Position of Notification
-              icon: '<i class="note-icon">[Your Button]</i>',
-              keepHtml: true, // Remove all Html formats
-              keepOnlyTags: ['<p>', '<br>', '<ul>', '<li>', '<b>', '<strong>','<i>', '<a>'], // If keepHtml is true, remove all tags except these
-              keepClasses: false, // Remove Classes
-              badTags: ['style', 'script', 'applet', 'embed', 'noframes', 'noscript', 'html'], // Remove full tags with contents
-              badAttributes: ['style', 'start'], // Remove attributes from remaining tags
-              limitChars: false, // 0/false|# 0/false disables option
-              limitDisplay: 'both', // text|html|both
-              limitStop: false // true/false
-        },
-        toolbar: [
-           ['style', ['style']],
-           ['font', ['bold', 'underline', 'superscript', 'subscript']],
-           ['color', ['color']],
-           ['para', ['ul', 'ol', 'paragraph']],
-           ['table', ['table']],
-           ['insert', ['link', 'picture', 'video']],
-           ['view', ['codeview', 'help']],
-         ]
+        "pageLength": 50
       });
    });
    </script>

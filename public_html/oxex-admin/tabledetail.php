@@ -13,10 +13,10 @@ if(!(login_check($mysqli) == true &&
 }
 
 // Page setup
-$pagetitle = "Table Details";
-$subtitle = "Table Fields";
-$listurl = "tables.php";
-$listname = "Tables";
+$pagetitle = "Sheet Details";
+$subtitle = "Sheet Fields";
+$listurl = "sheets.php";
+$listname = "Sheets";
 
 // Page actions
 $done = isset($_POST['done']) ? $_POST['done'] : '';
@@ -2811,7 +2811,7 @@ $changename = htmlspecialchars($tab_name);
                   <div class="form-group mt-4">
                      <div class="d-flex justify-content-between align-items-center mb-2">
                         <label class="mb-0">Currently Assigned Sections</label>
-                        <a href="tabsections.php" target="_blank" class="btn btn-sm btn-outline-secondary">
+                        <a href="sections.php" target="_blank" class="btn btn-sm btn-outline-secondary">
                            <i class="fas fa-external-link-alt"></i> Manage All Sections
                         </a>
                      </div>

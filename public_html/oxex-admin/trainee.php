@@ -730,7 +730,7 @@ $tableset->close();
                                 </div>
                             </div>
                           <div class="form-group">
-                            <label class="col-form-label">Permitted to use Tables:</label>
+                            <label class="col-form-label">Permitted to use Sheets:</label>
                             <div class="col-lg-12">
                               <?PHP
                               // Loop through tables 

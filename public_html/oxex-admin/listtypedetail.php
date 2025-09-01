@@ -3,10 +3,10 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
-$pagetitle = 'Table Fields (Column Headings)';
+$pagetitle = 'Categories';
 $subtitle = "Admin";
-$listurl = "listtypes.php"; # where the delete script is found
-$listname = "Table Field";
+$listurl = "categories.php"; # where the delete script is found
+$listname = "Categories";
 if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
@@ -85,7 +85,7 @@ $stmt->close();
                             </div>
                             <div class="card-body">
                                 <div class="form-group">
-                                    <label class="col-form-label" for="str">Field Name</label>
+                                    <label class="col-form-label" for="str">Category</label>
                                     <input class="form-control" type="text" id="str" name="str" value="<?php echo $str ?>" required>
                                 </div>
                                 <div class="row">

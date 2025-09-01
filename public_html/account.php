@@ -330,7 +330,7 @@ error_log("About to start HTML output");
                   //echo "<p>Total of reports: $allreports. Total passed $allpass. Percentage passed ".ceil($pcp)."%</p>";
                   echo "<table class=\"table table-sm table-striped\">";
                   echo "<thead>";
-                  echo "<tr class=\"table-primary\"><th>Table</th><th>No. Questions</th><th>No. Passed</th><th>%age Pass</th></tr>";
+                  echo "<tr class=\"table-primary\"><th>Sheet</th><th>No. Questions</th><th>No. Passed</th><th>%age Pass</th></tr>";
                   echo "</thead>";
                   echo "<tbody>";
                   $qq = 0;

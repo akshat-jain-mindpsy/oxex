@@ -90,7 +90,7 @@ if ($sections_result->num_rows > 0) {
         </div>
         
         <div class="mt-4">
-            <a href="tabsections.php" class="btn btn-primary">Back to Sections</a>
+            <a href="sections.php" class="btn btn-primary">Back to Sections</a>
         </div>
     </div>
 </body>

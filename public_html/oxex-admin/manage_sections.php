@@ -196,7 +196,7 @@ $tbid = isset($_GET['tbid']) ? (int)$_GET['tbid'] : 0;
 
 // Validate table ID
 if ($tbid <= 0) {
-    header("Location: tables.php");
+    header("Location: sheets.php");
     exit();
 }
 

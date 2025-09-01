@@ -103,13 +103,13 @@ $admintype = $admintype ?? 'Unknown';
                   ?>
                </ul>
             </li>
-            <li class=" "><a href="#report" title="Reports" data-toggle="collapse"><span>Tables &amp; Reports</span></a>
+            <li class=" "><a href="#report" title="Reports" data-toggle="collapse"><span>Sheets &amp; Reports</span></a>
                <ul class="sidebar-nav sidebar-subnav collapse" id="report">
-                  <li class="sidebar-subnav-header">Tables &amp; Reports Area</li>
+                  <li class="sidebar-subnav-header">Sheets &amp; Reports Area</li>
                   <?php
                   if ($admintype == "DV" || $admintype == "AT") {
-                     $url = 'tabsections.php';
-                     $page = 'Field Sections';
+                     $url = 'sections.php';
+                     $page = 'Sections';
                      if ($thispage == $url) {
                         $isactive = ' active';
                         $whichDocModal = 3;
@@ -121,9 +121,9 @@ $admintype = $admintype ?? 'Unknown';
                   ?>
                   <?php
                   if ($admintype == "DV" || $admintype == "AT") {
-                     $url = 'tables.php';
+                     $url = 'sheets.php';
                      $urldetail = 'tabledetail.php';
-                     $page = 'Table Names';
+                     $page = 'Sheets';
                      if ($thispage == $url || $thispage == $urldetail) {
                         $isactive = ' active';
                         $whichDocModal = 3;
@@ -135,9 +135,9 @@ $admintype = $admintype ?? 'Unknown';
                   ?>
                   <?php
                   if ($admintype == "DV" || $admintype == "AT") {
-                     $url = 'listtypes.php';
+                     $url = 'categories.php';
                      $urldetail = 'listtypedetail.php';
-                     $page = 'Table Field Names';
+                     $page = 'Categories';
                      if ($thispage == $url || $thispage == $urldetail) {
                         $isactive = ' active';
                         $whichDocModal = 3;
@@ -149,9 +149,9 @@ $admintype = $admintype ?? 'Unknown';
                   ?>
                   <?php
                   if ($admintype == "DV" || $admintype == "AT") {
-                     $url = 'lists.php';
+                     $url = 'items.php';
                      $urldetail = 'listdetail.php';
-                     $page = 'Field Values';
+                     $page = 'Items';
                      if ($thispage == $url || $thispage == $urldetail) {
                         $isactive = ' active';
                         $whichDocModal = 3;

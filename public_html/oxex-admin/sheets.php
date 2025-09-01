@@ -123,7 +123,7 @@ while ($tableset->fetch()){
          <a href="tabledetail.php?which=<?php echo $tbid ?>" class="btn btn-sm btn-info">
             <i class="fa fa-eye"></i> View Details
          </a>
-         <a href="tables.php?del=del&which=<?php echo $tbid ?>" class="btn btn-sm btn-danger delete-table" onclick="return confirm('Are you sure you want to delete this sheet?')">
+         <a href="sheets.php?del=del&which=<?php echo $tbid ?>" class="btn btn-sm btn-danger delete-table" onclick="return confirm('Are you sure you want to delete this sheet?')">
             <i class="fa fa-trash"></i> Delete
          </a>
       </div>

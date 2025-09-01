@@ -190,7 +190,7 @@ function searchSections($mysqli, $searchTerm) {
             fs.section_name AS title,
             COALESCE(t.tab_name, 'Unassigned') AS description,
             'Section' AS type,
-            'tabsections.php' AS url,
+            'sections.php' AS url,
             (
                 CASE 
                     WHEN fs.section_name LIKE ? THEN 10 

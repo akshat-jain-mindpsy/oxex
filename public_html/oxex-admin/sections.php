@@ -5,7 +5,7 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
-$pagetitle = "Manage Field Sections";
+$pagetitle = "Manage Sections";
 $subtitle = "Sections";
 
 // Process ALL form submissions first, before ANY HTML output
@@ -46,7 +46,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
         }
         
         // Redirect and exit
-        header("Location: tabsections.php");
+        header("Location: sections.php");
         exit;
     }
     
@@ -116,7 +116,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             }
             
             // Redirect and exit
-            header("Location: tabsections.php");
+            header("Location: sections.php");
             exit;
         } else {
             $message = "Section name cannot be empty!";
@@ -318,7 +318,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                <div class="col-12">
                   <div class="card mb-4">
                      <div class="card-header bg-info text-white">
-                        <div class="card-title">Field Sections</div>
+                        <div class="card-title">Sections</div>
                         <div class="float-right">
                            <button class="btn btn-sm btn-light" data-toggle="modal" data-target="#newSectionModal">
                               <i class="fa fa-plus"></i> Add New Section
@@ -334,7 +334,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                                     <th>Section Name</th>
                                     <th>Description</th>
                                     <th>Fields</th>
-                                    <th>Tables</th>
+                                    <th>Sheets</th>
                                     <th>Actions</th>
                                  </tr>
                               </thead>
@@ -469,7 +469,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                   
                   <!-- New Tables Dropdown -->
                   <div class="form-group">
-                     <label for="edit_table_ids">Tables Using This Section</label>
+                     <label for="edit_table_ids">Sheets Using This Section</label>
                      <select class="form-control select2" id="edit_table_ids" name="table_ids[]" multiple>
                         <?php
                         // Get all tables to populate the dropdown
@@ -486,7 +486,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                         }
                         ?>
                      </select>
-                     <small class="form-text text-muted">Select which tables should display this section</small>
+                     <small class="form-text text-muted">Select which sheets should display this section</small>
                   </div>
                </div>
                <div class="modal-footer">
@@ -589,7 +589,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                
                // Send the new order to the server
                $.ajax({
-                  url: 'tabsections.php',
+                  url: 'sections.php',
                   type: 'POST',
                   data: {
                      reorder: true,
@@ -670,7 +670,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             
             // Initialize Select2
             $('#edit_table_ids').select2({
-               placeholder: 'Select tables...',
+               placeholder: 'Select sheets...',
                allowClear: true,
                width: '100%',
                templateResult: function(state) {
@@ -784,7 +784,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             }
          });
 
-         // Submit form to add fields to section (modify this in tabsections.php)
+         // Submit form to add fields to section (modify this in sections.php)
          $('#addFieldsToSectionForm').on('submit', function(e) {
             e.preventDefault();
             
