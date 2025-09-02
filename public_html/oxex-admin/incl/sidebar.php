@@ -36,17 +36,7 @@ $admintype = $admintype ?? 'Unknown';
                   </div>
                </div>
             </li><!-- END user info-->
-            <!--START User links collapse
-            <li class="nav collapse" id="user-links">
-
-               <ul class="sidebar-nav sidebar-subnav">
-                  <li><a href="#">Profile</a></li>
-                  <li><a href="#">Settings</a></li>
-                  <li><a href="#"><span>Notifications</span><span class="badge badge-danger float-right">120</span></a></li>
-                  <li><a href="#"><span>Messages</span><span class="badge badge-success float-right">300</span></a></li>
-                  <li><a href="#">Logout</a></li>
-               </ul>
-            </li> END User links collapse-->
+            
             <!-- Iterates over all sidebar items-->
             <?php
             /* ADMIN TYPES:
@@ -69,45 +59,16 @@ $admintype = $admintype ?? 'Unknown';
             }
             echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
             ?>
-            <li class=" "><a href="#train" title="Trainees" data-toggle="collapse"><span>Trainees</span></a>
-               <ul class="sidebar-nav sidebar-subnav collapse" id="train">
-                  <li class="sidebar-subnav-header">Trainee Area</li>
-                  <?php
-                  $url = 'trainee.php';
-                  $urldetail = 'traineedetail.php';
-                  $urldetail2 = 'traineelogbook.php';
-                  $page = 'Trainees';
-                  if ($thispage == $url || $thispage == $urldetail || $thispage == $urldetail2) {
-                     $isactive = ' active';
-                     $whichDocModal = 2;
-                  } else {
-                     $isactive = ' ';
-                  }
-                  echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  ?>
-                  <?php
+            
+            <!-- DATA MANAGEMENT SECTION -->
+            <li class=" "><a href="#data" title="Data Management" data-toggle="collapse"><span>Data Management</span></a>
+               <ul class="sidebar-nav sidebar-subnav collapse" id="data">
+                  <li class="sidebar-subnav-header">Data Structure & Content</li>
                   
-                  $url = 'subsets.php';
-                  $urldetail = 'subsetdetail.php';
-                  $urldetail2 = 'subsetstats.php';
-                  $urldetail3 = 'compositestats.php';
-                  $page = 'Trainee Groups';
-                  if ($thispage == $url || $thispage == $urldetail || $thispage == $urldetail2 || $thispage == $urldetail3) {
-                     $isactive = ' active';
-                     $whichDocModal = 2;
-                  } else {
-                     $isactive = ' ';
-                  }
-                  echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  
-                  ?>
-               </ul>
-            </li>
-            <li class=" "><a href="#report" title="Reports" data-toggle="collapse"><span>Sheets &amp; Reports</span></a>
-               <ul class="sidebar-nav sidebar-subnav collapse" id="report">
-                  <li class="sidebar-subnav-header">Sheets &amp; Reports Area</li>
+                                     <!-- Core Data Structure -->
+                   <?php if ($admintype == "DV" || $admintype == "AT"): ?>
+                   <li class="sidebar-subnav-header-sub">Structure</li>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
                      $url = 'sections.php';
                      $page = 'Sections';
                      if ($thispage == $url) {
@@ -117,10 +78,8 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
                      $url = 'sheets.php';
                      $urldetail = 'tabledetail.php';
                      $page = 'Sheets';
@@ -131,10 +90,8 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
                      $url = 'categories.php';
                      $urldetail = 'listtypedetail.php';
                      $page = 'Categories';
@@ -145,10 +102,8 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
                      $url = 'items.php';
                      $urldetail = 'listdetail.php';
                      $page = 'Items';
@@ -159,10 +114,25 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
+                  ?>
+                  <?php endif; ?>
+                  
+                                     <!-- Data Standards & Rules -->
+                   <?php if ($admintype == "DV" || $admintype == "AT"): ?>
+                   <li class="sidebar-subnav-header-sub">Standards & Rules</li>
+                  <?php
+                     $url = 'pass_standards.php';
+                     $urldetail = 'pass_standard_detail.php';
+                     $page = 'Pass Standards';
+                     if ($thispage == $url || $thispage == $urldetail) {
+                        $isactive = ' active';
+                        $whichDocModal = 3;
+                     } else {
+                        $isactive = ' ';
+                     }
+                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
                   ?>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
                      $url = 'tasks.php';
                      $urldetail = 'taskdetail.php';
                      $page = 'Attendance Tasks';
@@ -173,10 +143,91 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
+                  <?php endif; ?>
+                  
+                                     
+               </ul>
+            </li>
+            
+            <!-- USER MANAGEMENT SECTION -->
+            <li class=" "><a href="#users" title="User Management" data-toggle="collapse"><span>User Management</span></a>
+               <ul class="sidebar-nav sidebar-subnav collapse" id="users">
+                  <li class="sidebar-subnav-header">Trainees & Groups</li>
+                  
+                  <!-- Trainee Management -->
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
+                     $url = 'trainee.php';
+                     $urldetail = 'traineedetail.php';
+                     $urldetail2 = 'traineelogbook.php';
+                     $page = 'Trainees';
+                     if ($thispage == $url || $thispage == $urldetail || $thispage == $urldetail2) {
+                        $isactive = ' active';
+                        $whichDocModal = 2;
+                     } else {
+                        $isactive = ' ';
+                     }
+                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
+                  ?>
+                  
+                  <!-- Group Management -->
+                  <?php
+                     $url = 'subsets.php';
+                     $urldetail = 'subsetdetail.php';
+                     $urldetail2 = 'subsetstats.php';
+                     $urldetail3 = 'compositestats.php';
+                     $page = 'Trainee Groups';
+                     if ($thispage == $url || $thispage == $urldetail || $thispage == $urldetail2 || $thispage == $urldetail3) {
+                        $isactive = ' active';
+                        $whichDocModal = 2;
+                     } else {
+                        $isactive = ' ';
+                     }
+                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
+                  ?>
+                  
+                                     <!-- Admin Users -->
+                   <?php if ($admintype == "DV" || $admintype == "AT"): ?>
+                   <li class="sidebar-subnav-header-sub">System Users</li>
+                  <?php
+                     $url = 'adminusers.php';
+                     $urldetail = 'adminusersdetail.php';
+                     $page = 'Admin Users';
+                     if ($thispage == $url || $thispage == $urldetail) {
+                        $isactive = ' active';
+                        $whichDocModal = 5;
+                     } else {
+                        $isactive = ' ';
+                     }
+                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
+                  ?>
+                  <?php endif; ?>
+               </ul>
+            </li>
+            
+            <!-- ANALYSIS & REPORTING SECTION -->
+            <li class=" "><a href="#analysis" title="Analysis & Reporting" data-toggle="collapse"><span>Analysis & Reporting</span></a>
+               <ul class="sidebar-nav sidebar-subnav collapse" id="analysis">
+                  <li class="sidebar-subnav-header">Reports & Analytics</li>
+                  
+                  <!-- Trainee Statistics -->
+                  <?php if ($admintype == "DV" || $admintype == "AT" || $admintype == "AO" || $admintype == "AE" || $admintype == "SO" || $admintype == "SE"): ?>
+                  <?php
+                     $url = 'trainee_stats.php';
+                     $page = 'Trainee Statistics';
+                     if ($thispage == $url) {
+                        $isactive = ' active';
+                        $whichDocModal = 3;
+                     } else {
+                        $isactive = ' ';
+                     }
+                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
+                  ?>
+                  <?php endif; ?>
+                  
+                  <!-- Reports -->
+                  <?php if ($admintype == "DV" || $admintype == "AT"): ?>
+                  <?php
                      $url = 'reports.php';
                      $urldetail = 'reportdetail.php';
                      $urldetail2 = 'reportcompetency.php';
@@ -188,10 +239,12 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
+                  <?php endif; ?>
+                  
+                  <!-- Advanced Searches -->
+                  <?php if ($admintype == "DV" || $admintype == "AT" || $admintype == "AO" || $admintype == "AE"): ?>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT" || $admintype == "AO"  || $admintype == "AE") {
                      $url = 'composite.php';
                      $urldetail = 'compositedetail.php';
                      $page = 'Composite Searches';
@@ -202,38 +255,12 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
+                  <?php endif; ?>
+                  
+                  <!-- Visualizations -->
+                  <?php if ($admintype == "DV" || $admintype == "AT" || $admintype == "AO" || $admintype == "AE"): ?>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
-                     $url = 'pass_standards.php';
-                     $urldetail = 'pass_standard_detail.php';
-                     $page = 'Pass Standards';
-                     if ($thispage == $url || $thispage == $urldetail) {
-                        $isactive = ' active';
-                        $whichDocModal = 3;
-                     } else {
-                        $isactive = ' ';
-                     }
-                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
-                  ?>
-                  <?php
-                     if ($admintype == "DV" || $admintype == "AT") {
-                     $url = 'graph.php';
-                     $urldetail = 'graphdetail.php';
-                     $page = 'Graph Key Colours';
-                     if ($thispage == $url || $thispage == $urldetail) {
-                        $isactive = ' active';
-                        $whichDocModal = 3;
-                     } else {
-                        $isactive = ' ';
-                     }
-                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
-                  ?>
-                  <?php
-                  if ($admintype == "DV" || $admintype == "AT" || $admintype == "AO" || $admintype == "AE") {
                      $url = 'graph_view.php';
                      $page = 'Graph View';
                      if ($thispage == $url) {
@@ -243,28 +270,51 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
-                  <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
-                     $url = 'csv_editor.php';
-                     $page = 'CSV Templates';
-                     if ($thispage == $url) {
-                        $isactive = ' active';
-                        $whichDocModal = 3;
-                     } else {
-                        $isactive = ' ';
-                     }
-                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
-                  ?>
+                  <?php endif; ?>
+                  
+                                     <!-- Graph Configuration -->
+                   <?php if ($admintype == "DV" || $admintype == "AT"): ?>
+                   <?php
+                      $url = 'graph.php';
+                      $urldetail = 'graphdetail.php';
+                      $page = 'Graph Key Colours';
+                      if ($thispage == $url || $thispage == $urldetail) {
+                         $isactive = ' active';
+                         $whichDocModal = 3;
+                      } else {
+                         $isactive = ' ';
+                      }
+                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
+                   ?>
+                   <?php endif; ?>
+                   
+                   <!-- Data Export -->
+                   <?php if ($admintype == "DV" || $admintype == "AT"): ?>
+                   <li class="sidebar-subnav-header-sub">Export</li>
+                   <?php
+                      $url = 'csv_editor.php';
+                      $page = 'CSV Templates';
+                      if ($thispage == $url) {
+                         $isactive = ' active';
+                         $whichDocModal = 3;
+                      } else {
+                         $isactive = ' ';
+                      }
+                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
+                   ?>
+                   <?php endif; ?>
                </ul>
             </li>
-            <li class=" "><a href="#pages" title="Pages" data-toggle="collapse"><span>Page Content</span></a>
-               <ul class="sidebar-nav sidebar-subnav collapse" id="pages">
-                  <li class="sidebar-subnav-header">Page Content</li>
+            
+            <!-- CONTENT MANAGEMENT SECTION -->
+            <li class=" "><a href="#content" title="Content Management" data-toggle="collapse"><span>Content Management</span></a>
+               <ul class="sidebar-nav sidebar-subnav collapse" id="content">
+                  <li class="sidebar-subnav-header">Website Content</li>
+                  
+                  <!-- Main Content -->
+                  <?php if ($admintype == "DV" || $admintype == "AT"): ?>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
                      $url = 'pages.php';
                      $urldetail = 'pagedetail.php';
                      $page = 'Main Page Content';
@@ -275,10 +325,12 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
+                  <?php endif; ?>
+                  
+                  <!-- Reference Content -->
+                  <?php if ($admintype == "DV" || $admintype == "AT" || $admintype == "AO" || $admintype == "AE"): ?>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT" || $admintype == "AO"  || $admintype == "AE") {
                      $url = 'glossary.php';
                      $urldetail = 'glossarydetail.php';
                      $page = 'Glossary';
@@ -289,10 +341,12 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
+                  <?php endif; ?>
+                  
+                  <!-- Site Configuration -->
+                  <?php if ($admintype == "DV" || $admintype == "AT"): ?>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
                      $url = 'footer.php';
                      $page = 'Footer';
                      if ($thispage == $url) {
@@ -302,30 +356,19 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
+                  <?php endif; ?>
                </ul>
             </li>
             
-            <li class=" "><a href="#admin" title="Admin" data-toggle="collapse"><span>Admin</span></a>
+            <!-- SYSTEM ADMINISTRATION SECTION -->
+            <li class=" "><a href="#admin" title="System Administration" data-toggle="collapse"><span>System Administration</span></a>
                <ul class="sidebar-nav sidebar-subnav collapse" id="admin">
-                  <li class="sidebar-subnav-header">Admin</li>
+                  <li class="sidebar-subnav-header">System Configuration</li>
+                  
+                  <!-- System Configuration -->
+                  <?php if ($admintype == "DV" || $admintype == "AT"): ?>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
-                     $url = 'adminusers.php';
-                     $urldetail = 'adminusersdetail.php';
-                     $page = 'Admin Users';
-                     if ($thispage == $url || $thispage == $urldetail) {
-                        $isactive = ' active';
-                        $whichDocModal = 5;
-                     } else {
-                        $isactive = ' ';
-                     }
-                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
-                  ?>
-                  <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
                      $url = 'course.php';
                      $urldetail = 'coursedetail.php';
                      $page = 'University / Course';
@@ -336,24 +379,8 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
                   <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
-                     $url = 'docs.php';
-                     $urldetail = 'docdetail.php';
-                     $page = 'Admin Documentation';
-                     if ($thispage == $url || $thispage == $urldetail) {
-                        $isactive = ' active';
-                        $whichDocModal = 5;
-                     } else {
-                        $isactive = ' ';
-                     }
-                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
-                  ?>
-                  <?php
-                  if ($admintype == "DV" || $admintype == "AT") {
                      $url = 'emails.php';
                      $urldetail = 'emaildetail.php';
                      $page = 'Site Emails';
@@ -364,32 +391,37 @@ $admintype = $admintype ?? 'Unknown';
                         $isactive = ' ';
                      }
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  }
                   ?>
+                  <?php endif; ?>
+                  
+                  <!-- Communication -->
                   <?php
-                  $url = 'messages.php';
-                  $page = 'Admin Messages';
-                  if ($thispage == $url) {
-                     $isactive = ' active';
-                     $whichDocModal = 5;
-                  } else {
-                     $isactive = ' ';
-                  }
-                  echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
+                     $url = 'messages.php';
+                     $page = 'Admin Messages';
+                     if ($thispage == $url) {
+                        $isactive = ' active';
+                        $whichDocModal = 5;
+                     } else {
+                        $isactive = ' ';
+                     }
+                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
                   ?>
                   
+                  <!-- Documentation -->
+                  <?php if ($admintype == "DV" || $admintype == "AT"): ?>
                   <?php
-                  /*
-                  $url = 'template.php';
-                  $page = 'Empty Template';
-                  if ($thispage == $url) {
-                     $isactive = ' active';
-                  } else {
-                     $isactive = ' ';
-                  }
-                  echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
-                  */
+                     $url = 'docs.php';
+                     $urldetail = 'docdetail.php';
+                     $page = 'Admin Documentation';
+                     if ($thispage == $url || $thispage == $urldetail) {
+                        $isactive = ' active';
+                        $whichDocModal = 5;
+                     } else {
+                        $isactive = ' ';
+                     }
+                     echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
                   ?>
+                  <?php endif; ?>
                </ul>
             </li>
             
