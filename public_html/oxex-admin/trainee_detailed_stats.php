@@ -40,6 +40,248 @@ include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
 
+// Check permissions - allow all admin types to view trainee stats
+if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+
+// Get parameters
+$thisyear = date("Y");
+$start_year = isset($_GET['start_year']) ? (int)$_GET['start_year'] : ($thisyear - 10); // Default to 10 years ago
+$end_year = isset($_GET['end_year']) ? (int)$_GET['end_year'] : ($thisyear + 1); // Default to next year
+$selected_course = isset($_GET['course']) ? (int)$_GET['course'] : 0;
+$selected_competency = isset($_GET['competency']) ? (int)$_GET['competency'] : 0;
+$babcp_filter = isset($_GET['babcp_filter']) ? (int)$_GET['babcp_filter'] : 0; // 0 = all data, 1 = BABCP only
+$babcp_training = isset($_GET['babcp_training']) ? (int)$_GET['babcp_training'] : 0; // 0 = all, 1 = training cases only
+$supervised_case = isset($_GET['supervised_case']) ? (int)$_GET['supervised_case'] : 0; // 0 = all, 1 = supervised cases only
+$primary_modality = isset($_GET['primary_modality']) ? $_GET['primary_modality'] : ''; // CBT, etc.
+$min_sessions = isset($_GET['min_sessions']) ? (int)$_GET['min_sessions'] : 0; // minimum number of sessions
+$export_type = isset($_GET['export']) ? $_GET['export'] : '';
+
+// Handle export functionality - MUST be before any HTML output
+if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
+    header('Content-Type: text/csv');
+    
+    // Set descriptive filename based on export type
+    $filename = '';
+    switch ($export_type) {
+        case 'trainee_summary':
+            $filename = 'trainee_summary_' . date('Y-m-d') . '.csv';
+            break;
+        case 'competency_data':
+            $filename = 'competency_analysis_' . date('Y-m-d') . '.csv';
+            break;
+        case 'supervisor_report':
+            $filename = 'supervisor_performance_report_' . date('Y-m-d') . '.csv';
+            break;
+        case 'full_report':
+            $filename = 'complete_trainee_analysis_' . date('Y-m-d') . '.csv';
+            break;
+        default:
+            $filename = 'trainee_export_' . date('Y-m-d') . '.csv';
+    }
+    
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    
+    $output = fopen('php://output', 'w');
+    
+    if ($export_type == 'trainee_summary') {
+        fputcsv($output, ['Trainee Name', 'Email', 'Course', 'Year', 'Supervisor', 'Total Entries', 'Last Activity']);
+        
+        $export_query = "SELECT t.name, t.email, u.university, t.year, w.realname as supervisor, 
+                        COUNT(tl.tlogid) as total_entries, t.last_used
+                        FROM trainee_tbl t
+                        LEFT JOIN uni_tbl u ON t.uid = u.uid
+                        LEFT JOIN who_there w ON t.supervisor = w.usrkey
+                        LEFT JOIN trainee_log tl ON t.trainkey = tl.trainkey
+                        WHERE 1=1 $course_condition $babcp_condition_simple $additional_conditions
+                        GROUP BY t.tid ORDER BY t.name";
+        
+        $result = $mysqli->query($export_query);
+        while ($row = $result->fetch_assoc()) {
+            fputcsv($output, [
+                $row['name'],
+                $row['email'],
+                $row['university'],
+                $row['year'],
+                $row['supervisor'],
+                $row['total_entries'],
+                $row['last_used']
+            ]);
+        }
+    } elseif ($export_type == 'competency_data') {
+        fputcsv($output, ['Competency Area', 'Total Attempts', 'Successful Attempts', 'Success Rate (%)', 'Difficulty Level']);
+        
+        // Use the same query as the competency difficulty analysis with all filters
+        $competency_query = "
+            SELECT /*+ USE_INDEX(tabs, idx_tabs_isvis_sort) USE_INDEX(tl, idx_trainee_log_tbid) USE_INDEX(tl, idx_trainee_log_select_val) */
+                tabs.tab_name,
+                COUNT(tl.tlogid) as total_attempts,
+                COUNT(CASE WHEN tl.select_val = '1' THEN 1 END) as successful_attempts,
+                ROUND(AVG(CASE WHEN tl.select_val = '1' THEN 1 ELSE 0 END) * 100, 1) as success_rate
+            FROM tabs_tbl tabs
+            LEFT JOIN trainee_log tl ON tabs.tbid = tl.tbid
+            LEFT JOIN trainee_tbl t ON tl.trainkey = t.trainkey
+            WHERE tabs.isvis = 1 $course_condition $babcp_condition_simple $additional_conditions";
+        
+        if ($selected_competency > 0) {
+            $competency_query .= " AND tabs.tbid = $selected_competency";
+        }
+        
+        $competency_query .= " GROUP BY tabs.tbid, tabs.tab_name ORDER BY success_rate ASC";
+        
+        $result = $mysqli->query($competency_query);
+        while ($row = $result->fetch_assoc()) {
+            $difficulty = 'Easy';
+            if ($row['success_rate'] < 60) {
+                $difficulty = 'Hard';
+            } elseif ($row['success_rate'] < 80) {
+                $difficulty = 'Medium';
+            }
+            
+            fputcsv($output, [
+                $row['tab_name'],
+                $row['total_attempts'],
+                $row['successful_attempts'],
+                $row['success_rate'],
+                $difficulty
+            ]);
+        }
+    } elseif ($export_type == 'supervisor_report') {
+        fputcsv($output, ['Supervisor Name', 'Trainee Count', 'Avg Entries per Trainee', 'Avg Completion Rate (%)', 'Performance Score']);
+        
+        // Use the same query as the supervisor performance analysis with all filters
+        $supervisor_query = "
+            SELECT /*+ USE_INDEX(w, idx_who_there_admintype) USE_INDEX(t, idx_trainee_supervisor) USE_INDEX(t, idx_trainee_supervisor2) USE_INDEX(t, idx_trainee_supervisor3) USE_INDEX(tl, idx_trainee_log_trainkey) */
+                w.realname as supervisor_name,
+                COUNT(DISTINCT t.tid) as trainee_count,
+                AVG(trainee_stats.avg_entries) as avg_entries_per_trainee,
+                AVG(trainee_stats.completion_rate) as avg_completion_rate
+            FROM who_there w
+            JOIN trainee_tbl t ON (w.usrkey = t.supervisor OR w.usrkey = t.supervisor2 OR w.usrkey = t.supervisor3)
+            LEFT JOIN (
+                SELECT 
+                    t2.trainkey,
+                    COUNT(tl.tlogid) as avg_entries,
+                    (COUNT(DISTINCT tl.tbid) * 100.0 / (SELECT COUNT(*) FROM tabs_tbl WHERE isvis = 1)) as completion_rate
+                FROM trainee_tbl t2
+                LEFT JOIN trainee_log tl ON t2.trainkey = tl.trainkey
+                WHERE 1=1
+                GROUP BY t2.trainkey
+            ) trainee_stats ON t.trainkey = trainee_stats.trainkey
+            WHERE w.admintype IN ('SO', 'SE') $course_condition $babcp_condition_simple $additional_conditions
+            GROUP BY w.usrkey, w.realname ORDER BY avg_completion_rate DESC";
+        
+        $result = $mysqli->query($supervisor_query);
+        while ($row = $result->fetch_assoc()) {
+            $avg_completion_rate = $row['avg_completion_rate'] ?? 0;
+            $avg_entries_per_trainee = $row['avg_entries_per_trainee'] ?? 0;
+            $performance_score = round(($avg_completion_rate / 100) * 5, 1);
+            
+            fputcsv($output, [
+                $row['supervisor_name'],
+                $row['trainee_count'],
+                round($avg_entries_per_trainee, 1),
+                round($avg_completion_rate, 1),
+                $performance_score . '/5'
+            ]);
+        }
+    } elseif ($export_type == 'full_report') {
+        fputcsv($output, ['Trainee Name', 'Course', 'Year', 'Supervisor', 'Total Cases', 'BABCP Training Cases', 'Supervised Cases', 'CBT Cases', 'Cases with 5+ Sessions', 'Anxiety Cases', 'Depression Cases', 'Trauma Cases', 'OCD Cases', 'BABCP Compliance']);
+        
+        // Use the same query as the BABCP case analysis with all filters
+        $full_report_query = "
+            SELECT /*+ USE_INDEX(t, idx_trainee_uid) USE_INDEX(tl, idx_trainee_log_trainkey) USE_INDEX(st, idx_select_types_str) USE_INDEX(tl, idx_trainee_log_logkey) USE_INDEX(tl, idx_trainee_log_stid) USE_INDEX(tl, idx_trainee_log_logkey_tbid) */
+                t.trainkey,
+                t.name as trainee_name,
+                u.university,
+                t.year,
+                w.realname as supervisor,
+                COUNT(DISTINCT tl.logkey) as total_cases,
+                COUNT(DISTINCT CASE 
+                    WHEN st.str LIKE '%BABCP%' OR st.str LIKE '%Behavioural%' OR st.str LIKE '%Cognitive%'
+                    THEN tl.logkey 
+                END) as babcp_training_cases,
+                COUNT(DISTINCT CASE 
+                    WHEN st.str LIKE '%supervised%' OR st.str LIKE '%supervision%' OR st.str LIKE '%supervisor%'
+                    THEN tl.logkey 
+                END) as supervised_cases,
+                COUNT(DISTINCT CASE 
+                    WHEN st.str LIKE '%CBT%'
+                    THEN tl.logkey 
+                END) as cbt_cases,
+                COUNT(DISTINCT CASE 
+                    WHEN session_counts.session_count >= 5
+                    THEN tl.logkey 
+                END) as cases_with_5plus_sessions,
+                COUNT(DISTINCT CASE 
+                    WHEN st.str LIKE '%trauma%' OR st.str LIKE '%PTSD%'
+                    THEN tl.logkey 
+                END) as trauma_cases,
+                COUNT(DISTINCT CASE 
+                    WHEN st.str LIKE '%anxiety%' OR st.str LIKE '%GAD%' OR st.str LIKE '%panic%'
+                    THEN tl.logkey 
+                END) as anxiety_cases,
+                COUNT(DISTINCT CASE 
+                    WHEN st.str LIKE '%depression%' OR st.str LIKE '%MDD%'
+                    THEN tl.logkey 
+                END) as depression_cases,
+                COUNT(DISTINCT CASE 
+                    WHEN st.str LIKE '%OCD%' OR st.str LIKE '%obsessive%'
+                    THEN tl.logkey 
+                END) as ocd_cases
+            FROM trainee_tbl t
+            LEFT JOIN uni_tbl u ON t.uid = u.uid
+            LEFT JOIN who_there w ON t.supervisor = w.usrkey
+            LEFT JOIN trainee_log tl ON t.trainkey = tl.trainkey
+            LEFT JOIN select_types st ON tl.stid = st.stid
+            LEFT JOIN (
+                SELECT /*+ USE_INDEX(trainee_log, idx_trainee_log_logkey) */ logkey, COUNT(DISTINCT tlogid) as session_count
+                FROM trainee_log 
+                GROUP BY logkey
+            ) session_counts ON tl.logkey = session_counts.logkey
+            WHERE 1=1 $course_condition $babcp_condition_simple $additional_conditions
+            GROUP BY t.trainkey, t.name ORDER BY t.name";
+        
+        $result = $mysqli->query($full_report_query);
+        while ($row = $result->fetch_assoc()) {
+            // Calculate compliance score
+            $compliance_score = 0;
+            if ($row['babcp_training_cases'] > 0) $compliance_score += 25;
+            if ($row['supervised_cases'] >= 3) $compliance_score += 25;
+            if ($row['cbt_cases'] > 0) $compliance_score += 25;
+            if ($row['cases_with_5plus_sessions'] > 0) $compliance_score += 25;
+            
+            $compliance_status = 'Non-Compliant';
+            if ($compliance_score >= 100) {
+                $compliance_status = 'Fully Compliant';
+            } elseif ($compliance_score >= 75) {
+                $compliance_status = 'Mostly Compliant';
+            } elseif ($compliance_score >= 50) {
+                $compliance_status = 'Partially Compliant';
+            }
+            
+            fputcsv($output, [
+                $row['trainee_name'],
+                $row['university'],
+                $row['year'],
+                $row['supervisor'],
+                $row['total_cases'],
+                $row['babcp_training_cases'],
+                $row['supervised_cases'],
+                $row['cbt_cases'],
+                $row['cases_with_5plus_sessions'],
+                $row['anxiety_cases'],
+                $row['depression_cases'],
+                $row['trauma_cases'],
+                $row['ocd_cases'],
+                $compliance_status
+            ]);
+        }
+    }
+    
+    fclose($output);
+    exit;
+}
+
 // ENHANCED: Advanced query result caching with filter-aware keys
 class QueryCache {
     private static $cache = [];
@@ -105,8 +347,6 @@ $subtitle = "Advanced Trainee Statistics";
 $listurl = "trainee_stats.php";
 $listname = "Trainee Statistics";
 
-// Check permissions - allow all admin types to view trainee stats
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -159,61 +399,6 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
 </head>
 
 <?php 
-// Get parameters
-$thisyear = date("Y");
-$start_year = isset($_GET['start_year']) ? (int)$_GET['start_year'] : $thisyear;
-$end_year = isset($_GET['end_year']) ? (int)$_GET['end_year'] : $thisyear;
-$selected_course = isset($_GET['course']) ? (int)$_GET['course'] : 0;
-$selected_competency = isset($_GET['competency']) ? (int)$_GET['competency'] : 0;
-$babcp_filter = isset($_GET['babcp_filter']) ? (int)$_GET['babcp_filter'] : 0; // 0 = all data, 1 = BABCP only
-$babcp_training = isset($_GET['babcp_training']) ? (int)$_GET['babcp_training'] : 0; // 0 = all, 1 = training cases only
-$supervised_case = isset($_GET['supervised_case']) ? (int)$_GET['supervised_case'] : 0; // 0 = all, 1 = supervised cases only
-$primary_modality = isset($_GET['primary_modality']) ? $_GET['primary_modality'] : ''; // CBT, etc.
-$min_sessions = isset($_GET['min_sessions']) ? (int)$_GET['min_sessions'] : 0; // minimum number of sessions
-$export_type = isset($_GET['export']) ? $_GET['export'] : '';
-
-// Handle export functionality
-if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename="trainee_stats_' . date('Y-m-d') . '.csv"');
-    
-    $output = fopen('php://output', 'w');
-    
-    if ($export_type == 'trainee_summary') {
-        fputcsv($output, ['Trainee Name', 'Email', 'Course', 'Year', 'Supervisor', 'Total Entries', 'Last Activity']);
-        
-        $export_query = "SELECT t.name, t.email, u.university, t.year, w.realname as supervisor, 
-                        COUNT(tl.tlogid) as total_entries, t.last_used
-                        FROM trainee_tbl t
-                        LEFT JOIN uni_tbl u ON t.uid = u.uid
-                        LEFT JOIN who_there w ON t.supervisor = w.usrkey
-                        LEFT JOIN trainee_log tl ON t.trainkey = tl.trainkey
-                        WHERE 1=1";
-        
-        if ($selected_course > 0) {
-            $export_query .= " AND t.uid = $selected_course";
-        }
-        
-        $export_query .= " GROUP BY t.tid ORDER BY t.name";
-        
-        $result = $mysqli->query($export_query);
-        while ($row = $result->fetch_assoc()) {
-            fputcsv($output, [
-                $row['name'],
-                $row['email'],
-                $row['university'],
-                $row['year'],
-                $row['supervisor'],
-                $row['total_entries'],
-                $row['last_used']
-            ]);
-        }
-    }
-    
-    fclose($output);
-    exit;
-}
-
 // Date ranges for queries
 $datestart = $start_year . '0101';
 $dateend = $end_year . '1231';
@@ -419,29 +604,33 @@ if ($competencies === null) {
 
 
 
-// Get monthly activity trends
+// Get monthly activity trends - FIXED for YYYYMMDD format
 // PERFORMANCE: Time-based query requiring index on trainee_log.date_added
 // Consider partitioning trainee_log by date for very large datasets
 // OPTIMIZED: Use index hints and optimize date functions including composite index
 $monthly_activity_query = "
     SELECT 
-        DATE_FORMAT(FROM_UNIXTIME(tl.date_added), '%Y-%m') as month,
+        DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m') as month,
         COUNT(*) as entries,
         COUNT(DISTINCT tl.trainkey) as active_trainees
     FROM trainee_log tl
     JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-    WHERE tl.date_added >= ? $course_condition $babcp_condition_simple $additional_conditions
-    GROUP BY DATE_FORMAT(FROM_UNIXTIME(tl.date_added), '%Y-%m')
+    WHERE tl.date_added >= ? AND tl.date_added <= ? $course_condition $babcp_condition_simple $additional_conditions
+    GROUP BY DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m')
     ORDER BY month DESC
     LIMIT 12
 ";
 
-$twelve_months_ago = strtotime('-12 months');
+// FIXED: The date_added field contains YYYYMMDD format, not Unix timestamps
+$datestart_yyyymmdd = $start_year . '0101'; // YYYYMMDD format
+$dateend_yyyymmdd = $end_year . '1231';     // YYYYMMDD format
+
+error_log("Using YYYYMMDD format - Start: $datestart_yyyymmdd, End: $dateend_yyyymmdd");
 $stmt = $mysqli->prepare($monthly_activity_query);
 if (!empty($course_params)) {
-    $stmt->bind_param("i" . $course_param_types, $twelve_months_ago, ...$course_params);
+    $stmt->bind_param("ii" . $course_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$course_params);
 } else {
-    $stmt->bind_param("i", $twelve_months_ago);
+    $stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
 }
 $stmt->execute();
 $stmt->store_result();
@@ -452,7 +641,15 @@ while ($stmt->fetch()) {
 }
 $stmt->close();
 
-// Debug: Log the monthly activity data
+// Debug: Log the monthly activity data and filter conditions
+error_log("=== FILTER DEBUG ===");
+error_log("Start year: $start_year, End year: $end_year");
+error_log("Course condition: '$course_condition'");
+error_log("BABCP condition: '$babcp_condition_simple'");
+error_log("Additional conditions: '$additional_conditions'");
+error_log("Date start YYYYMMDD: $datestart_yyyymmdd");
+error_log("Date end YYYYMMDD: $dateend_yyyymmdd");
+
 error_log("Monthly activity data count: " . count($monthly_activity));
 if (count($monthly_activity) > 0) {
     error_log("First monthly activity entry: " . json_encode($monthly_activity[0]));
@@ -465,15 +662,31 @@ if (count($monthly_activity) > 0) {
         error_log("Total trainee_log entries: " . $test_row['total']);
     }
     
-    // Test if there are any recent entries
-    $recent_test_query = "SELECT COUNT(*) as recent FROM trainee_log WHERE date_added >= ?";
-    $recent_stmt = $mysqli->prepare($recent_test_query);
-    $recent_stmt->bind_param("i", $twelve_months_ago);
-    $recent_stmt->execute();
-    $recent_stmt->bind_result($recent_count);
-    $recent_stmt->fetch();
-    $recent_stmt->close();
-    error_log("Recent trainee_log entries (last 12 months): " . $recent_count);
+    // Test if there are any entries in the date range
+    $date_test_query = "SELECT COUNT(*) as date_count FROM trainee_log WHERE date_added >= ? AND date_added <= ?";
+    $date_stmt = $mysqli->prepare($date_test_query);
+    $date_stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
+    $date_stmt->execute();
+    $date_stmt->bind_result($date_count);
+    $date_stmt->fetch();
+    $date_stmt->close();
+    error_log("Trainee_log entries in date range: " . $date_count);
+    
+    // Test the actual query being used
+    $debug_query = "SELECT COUNT(*) as debug_count FROM trainee_log tl JOIN trainee_tbl t ON tl.trainkey = t.trainkey WHERE tl.date_added >= ? AND tl.date_added <= ? $course_condition $babcp_condition_simple $additional_conditions";
+    error_log("Debug query: $debug_query");
+    
+    $debug_stmt = $mysqli->prepare($debug_query);
+    if (!empty($course_params)) {
+        $debug_stmt->bind_param("ii" . $course_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$course_params);
+    } else {
+        $debug_stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
+    }
+    $debug_stmt->execute();
+    $debug_stmt->bind_result($debug_count);
+    $debug_stmt->fetch();
+    $debug_stmt->close();
+    error_log("Debug query result count: " . $debug_count);
     
     // Create sample data for demonstration if no real data exists
     $current_month = date('Y-m');
@@ -500,7 +713,7 @@ $supervisor_performance_query = "
             (COUNT(DISTINCT tl.tbid) * 100.0 / (SELECT COUNT(*) FROM tabs_tbl WHERE isvis = 1)) as completion_rate
         FROM trainee_tbl t2
         LEFT JOIN trainee_log tl ON t2.trainkey = tl.trainkey
-        WHERE 1=1
+        WHERE tl.date_added >= ? AND tl.date_added <= ?
         GROUP BY t2.trainkey
     ) trainee_stats ON t.trainkey = trainee_stats.trainkey
     WHERE w.admintype IN ('SO', 'SE') $course_condition $babcp_condition_simple $additional_conditions
@@ -511,7 +724,9 @@ $supervisor_performance_query = "
 
 $stmt = $mysqli->prepare($supervisor_performance_query);
 if (!empty($course_params)) {
-    $stmt->bind_param($course_param_types, ...$course_params);
+    $stmt->bind_param("ii" . $course_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$course_params);
+} else {
+    $stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
 }
 $stmt->execute();
 $stmt->store_result();
@@ -521,13 +736,13 @@ while ($stmt->fetch()) {
     $supervisor_performance[] = [
         'name' => $supervisor_name,
         'trainee_count' => $trainee_count,
-        'avg_entries' => round($avg_entries, 1),
-        'avg_completion_rate' => round($avg_completion_rate, 1)
+        'avg_entries' => round($avg_entries ?? 0, 1),
+        'avg_completion_rate' => round($avg_completion_rate ?? 0, 1)
     ];
 }
 $stmt->close();
 
-// Get competency difficulty analysis - OPTIMIZED VERSION
+// Get competency difficulty analysis - FIXED with proper filter application
 // PERFORMANCE: Simplified query with pre-computed BABCP flags and better indexing
 $competency_difficulty_query = "
     SELECT /*+ USE_INDEX(tabs, idx_tabs_isvis_sort) USE_INDEX(tl, idx_trainee_log_tbid) USE_INDEX(tl, idx_trainee_log_select_val) */
@@ -538,14 +753,7 @@ $competency_difficulty_query = "
     FROM tabs_tbl tabs
     LEFT JOIN trainee_log tl ON tabs.tbid = tl.tbid
     LEFT JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-    WHERE tabs.isvis = 1 $course_condition";
-
-// Add BABCP condition if needed - simplified approach
-if ($babcp_filter == 1) {
-    $competency_difficulty_query .= " AND (tabs.tab_name LIKE '%BABCP%' OR tabs.tab_name LIKE '%Behavioural%' OR tabs.tab_name LIKE '%Cognitive%')";
-}
-
-$competency_difficulty_query .= " $additional_conditions
+    WHERE tabs.isvis = 1 $course_condition $babcp_condition_simple $additional_conditions
     GROUP BY tabs.tbid, tabs.tab_name
     ORDER BY success_rate ASC
 ";
@@ -563,7 +771,7 @@ while ($stmt->fetch()) {
         'tab_name' => $tab_name,
         'total_attempts' => $total_attempts,
         'successful_attempts' => $successful_attempts,
-        'success_rate' => round($success_rate, 1)
+        'success_rate' => round($success_rate ?? 0, 1)
     ];
 }
 $stmt->close();
@@ -588,23 +796,42 @@ $babcp_case_analysis_query = "
             THEN tl.logkey 
         END) as cbt_cases,
         COUNT(DISTINCT CASE 
+            WHEN (st.str LIKE '%BABCP%' OR st.str LIKE '%Behavioural%' OR st.str LIKE '%Cognitive%')
+            AND (st.str LIKE '%supervised%' OR st.str LIKE '%supervision%' OR st.str LIKE '%supervisor%')
+            THEN tl.logkey 
+        END) as babcp_supervised_cases,
+        COUNT(DISTINCT CASE 
+            WHEN st.str LIKE '%CBT%'
+            AND (st.str LIKE '%closed%' OR st.str LIKE '%completed%' OR st.str LIKE '%finished%' OR st.str LIKE '%ended%')
+            AND (st.str LIKE '%BABCP%' OR st.str LIKE '%Behavioural%' OR st.str LIKE '%Cognitive%' OR st.str LIKE '%accredited%')
+            THEN tl.logkey 
+        END) as closed_cbt_babcp_cases,
+        COUNT(DISTINCT CASE 
             WHEN session_counts.session_count >= 5
             THEN tl.logkey 
         END) as cases_with_5plus_sessions,
         COUNT(DISTINCT CASE 
-            WHEN st.str LIKE '%trauma%' OR st.str LIKE '%PTSD%'
+            WHEN session_hours.total_hours >= 5.0
+            THEN tl.logkey 
+        END) as cases_with_5plus_hours,
+        COUNT(DISTINCT CASE 
+            WHEN (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)')
+            AND (tl.select_val LIKE '%trauma%' OR tl.select_val LIKE '%PTSD%' OR tl.select_val LIKE '%post-traumatic%')
             THEN tl.logkey 
         END) as trauma_cases,
         COUNT(DISTINCT CASE 
-            WHEN st.str LIKE '%anxiety%' OR st.str LIKE '%GAD%' OR st.str LIKE '%panic%'
+            WHEN (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)')
+            AND (tl.select_val LIKE '%anxiety%' OR tl.select_val LIKE '%GAD%' OR tl.select_val LIKE '%panic%' OR tl.select_val LIKE '%worry%')
             THEN tl.logkey 
         END) as anxiety_cases,
         COUNT(DISTINCT CASE 
-            WHEN st.str LIKE '%depression%' OR st.str LIKE '%MDD%'
+            WHEN (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)')
+            AND (tl.select_val LIKE '%depression%' OR tl.select_val LIKE '%MDD%' OR tl.select_val LIKE '%mood%' OR tl.select_val LIKE '%low mood%')
             THEN tl.logkey 
         END) as depression_cases,
         COUNT(DISTINCT CASE 
-            WHEN st.str LIKE '%OCD%' OR st.str LIKE '%obsessive%'
+            WHEN (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)')
+            AND (tl.select_val LIKE '%OCD%' OR tl.select_val LIKE '%obsessive%' OR tl.select_val LIKE '%compulsive%')
             THEN tl.logkey 
         END) as ocd_cases
     FROM trainee_tbl t
@@ -613,20 +840,36 @@ $babcp_case_analysis_query = "
     LEFT JOIN (
         SELECT /*+ USE_INDEX(trainee_log, idx_trainee_log_logkey) */ logkey, COUNT(DISTINCT tlogid) as session_count
         FROM trainee_log 
+        WHERE date_added >= ? AND date_added <= ?
         GROUP BY logkey
     ) session_counts ON tl.logkey = session_counts.logkey
+    LEFT JOIN (
+        SELECT /*+ USE_INDEX(trainee_log, idx_trainee_log_logkey) */ 
+            tl_hours.logkey,
+            SUM(CASE 
+                WHEN tl_hours.select_val IS NOT NULL AND tl_hours.select_val != '0' AND tl_hours.select_val != '00:00'
+                THEN (CAST(SUBSTRING_INDEX(tl_hours.select_val, ':', 1) AS UNSIGNED) * 60 + CAST(SUBSTRING_INDEX(tl_hours.select_val, ':', -1) AS UNSIGNED)) / 60.0
+                ELSE 0
+            END) as total_hours
+        FROM trainee_log tl_hours 
+        WHERE tl_hours.stid = 60 AND tl_hours.date_added >= ? AND tl_hours.date_added <= ?
+        GROUP BY tl_hours.logkey
+    ) session_hours ON tl.logkey = session_hours.logkey
     WHERE 1=1 $course_condition $babcp_condition_simple $additional_conditions
+    AND tl.date_added >= ? AND tl.date_added <= ?
     GROUP BY t.trainkey, t.name
     ORDER BY t.name
 ";
 
 $stmt = $mysqli->prepare($babcp_case_analysis_query);
 if (!empty($course_params)) {
-    $stmt->bind_param($course_param_types, ...$course_params);
+    $stmt->bind_param("iiiiii" . $course_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$course_params);
+} else {
+    $stmt->bind_param("iiiiii", $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd);
 }
 $stmt->execute();
 $stmt->store_result();
-$stmt->bind_result($trainkey, $trainee_name, $total_cases, $babcp_training_cases, $supervised_cases, $cbt_cases, $cases_with_5plus_sessions, $trauma_cases, $anxiety_cases, $depression_cases, $ocd_cases);
+$stmt->bind_result($trainkey, $trainee_name, $total_cases, $babcp_training_cases, $supervised_cases, $cbt_cases, $babcp_supervised_cases, $closed_cbt_babcp_cases, $cases_with_5plus_sessions, $cases_with_5plus_hours, $trauma_cases, $anxiety_cases, $depression_cases, $ocd_cases);
 $babcp_case_analysis = [];
 while ($stmt->fetch()) {
     $babcp_case_analysis[] = [
@@ -636,7 +879,10 @@ while ($stmt->fetch()) {
         'babcp_training_cases' => $babcp_training_cases,
         'supervised_cases' => $supervised_cases,
         'cbt_cases' => $cbt_cases,
+        'babcp_supervised_cases' => $babcp_supervised_cases,
+        'closed_cbt_babcp_cases' => $closed_cbt_babcp_cases,
         'cases_with_5plus_sessions' => $cases_with_5plus_sessions,
+        'cases_with_5plus_hours' => $cases_with_5plus_hours,
         'trauma_cases' => $trauma_cases,
         'anxiety_cases' => $anxiety_cases,
         'depression_cases' => $depression_cases,
@@ -652,11 +898,18 @@ $babcp_summary_stats = [
     'trainees_with_supervised_cases' => count(array_filter($babcp_case_analysis, function($t) { return $t['supervised_cases'] > 0; })),
     'trainees_with_cbt_cases' => count(array_filter($babcp_case_analysis, function($t) { return $t['cbt_cases'] > 0; })),
     'trainees_with_5plus_sessions' => count(array_filter($babcp_case_analysis, function($t) { return $t['cases_with_5plus_sessions'] > 0; })),
+    'trainees_with_5plus_hours' => count(array_filter($babcp_case_analysis, function($t) { return $t['cases_with_5plus_hours'] > 0; })),
     'trainees_with_3plus_supervised' => count(array_filter($babcp_case_analysis, function($t) { return $t['supervised_cases'] >= 3; })),
     'total_babcp_training_cases' => array_sum(array_column($babcp_case_analysis, 'babcp_training_cases')),
     'total_supervised_cases' => array_sum(array_column($babcp_case_analysis, 'supervised_cases')),
     'total_cbt_cases' => array_sum(array_column($babcp_case_analysis, 'cbt_cases')),
+    'total_babcp_supervised_cases' => array_sum(array_column($babcp_case_analysis, 'babcp_supervised_cases')),
+    'trainees_with_babcp_supervised' => count(array_filter($babcp_case_analysis, function($t) { return $t['babcp_supervised_cases'] > 0; })),
+    'total_closed_cbt_babcp_cases' => array_sum(array_column($babcp_case_analysis, 'closed_cbt_babcp_cases')),
+    'trainees_with_closed_cbt_babcp' => count(array_filter($babcp_case_analysis, function($t) { return $t['closed_cbt_babcp_cases'] > 0; })),
+    'total_supervision_hours' => array_sum(array_column($babcp_case_analysis, 'babcp_supervised_cases')) + array_sum(array_column($babcp_case_analysis, 'closed_cbt_babcp_cases')),
     'total_cases_with_5plus_sessions' => array_sum(array_column($babcp_case_analysis, 'cases_with_5plus_sessions')),
+    'total_cases_with_5plus_hours' => array_sum(array_column($babcp_case_analysis, 'cases_with_5plus_hours')),
 
     'total_trauma_cases' => array_sum(array_column($babcp_case_analysis, 'trauma_cases')),
     'total_anxiety_cases' => array_sum(array_column($babcp_case_analysis, 'anxiety_cases')),
@@ -664,10 +917,10 @@ $babcp_summary_stats = [
     'total_ocd_cases' => array_sum(array_column($babcp_case_analysis, 'ocd_cases'))
 ];
 
-// Get BABCP growth trends over time for plotting - Simplified version
+// Get BABCP growth trends over time for plotting - Fixed with all filters and YYYYMMDD format
 $babcp_growth_query = "
     SELECT 
-        DATE_FORMAT(FROM_UNIXTIME(tl.date_added), '%Y-%m') as month,
+        DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m') as month,
         COUNT(DISTINCT CASE 
             WHEN st.str LIKE '%BABCP%' OR st.str LIKE '%Behavioural%' OR st.str LIKE '%Cognitive%'
             THEN tl.logkey 
@@ -684,14 +937,18 @@ $babcp_growth_query = "
     FROM trainee_log tl
     JOIN trainee_tbl t ON tl.trainkey = t.trainkey
     LEFT JOIN select_types st ON tl.stid = st.stid
-    WHERE tl.date_added >= ?
-    GROUP BY DATE_FORMAT(FROM_UNIXTIME(tl.date_added), '%Y-%m')
+    WHERE tl.date_added >= ? AND tl.date_added <= ? $course_condition $babcp_condition_simple $additional_conditions
+    GROUP BY DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m')
     ORDER BY month DESC
     LIMIT 12
 ";
 
 $stmt = $mysqli->prepare($babcp_growth_query);
-$stmt->bind_param("i", $twelve_months_ago);
+if (!empty($course_params)) {
+    $stmt->bind_param("ii" . $course_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$course_params);
+} else {
+    $stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
+}
 $stmt->execute();
 $stmt->store_result();
 $stmt->bind_result($month, $babcp_cases, $supervised_cases, $cbt_cases, $active_trainees);
@@ -722,18 +979,106 @@ if (count($babcp_growth_data) > 0) {
     error_log("Created sample BABCP growth data");
 }
 
-// Debug: Log the BABCP summary stats
+// Debug: Log the BABCP summary stats and case analysis
+error_log("BABCP case analysis count: " . count($babcp_case_analysis));
 error_log("BABCP summary stats: " . json_encode($babcp_summary_stats));
 
-// If no clinical issues data, add some sample data for demonstration
-if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['total_depression_cases'] == 0 && 
-    $babcp_summary_stats['total_trauma_cases'] == 0 && $babcp_summary_stats['total_ocd_cases'] == 0) {
-    $babcp_summary_stats['total_anxiety_cases'] = 5;
-    $babcp_summary_stats['total_depression_cases'] = 3;
-    $babcp_summary_stats['total_trauma_cases'] = 2;
-    $babcp_summary_stats['total_ocd_cases'] = 1;
-    error_log("Added sample clinical issues data for demonstration");
+// Debug: Check what's in select_types table for clinical issues
+$debug_select_types_query = "SELECT DISTINCT str FROM select_types WHERE str LIKE '%anxiety%' OR str LIKE '%depression%' OR str LIKE '%trauma%' OR str LIKE '%OCD%' OR str LIKE '%PTSD%' OR str LIKE '%GAD%' OR str LIKE '%panic%' OR str LIKE '%MDD%' OR str LIKE '%obsessive%' LIMIT 10";
+$debug_select_types_result = $mysqli->query($debug_select_types_query);
+if ($debug_select_types_result) {
+    error_log("Sample clinical terms in select_types:");
+    while ($debug_select_types_row = $debug_select_types_result->fetch_assoc()) {
+        error_log("Clinical term: " . $debug_select_types_row['str']);
+    }
+} else {
+    error_log("No clinical terms found in select_types table");
 }
+
+// Clinical issues detection now correctly looks at Patient ID and General Comments fields
+// where clinical terms like 'OCD', 'PTSD', 'anxiety', 'depression', 'trauma' are embedded
+
+// Debug: Let's verify what cases we're actually detecting
+$debug_anxiety_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%anxiety%' OR tl.select_val LIKE '%GAD%' OR tl.select_val LIKE '%panic%' OR tl.select_val LIKE '%worry%') LIMIT 10";
+$debug_anxiety_result = $mysqli->query($debug_anxiety_cases_query);
+if ($debug_anxiety_result) {
+    error_log("Sample anxiety cases detected:");
+    while ($debug_anxiety_row = $debug_anxiety_result->fetch_assoc()) {
+        error_log("Logkey: " . $debug_anxiety_row['logkey'] . " | Field: " . $debug_anxiety_row['field_name'] . " | Value: '" . $debug_anxiety_row['select_val'] . "'");
+    }
+}
+
+$debug_depression_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%depression%' OR tl.select_val LIKE '%MDD%' OR tl.select_val LIKE '%mood%' OR tl.select_val LIKE '%low mood%') LIMIT 10";
+$debug_depression_result = $mysqli->query($debug_depression_cases_query);
+if ($debug_depression_result) {
+    error_log("Sample depression cases detected:");
+    while ($debug_depression_row = $debug_depression_result->fetch_assoc()) {
+        error_log("Logkey: " . $debug_depression_row['logkey'] . " | Field: " . $debug_depression_row['field_name'] . " | Value: '" . $debug_depression_row['select_val'] . "'");
+    }
+}
+
+$debug_trauma_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%trauma%' OR tl.select_val LIKE '%PTSD%' OR tl.select_val LIKE '%post-traumatic%') LIMIT 10";
+$debug_trauma_result = $mysqli->query($debug_trauma_cases_query);
+if ($debug_trauma_result) {
+    error_log("Sample trauma cases detected:");
+    while ($debug_trauma_row = $debug_trauma_result->fetch_assoc()) {
+        error_log("Logkey: " . $debug_trauma_row['logkey'] . " | Field: " . $debug_trauma_row['field_name'] . " | Value: '" . $debug_trauma_row['select_val'] . "'");
+    }
+}
+
+$debug_ocd_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%OCD%' OR tl.select_val LIKE '%obsessive%' OR tl.select_val LIKE '%compulsive%') LIMIT 10";
+$debug_ocd_result = $mysqli->query($debug_ocd_cases_query);
+if ($debug_ocd_result) {
+    error_log("Sample OCD cases detected:");
+    while ($debug_ocd_row = $debug_ocd_result->fetch_assoc()) {
+        error_log("Logkey: " . $debug_ocd_row['logkey'] . " | Field: " . $debug_ocd_row['field_name'] . " | Value: '" . $debug_ocd_row['select_val'] . "'");
+    }
+}
+
+// Additional debug: Check if there's any trainee data at all
+$debug_trainee_query = "SELECT COUNT(*) as trainee_count FROM trainee_tbl";
+$debug_trainee_result = $mysqli->query($debug_trainee_query);
+if ($debug_trainee_result) {
+    $debug_trainee_row = $debug_trainee_result->fetch_assoc();
+    error_log("Total trainees in database: " . $debug_trainee_row['trainee_count']);
+}
+
+// Check if there are any trainee_log entries at all
+$debug_log_query = "SELECT COUNT(*) as log_count FROM trainee_log";
+$debug_log_result = $mysqli->query($debug_log_query);
+if ($debug_log_result) {
+    $debug_log_row = $debug_log_result->fetch_assoc();
+    error_log("Total trainee_log entries in database: " . $debug_log_row['log_count']);
+}
+
+// Check the actual date range of the data - FIXED for YYYYMMDD format
+$debug_date_range_query = "SELECT MIN(STR_TO_DATE(date_added, '%Y%m%d')) as earliest_date, MAX(STR_TO_DATE(date_added, '%Y%m%d')) as latest_date FROM trainee_log";
+$debug_date_range_result = $mysqli->query($debug_date_range_query);
+if ($debug_date_range_result) {
+    $debug_date_range_row = $debug_date_range_result->fetch_assoc();
+    error_log("Actual data date range: " . $debug_date_range_row['earliest_date'] . " to " . $debug_date_range_row['latest_date']);
+}
+
+// Check raw timestamp values
+$debug_raw_timestamps_query = "SELECT MIN(date_added) as min_timestamp, MAX(date_added) as max_timestamp, COUNT(*) as count FROM trainee_log LIMIT 5";
+$debug_raw_timestamps_result = $mysqli->query($debug_raw_timestamps_query);
+if ($debug_raw_timestamps_result) {
+    $debug_raw_timestamps_row = $debug_raw_timestamps_result->fetch_assoc();
+    error_log("Raw timestamps - Min: " . $debug_raw_timestamps_row['min_timestamp'] . ", Max: " . $debug_raw_timestamps_row['max_timestamp'] . ", Count: " . $debug_raw_timestamps_row['count']);
+}
+
+// Check if timestamps might be in a different format - FIXED for YYYYMMDD format
+$debug_sample_query = "SELECT date_added, STR_TO_DATE(date_added, '%Y%m%d') as converted_date FROM trainee_log ORDER BY date_added DESC LIMIT 3";
+$debug_sample_result = $mysqli->query($debug_sample_query);
+if ($debug_sample_result) {
+    error_log("Sample timestamp data:");
+    while ($debug_sample_row = $debug_sample_result->fetch_assoc()) {
+        error_log("Raw: " . $debug_sample_row['date_added'] . " -> Converted: " . $debug_sample_row['converted_date']);
+    }
+}
+
+// Clinical issues data will now show actual counts from the database
+// No more hardcoded sample data - showing real numbers
 ?>
 
 <body>
@@ -795,7 +1140,7 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
                            <div class="col-md-2">
                               <label for="start_year">Start Year</label>
                               <select name="start_year" id="start_year" class="form-control">
-                                 <?php for ($year = $thisyear - 5; $year <= $thisyear; $year++): ?>
+                                 <?php for ($year = $thisyear - 15; $year <= $thisyear + 5; $year++): ?>
                                     <option value="<?php echo $year ?>" <?php echo $year == $start_year ? 'selected' : '' ?>>
                                        <?php echo $year ?>
                                     </option>
@@ -805,7 +1150,7 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
                            <div class="col-md-2">
                               <label for="end_year">End Year</label>
                               <select name="end_year" id="end_year" class="form-control">
-                                 <?php for ($year = $thisyear - 5; $year <= $thisyear; $year++): ?>
+                                 <?php for ($year = $thisyear - 15; $year <= $thisyear + 5; $year++): ?>
                                     <option value="<?php echo $year ?>" <?php echo $year == $end_year ? 'selected' : '' ?>>
                                        <?php echo $year ?>
                                     </option>
@@ -948,9 +1293,8 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
                </div>
             </div>
 
-            <!-- BABCP Supervision & Duration Analysis -->
+            <!-- BABCP Case Type Analysis -->
             <div class="row mb-4">
-               <!-- BABCP Case Type Analysis -->
                <div class="col-md-6">
                   <div class="card">
                      <div class="card-header">
@@ -959,18 +1303,6 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
                      </div>
                      <div class="card-body">
                         <canvas id="supervisionHoursChart" width="400" height="200"></canvas>
-                     </div>
-                  </div>
-               </div>
-               
-               <!-- BABCP Case Type Distribution -->
-               <div class="col-md-6">
-                  <div class="card">
-                     <div class="card-header">
-                        <h5 class="card-title">BABCP Case Type Distribution</h5>
-                     </div>
-                     <div class="card-body">
-                        <canvas id="sessionDurationChart" width="400" height="200"></canvas>
                      </div>
                   </div>
                </div>
@@ -1003,14 +1335,15 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
                                        <td><?php echo $supervisor['avg_entries'] ?></td>
                                        <td>
                                           <div class="progress progress-thin">
-                                             <div class="progress-bar" style="width: <?php echo $supervisor['avg_completion_rate'] ?>%">
-                                                <?php echo $supervisor['avg_completion_rate'] ?>%
+                                             <div class="progress-bar" style="width: <?php echo $supervisor['avg_completion_rate'] ?? 0 ?>%">
+                                                <?php echo $supervisor['avg_completion_rate'] ?? 0 ?>%
                                              </div>
                                           </div>
                                        </td>
                                        <td>
                                           <?php 
-                                          $score = round(($supervisor['avg_completion_rate'] / 100) * 5, 1);
+                                          $avg_completion_rate = $supervisor['avg_completion_rate'] ?? 0;
+                                          $score = round(($avg_completion_rate / 100) * 5, 1);
                                           echo $score . '/5';
                                           ?>
                                        </td>
@@ -1047,21 +1380,22 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
                                  <?php foreach ($competency_difficulty as $comp): ?>
                                     <tr>
                                        <td><strong><?php echo htmlspecialchars($comp['tab_name']) ?></strong></td>
-                                       <td><?php echo number_format($comp['total_attempts']) ?></td>
-                                       <td><?php echo number_format($comp['successful_attempts']) ?></td>
+                                       <td><?php echo number_format($comp['total_attempts'] ?? 0) ?></td>
+                                       <td><?php echo number_format($comp['successful_attempts'] ?? 0) ?></td>
                                        <td>
                                           <div class="progress progress-thin">
-                                             <div class="progress-bar <?php echo $comp['success_rate'] >= 80 ? 'bg-success' : ($comp['success_rate'] >= 60 ? 'bg-warning' : 'bg-danger') ?>" 
-                                                  style="width: <?php echo $comp['success_rate'] ?>%">
-                                                <?php echo $comp['success_rate'] ?>%
+                                             <div class="progress-bar <?php echo ($comp['success_rate'] ?? 0) >= 80 ? 'bg-success' : (($comp['success_rate'] ?? 0) >= 60 ? 'bg-warning' : 'bg-danger') ?>" 
+                                                  style="width: <?php echo $comp['success_rate'] ?? 0 ?>%">
+                                                <?php echo $comp['success_rate'] ?? 0 ?>%
                                              </div>
                                           </div>
                                        </td>
                                        <td>
                                           <?php 
-                                          if ($comp['success_rate'] >= 80) {
+                                          $success_rate = $comp['success_rate'] ?? 0;
+                                          if ($success_rate >= 80) {
                                               echo '<span class="badge badge-success">Easy</span>';
-                                          } elseif ($comp['success_rate'] >= 60) {
+                                          } elseif ($success_rate >= 60) {
                                               echo '<span class="badge badge-warning">Medium</span>';
                                           } else {
                                               echo '<span class="badge badge-danger">Hard</span>';
@@ -1114,6 +1448,63 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
                            </div>
                         </div>
                         
+                        <!-- Cases with 5+ Hours Row -->
+                        <div class="row mb-4">
+                           <div class="col-md-3">
+                              <div class="text-center">
+                                 <div class="metric-value text-secondary"><?php echo $babcp_summary_stats['total_cases_with_5plus_hours'] ?></div>
+                                 <div class="metric-label">Cases with 5+ Hours</div>
+                              </div>
+                           </div>
+                           <div class="col-md-3">
+                              <div class="text-center">
+                                 <div class="metric-value text-secondary"><?php echo $babcp_summary_stats['trainees_with_5plus_hours'] ?></div>
+                                 <div class="metric-label">Trainees with 5+ Hour Cases</div>
+                              </div>
+                           </div>
+                           <div class="col-md-3">
+                              <div class="text-center">
+                                 <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_trainees'] ?></div>
+                                 <div class="metric-label">Total Trainees</div>
+                              </div>
+                           </div>
+                           <div class="col-md-3">
+                              <div class="text-center">
+                                 <div class="metric-value text-warning"><?php echo $babcp_summary_stats['trainees_with_3plus_supervised'] ?></div>
+                                 <div class="metric-label">Trainees with 3+ Supervised Cases</div>
+                              </div>
+                           </div>
+                        </div>
+                        
+                        <!-- Total Supervision Hours -->
+                        <div class="row mb-4">
+                           <div class="col-md-3">
+                              <div class="text-center">
+                                 <div class="metric-value text-primary"><?php echo $babcp_summary_stats['total_supervision_hours'] ?></div>
+                                 <div class="metric-label">Total Supervision Hours</div>
+                                 <small class="text-muted">(BABCP Supervised + Closed CBT BABCP)</small>
+                              </div>
+                           </div>
+                           <div class="col-md-3">
+                              <div class="text-center">
+                                 <div class="metric-value text-success"><?php echo $babcp_summary_stats['trainees_with_babcp_supervised'] ?></div>
+                                 <div class="metric-label">Trainees with BABCP Supervision</div>
+                              </div>
+                           </div>
+                           <div class="col-md-3">
+                              <div class="text-center">
+                                 <div class="metric-value text-dark"><?php echo $babcp_summary_stats['trainees_with_closed_cbt_babcp'] ?></div>
+                                 <div class="metric-label">Trainees with Closed CBT BABCP</div>
+                              </div>
+                           </div>
+                           <div class="col-md-3">
+                              <div class="text-center">
+                                 <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_trainees'] ?></div>
+                                 <div class="metric-label">Total Trainees</div>
+                              </div>
+                           </div>
+                        </div>
+                        
                         <!-- Case Counts -->
                         <div class="row mb-4">
                            <div class="col-md-3">
@@ -1132,6 +1523,18 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
                               <div class="text-center">
                                  <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_cbt_cases'] ?></div>
                                  <div class="metric-label">Total CBT Cases</div>
+                              </div>
+                           </div>
+                           <div class="col-md-3">
+                              <div class="text-center">
+                                 <div class="metric-value text-purple"><?php echo $babcp_summary_stats['total_babcp_supervised_cases'] ?></div>
+                                 <div class="metric-label">BABCP Supervised Cases</div>
+                              </div>
+                           </div>
+                           <div class="col-md-3">
+                              <div class="text-center">
+                                 <div class="metric-value text-dark"><?php echo $babcp_summary_stats['total_closed_cbt_babcp_cases'] ?></div>
+                                 <div class="metric-label">Closed CBT BABCP Cases</div>
                               </div>
                            </div>
                            <div class="col-md-3">
@@ -1208,7 +1611,10 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
                                     <th>BABCP Training Cases</th>
                                     <th>Supervised Cases</th>
                                     <th>CBT Cases</th>
+                                    <th>BABCP Supervised</th>
+                                    <th>Closed CBT BABCP</th>
                                     <th>Cases with 5+ Sessions</th>
+                                    <th>Cases with 5+ Hours</th>
                                     <th>Clinical Issues</th>
                                     <th>BABCP Compliance</th>
                                  </tr>
@@ -1317,10 +1723,11 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
                
                // Calculate compliance score
                let compliance_score = 0;
-               if (trainee.babcp_training_cases > 0) compliance_score += 25;
-               if (trainee.supervised_cases >= 3) compliance_score += 25;
-               if (trainee.cbt_cases > 0) compliance_score += 25;
-               if (trainee.cases_with_5plus_sessions > 0) compliance_score += 25;
+               if (trainee.babcp_training_cases > 0) compliance_score += 20;
+               if (trainee.supervised_cases >= 3) compliance_score += 20;
+               if (trainee.cbt_cases > 0) compliance_score += 20;
+               if (trainee.cases_with_5plus_sessions > 0) compliance_score += 20;
+               if (trainee.cases_with_5plus_hours > 0) compliance_score += 20;
                
                let compliance_status = '';
                let compliance_class = '';
@@ -1352,7 +1759,10 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
                    <td><span class="badge badge-primary">${trainee.babcp_training_cases}</span></td>
                    <td><span class="badge badge-success">${trainee.supervised_cases}</span></td>
                    <td><span class="badge badge-info">${trainee.cbt_cases}</span></td>
+                   <td><span class="badge badge-purple">${trainee.babcp_supervised_cases}</span></td>
+                   <td><span class="badge badge-dark">${trainee.closed_cbt_babcp_cases}</span></td>
                    <td><span class="badge badge-warning">${trainee.cases_with_5plus_sessions}</span></td>
+                   <td><span class="badge badge-secondary">${trainee.cases_with_5plus_hours}</span></td>
                    <td><small>${clinicalIssuesText}</small></td>
                    <td><span class="badge ${compliance_class}">${compliance_status}</span></td>
                `;
@@ -1727,10 +2137,7 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
            updateSupervisionHoursChart(clinicalIssuesData, 'detailed');
        }
        
-       // Session Duration Chart
-       if (clinicalIssuesData) {
-           updateSessionDurationChart(clinicalIssuesData, 'detailed');
-       }
+
    }
    
    // BABCP Growth Chart
@@ -1991,78 +2398,7 @@ if ($babcp_summary_stats['total_anxiety_cases'] == 0 && $babcp_summary_stats['to
        });
    }
    
-   // Session Duration Chart
-   function updateSessionDurationChart(data, level) {
-       const canvas = document.getElementById('sessionDurationChart');
-       if (!canvas) return;
-       
-       // Destroy existing chart instance if it exists
-       if (charts.sessionDuration) {
-           try {
-               charts.sessionDuration.destroy();
-           } catch (e) {
-               console.warn('Error destroying session duration chart:', e);
-           }
-           charts.sessionDuration = null;
-       }
-       
-       // Check if Chart.js has already registered this canvas
-       if (Chart.getChart(canvas)) {
-           try {
-               Chart.getChart(canvas).destroy();
-           } catch (e) {
-               console.warn('Error destroying existing chart on canvas:', e);
-           }
-       }
-       
-       // Clear the canvas
-       const ctx = canvas.getContext('2d');
-       ctx.clearRect(0, 0, canvas.width, canvas.height);
-       
-       const durationData = {
-           labels: ['BABCP Training Cases', 'Supervised Cases', 'CBT Cases'],
-           datasets: [{
-               label: 'Number of Cases',
-               data: [
-                   data.total_babcp_training_cases || 0,
-                   data.total_supervised_cases || 0,
-                   data.total_cbt_cases || 0
-               ],
-               backgroundColor: [
-                   'rgba(40, 167, 69, 0.8)',
-                   'rgba(54, 162, 235, 0.8)',
-                   'rgba(255, 193, 7, 0.8)'
-               ],
-               borderColor: [
-                   'rgba(40, 167, 69, 1)',
-                   'rgba(54, 162, 235, 1)',
-                   'rgba(255, 193, 7, 1)'
-               ],
-               borderWidth: 1
-           }]
-       };
-       
-       charts.sessionDuration = new Chart(ctx, {
-           type: 'bar',
-           data: durationData,
-           options: {
-               responsive: true,
-               maintainAspectRatio: false,
-               scales: {
-                   y: {
-                       beginAtZero: true,
-                       title: {
-                           display: true,
-                           text: 'Hours'
-                       }
-                   }
-               },
-               animation: {
-                   duration: level === 'basic' ? 500 : 1000
-               }
-           }
-       });
-   }
+
    
    // Charts are now loaded directly with PHP data
    </script>

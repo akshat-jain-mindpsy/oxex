@@ -826,352 +826,17 @@ if ($courses === null) {
    // Chart.js configuration
    Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
    
-   // Initialize async stats loader
-   let statsLoader;
+   // Initialize charts object
    let charts = {};
    
-   // Progressive loading implementation
-   class ProgressiveStatsLoader {
-       constructor() {
-           this.statsLoader = new AsyncStatsLoader();
-           this.setupEventListeners();
-       }
-       
-       setupEventListeners() {
-           document.addEventListener('statsDataLoaded', (event) => {
-               this.handleDataLoaded(event.detail);
-           });
-           
-           document.addEventListener('statsLoadingStateChanged', (event) => {
-               this.handleLoadingStateChanged(event.detail);
-           });
-           
-           document.addEventListener('statsError', (event) => {
-               this.handleError(event.detail);
-           });
-       }
-       
-       async loadAllData() {
-           const params = this.getFilterParams();
-           
-           // Load overview data first (highest priority)
-           await this.loadDataWithPriority('overview', params, 1);
-           
-           // Load chart data in parallel (medium priority)
-           await Promise.all([
-               this.loadDataWithPriority('enrollment_trend', params, 2),
-               this.loadDataWithPriority('competency_completion', params, 2)
-           ]);
-           
-           // Load secondary data (lower priority)
-           await Promise.all([
-               this.loadDataWithPriority('recent_activity', params, 3),
-               this.loadDataWithPriority('supervisor_distribution', params, 3)
-           ]);
-       }
-       
-       async loadDataWithPriority(type, params, priority) {
-           try {
-               this.showLoadingSkeleton(type);
-               const data = await this.statsLoader.loadData(type, params, {
-                   useWorker: priority <= 2,
-                   progressive: true
-               });
-               return data;
-           } catch (error) {
-               this.showError(type, error);
-               throw error;
-           }
-       }
-       
-       handleDataLoaded(detail) {
-           const { type, data, level } = detail;
-           
-           if (level === 'basic') {
-               this.updateBasicUI(type, data);
-           } else if (level === 'detailed') {
-               this.updateDetailedUI(type, data);
-               this.hideLoadingSkeleton(type);
-           }
-       }
-       
-       handleLoadingStateChanged(detail) {
-           const { type, isLoading } = detail;
-           if (isLoading) {
-               this.showLoadingIndicator(type);
-           } else {
-               this.hideLoadingIndicator(type);
-           }
-       }
-       
-       handleError(detail) {
-           const { type, error } = detail;
-           this.showError(type, new Error(error));
-       }
-       
-       updateBasicUI(type, data) {
-           switch (type) {
-               case 'overview':
-                   this.updateOverviewCards(data);
-                   break;
-               case 'enrollment_trend':
-                   this.updateEnrollmentChart(data, 'basic');
-                   break;
-               case 'competency_completion':
-                   this.updateCompetencyChart(data, 'basic');
-                   break;
-           }
-       }
-       
-       updateDetailedUI(type, data) {
-           switch (type) {
-               case 'overview':
-                   this.updateOverviewCards(data, true);
-                   break;
-               case 'enrollment_trend':
-                   this.updateEnrollmentChart(data, 'detailed');
-                   break;
-               case 'competency_completion':
-                   this.updateCompetencyChart(data, 'detailed');
-                   break;
-               case 'recent_activity':
-                   this.updateActivityChart(data);
-                   break;
-               case 'supervisor_distribution':
-                   this.updateSupervisorChart(data);
-                   break;
-           }
-       }
-       
-       updateOverviewCards(data, isDetailed = false) {
-           const cards = {
-               'total_trainees': data.total_trainees,
-               'active_trainees': data.active_trainees,
-               'activity_rate': data.activity_rate,
-               'competency_count': data.competency_count
-           };
-           
-           Object.entries(cards).forEach(([key, value]) => {
-               const element = document.querySelector(`[data-metric="${key}"]`);
-               if (element) {
-                   element.textContent = typeof value === 'number' ? 
-                       (key.includes('rate') ? value + '%' : value.toLocaleString()) : 
-                       value;
-               }
-           });
-           
-           if (isDetailed) {
-               document.querySelectorAll('.stats-card').forEach(card => {
-                   card.classList.add('loaded');
-               });
-           }
-       }
-       
-       getFilterParams() {
-           return {
-               start_year: document.getElementById('start_year')?.value || '<?php echo $start_year ?>',
-               end_year: document.getElementById('end_year')?.value || '<?php echo $end_year ?>',
-               course: document.getElementById('course')?.value || '<?php echo $selected_course ?>',
-               babcp_filter: document.getElementById('babcp_filter')?.value || '<?php echo $babcp_filter ?>',
-               babcp_training: document.getElementById('babcp_training')?.value || '<?php echo $babcp_training ?>',
-               supervised_case: document.getElementById('supervised_case')?.value || '<?php echo $supervised_case ?>',
-               primary_modality: document.getElementById('primary_modality')?.value || '<?php echo urlencode($primary_modality) ?>',
-               min_sessions: document.getElementById('min_sessions')?.value || '<?php echo $min_sessions ?>'
-           };
-       }
-       
-       showLoadingSkeleton(type) {
-           const element = document.querySelector(`[data-loading="${type}"]`);
-           if (element) {
-               element.classList.add('loading-skeleton');
-           }
-       }
-       
-       hideLoadingSkeleton(type) {
-           const element = document.querySelector(`[data-loading="${type}"]`);
-           if (element) {
-               element.classList.remove('loading-skeleton');
-           }
-       }
-       
-       showLoadingIndicator(type) {
-           const spinner = document.getElementById(`${type}Spinner`);
-           if (spinner) {
-               spinner.style.display = 'inline-block';
-           }
-       }
-       
-       hideLoadingIndicator(type) {
-           const spinner = document.getElementById(`${type}Spinner`);
-           if (spinner) {
-               spinner.style.display = 'none';
-           }
-       }
-       
-       showError(type, error) {
-           const container = document.querySelector(`[data-error="${type}"]`);
-           if (container) {
-               container.innerHTML = `
-                   <div class="error-state">
-                       <strong>Error loading ${type} data:</strong> ${error.message}
-                       <button class="retry-button" onclick="retryLoad('${type}')">Retry</button>
-                   </div>
-               `;
-           }
-       }
-       
-       handleDataLoaded(detail) {
-           const { type, data, level } = detail;
-           
-           if (level === 'basic') {
-               this.updateBasicUI(type, data);
-           } else if (level === 'detailed') {
-               this.updateDetailedUI(type, data);
-               this.hideLoadingSkeleton(type);
-           }
-       }
-       
-       handleLoadingStateChanged(detail) {
-           const { type, isLoading } = detail;
-           if (isLoading) {
-               this.showLoadingIndicator(type);
-           } else {
-               this.hideLoadingIndicator(type);
-           }
-       }
-       
-       handleError(detail) {
-           const { type, error } = detail;
-           this.showError(type, new Error(error));
-       }
-       
-       updateBasicUI(type, data) {
-           switch (type) {
-               case 'overview':
-                   this.updateOverviewCards(data);
-                   break;
-               case 'enrollment_trend':
-                   this.updateEnrollmentChart(data, 'basic');
-                   break;
-               case 'competency_completion':
-                   this.updateCompetencyChart(data, 'basic');
-                   break;
-           }
-       }
-       
-       updateDetailedUI(type, data) {
-           switch (type) {
-               case 'overview':
-                   this.updateOverviewCards(data, true);
-                   break;
-               case 'enrollment_trend':
-                   this.updateEnrollmentChart(data, 'detailed');
-                   break;
-               case 'competency_completion':
-                   this.updateCompetencyChart(data, 'detailed');
-                   break;
-               case 'recent_activity':
-                   this.updateActivityChart(data);
-                   break;
-               case 'supervisor_distribution':
-                   this.updateSupervisorChart(data);
-                   break;
-           }
-       }
-       
-       updateOverviewCards(data, isDetailed = false) {
-           const cards = {
-               'total_trainees': data.total_trainees,
-               'active_trainees': data.active_trainees,
-               'activity_rate': data.activity_rate,
-               'competency_count': data.competency_count
-           };
-           
-           Object.entries(cards).forEach(([key, value]) => {
-               const element = document.querySelector(`[data-metric="${key}"]`);
-               if (element) {
-                   element.textContent = typeof value === 'number' ? 
-                       (key.includes('rate') ? value + '%' : value.toLocaleString()) : 
-                       value;
-               }
-           });
-           
-           if (isDetailed) {
-               document.querySelectorAll('.stats-card').forEach(card => {
-                   card.classList.add('loaded');
-               });
-           }
-       }
-       
-       updateActivityChart(data) {
-           const canvas = document.getElementById('activityChart');
-           if (!canvas) return;
-           
-           if (charts.activity) {
-               charts.activity.destroy();
-           }
-           
-           const ctx = canvas.getContext('2d');
-           charts.activity = new Chart(ctx, {
-               type: 'line',
-               data: {
-                   labels: data.map(item => item.date),
-                   datasets: [{
-                       label: 'Log Entries',
-                       data: data.map(item => item.entries),
-                       borderColor: 'rgba(40, 167, 69, 1)',
-                       backgroundColor: 'rgba(40, 167, 69, 0.2)',
-                       tension: 0.1
-                   }]
-               },
-               options: {
-                   responsive: true,
-                   maintainAspectRatio: false,
-                   scales: {
-                       y: { beginAtZero: true }
-                   }
-               }
-           });
-       }
-       
-       updateSupervisorChart(data) {
-           const canvas = document.getElementById('supervisorChart');
-           if (!canvas) return;
-           
-           if (charts.supervisor) {
-               charts.supervisor.destroy();
-           }
-           
-           const ctx = canvas.getContext('2d');
-           charts.supervisor = new Chart(ctx, {
-               type: 'bar',
-               data: {
-                   labels: data.map(item => item.name),
-                   datasets: [{
-                       label: 'Trainee Count',
-                       data: data.map(item => item.count),
-                       backgroundColor: 'rgba(255, 193, 7, 0.8)',
-                       borderColor: 'rgba(255, 193, 7, 1)',
-                       borderWidth: 1
-                   }]
-               },
-               options: {
-                   responsive: true,
-                   maintainAspectRatio: false,
-                   scales: {
-                       y: { beginAtZero: true }
-                   }
-               }
-           });
-       }
-   }
 
-   // Add chart update methods to ProgressiveStatsLoader
-   ProgressiveStatsLoader.prototype.updateEnrollmentChart = function(data, level) {
+
+   // Chart update methods
+   function updateEnrollmentChart(data, level) {
        const canvas = document.getElementById('enrollmentChart');
        const loading = document.getElementById('enrollmentLoading');
        
-       if (level === 'basic' && loading) {
+       if (loading) {
            loading.style.display = 'none';
            canvas.style.display = 'block';
        }
@@ -1188,7 +853,7 @@ if ($courses === null) {
                datasets: [{
                    label: 'Trainees',
                    data: data.map(item => item.count),
-                   backgroundColor: level === 'basic' ? 'rgba(54, 162, 235, 0.6)' : 'rgba(54, 162, 235, 0.8)',
+                   backgroundColor: 'rgba(54, 162, 235, 0.8)',
                    borderColor: 'rgba(54, 162, 235, 1)',
                    borderWidth: 1
                }]
@@ -1203,17 +868,17 @@ if ($courses === null) {
                    }
                },
                animation: {
-                   duration: level === 'basic' ? 500 : 1000
+                   duration: 1000
                }
            }
        });
-   };
+   }
 
-   ProgressiveStatsLoader.prototype.updateCompetencyChart = function(data, level) {
+   function updateCompetencyChart(data, level) {
        const canvas = document.getElementById('competencyChart');
        const loading = document.getElementById('competencyLoading');
        
-       if (level === 'basic' && loading) {
+       if (loading) {
            loading.style.display = 'none';
            canvas.style.display = 'block';
        }
@@ -1247,13 +912,13 @@ if ($courses === null) {
                    legend: { position: 'bottom' }
                },
                animation: {
-                   duration: level === 'basic' ? 500 : 1000
+                   duration: 1000
                }
            }
        });
-   };
+   }
 
-   ProgressiveStatsLoader.prototype.updateActivityChart = function(data) {
+   function updateActivityChart(data) {
        const canvas = document.getElementById('activityChart');
        if (!canvas) return;
        
@@ -1282,9 +947,9 @@ if ($courses === null) {
                }
            }
        });
-   };
+   }
 
-   ProgressiveStatsLoader.prototype.updateSupervisorChart = function(data) {
+   function updateSupervisorChart(data) {
        const canvas = document.getElementById('supervisorChart');
        if (!canvas) return;
        
@@ -1313,7 +978,7 @@ if ($courses === null) {
                }
            }
        });
-   };
+   }
 
    // Debug Panel Functions
    function toggleDebugPanel() {
@@ -1373,36 +1038,69 @@ if ($courses === null) {
        }
    }
 
-   // Global retry function
-   window.retryLoad = function(type) {
-       if (statsLoader) {
-           const params = statsLoader.getFilterParams();
-           statsLoader.loadDataWithPriority(type, params, 1);
-       }
-   };
 
-   // Initialize progressive loading on page load
+
+   // Initialize charts with PHP data on page load
    document.addEventListener('DOMContentLoaded', function() {
-       // Initialize the progressive stats loader
-       statsLoader = new ProgressiveStatsLoader();
-       
-       // Start loading data with progressive enhancement
-       statsLoader.loadAllData().catch(error => {
-           console.error('Error loading statistics:', error);
-       });
+       // Load charts with PHP data directly
+       loadChartsWithPHPData();
        
        // Handle filter form changes
        const filterForm = document.querySelector('form[method="GET"]');
        if (filterForm) {
            filterForm.addEventListener('submit', function(e) {
-               e.preventDefault();
-               // Reload data with new filters
-               statsLoader.loadAllData().catch(error => {
-                   console.error('Error reloading statistics:', error);
-               });
+               // Let the form submit normally to reload the page with new filters
+               // No need to prevent default
            });
        }
    });
+   
+   // Function to load charts with PHP data
+   function loadChartsWithPHPData() {
+       // Enrollment Chart
+       const enrollmentData = <?php echo json_encode($year_data); ?>;
+       if (enrollmentData && enrollmentData.length > 0) {
+           updateEnrollmentChart(enrollmentData, 'detailed');
+       } else {
+           showNoDataMessage('enrollmentChart', 'No enrollment data available');
+       }
+       
+       // Competency Completion Chart
+       const competencyData = <?php echo json_encode($competency_data); ?>;
+       if (competencyData && competencyData.length > 0) {
+           updateCompetencyChart(competencyData, 'detailed');
+       } else {
+           showNoDataMessage('competencyChart', 'No competency data available');
+       }
+       
+       // Recent Activity Chart
+       const activityData = <?php echo json_encode($recent_activity); ?>;
+       if (activityData && activityData.length > 0) {
+           updateActivityChart(activityData);
+       } else {
+           showNoDataMessage('activityChart', 'No recent activity data available');
+       }
+       
+       // Supervisor Distribution Chart
+       const supervisorData = <?php echo json_encode($supervisor_data); ?>;
+       if (supervisorData && supervisorData.length > 0) {
+           updateSupervisorChart(supervisorData);
+       } else {
+           showNoDataMessage('supervisorChart', 'No supervisor data available');
+       }
+   }
+   
+   // Function to show no data message
+   function showNoDataMessage(canvasId, message) {
+       const canvas = document.getElementById(canvasId);
+       if (canvas) {
+           const ctx = canvas.getContext('2d');
+           ctx.fillStyle = '#666';
+           ctx.font = '16px Arial';
+           ctx.textAlign = 'center';
+           ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+       }
+   }
    </script>
 </body>
 </html>
