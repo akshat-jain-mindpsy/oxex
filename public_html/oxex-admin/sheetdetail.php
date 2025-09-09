@@ -27,7 +27,7 @@ $which = isset($_POST['which']) ? (int)$_POST['which'] : (isset($_GET['which']) 
 
 // Debug: Log all POST data
 if (!empty($_POST)) {
-    error_log("TABLEDETAIL POST DATA: " . print_r($_POST, true));
+    error_log("SHEETDETAIL POST DATA: " . print_r($_POST, true));
 }
 
 // Handle field deletion
@@ -39,7 +39,7 @@ if ($del == "delfield" && ($admintype == 'AT' || $admintype == 'DV')) {
    $stmt->close();
    
    // Add a success message or redirect
-   header("Location: tabledetail.php?which=$which&msg=field_deleted");
+   header("Location: sheetdetail.php?which=$which&msg=field_deleted");
    exit();
 }
 
@@ -52,11 +52,11 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   
   // Validate required parameters
   if (empty($which) || $which <= 0) {
-    error_log("TABLEDETAIL VALIDATION: which=$which, empty=" . (empty($which) ? 'true' : 'false'));
+    error_log("SHEETDETAIL VALIDATION: which=$which, empty=" . (empty($which) ? 'true' : 'false'));
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Invalid table ID ($which). Cannot update record.</strong></div></div></div>";
   } else {
     // Debug logging
-    error_log("TABLEDETAIL UPDATE: tab_name='$tab_name', tab_notes='$tab_notes', isvis=$isvis, sort_order=$sort_order, which=$which");
+    error_log("SHEETDETAIL UPDATE: tab_name='$tab_name', tab_notes='$tab_notes', isvis=$isvis, sort_order=$sort_order, which=$which");
     
     // First check if the record exists
     $check_stmt = $mysqli->prepare("SELECT tbid, tab_name FROM tabs_tbl WHERE tbid = ?");
@@ -67,13 +67,13 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
     $check_stmt->close();
     
     if (!$record_exists) {
-      error_log("TABLEDETAIL ERROR: Record with ID $which does not exist");
+      error_log("SHEETDETAIL ERROR: Record with ID $which does not exist");
       $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Record with ID $which does not exist in the database.</strong></div></div></div>";
     } else {
       // Update record
     $stmt = $mysqli->prepare("UPDATE tabs_tbl SET tab_name = ?, tab_notes = ?, sort_order = ?, isvis = ? WHERE tbid = ?"); 
     if (!$stmt) {
-      error_log("TABLEDETAIL PREPARE ERROR: " . $mysqli->error);
+      error_log("SHEETDETAIL PREPARE ERROR: " . $mysqli->error);
       $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to prepare statement: " . $mysqli->error . "</strong></div></div></div>";
     } else {
       $stmt->bind_param("ssiii", $tab_name, $tab_notes, $sort_order, $isvis, $which);
@@ -82,8 +82,8 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
       $stmt->close();
       
       // Debug logging
-      error_log("TABLEDETAIL UPDATE RESULT: result=$result, affected_rows=$affected_rows, error=" . $mysqli->error);
-      error_log("TABLEDETAIL UPDATE VALUES: tab_name='$tab_name', tab_notes='$tab_notes', sort_order=$sort_order, isvis=$isvis, tbid=$which");
+      error_log("SHEETDETAIL UPDATE RESULT: result=$result, affected_rows=$affected_rows, error=" . $mysqli->error);
+      error_log("SHEETDETAIL UPDATE VALUES: tab_name='$tab_name', tab_notes='$tab_notes', sort_order=$sort_order, isvis=$isvis, tbid=$which");
       
       if ($result && $affected_rows > 0) {
         $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-success\" role=\"alert\"><strong>Sheet updated successfully!</strong></div></div></div>";
@@ -95,7 +95,7 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   }
   
   // Don't redirect - let the success message display
-  // header("Location: tabledetail.php?which=$which&msg=updated");
+  // header("Location: sheetdetail.php?which=$which&msg=updated");
   // exit();
 }
 
@@ -154,7 +154,7 @@ if ($newadmin == "newfield" && ($admintype == 'AT' || $admintype == 'DV')) {
           exit();
       } else {
           // Redirect for regular form submission
-          header("Location: tabledetail.php?which=$which&msg=field_added");
+          header("Location: sheetdetail.php?which=$which&msg=field_added");
           exit();
       }
    } else {
@@ -167,7 +167,7 @@ if ($newadmin == "newfield" && ($admintype == 'AT' || $admintype == 'DV')) {
           ]);
           exit();
       } else {
-          header("Location: tabledetail.php?which=$which&msg=field_exists");
+          header("Location: sheetdetail.php?which=$which&msg=field_exists");
           exit();
       }
    }
@@ -1455,7 +1455,7 @@ $changename = htmlspecialchars($tab_name);
 
              // Send to server with full details
              $.ajax({
-                 url: "tabledetailsort.php",
+                 url: "sheetdetailsort.php",
                  type: 'post',
                  data: {
                      save_order: true,
@@ -3083,7 +3083,7 @@ $changename = htmlspecialchars($tab_name);
                             const whichParam = urlParams.get('which');
                             
                             // Construct the correct URL
-                            const redirectUrl = `tabledetail.php?which=${whichParam}`;
+                            const redirectUrl = `sheetdetail.php?which=${whichParam}`;
                             
                             // Navigate to the URL
                             window.location.href = redirectUrl;

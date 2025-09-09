@@ -90,5 +90,5 @@ while ($section = $sections_result->fetch_assoc()) {
 echo "<h2>Summary</h2>";
 echo "<p>Created $count section-table links.</p>";
 echo "<p>Encountered $error_count errors.</p>";
-echo "<p><a href='tabledetail.php?which=" . (isset($_GET['tbid']) ? $_GET['tbid'] : '') . "'>Return to Table Detail</a></p>";
+echo "<p><a href='sheetdetail.php?which=" . (isset($_GET['tbid']) ? $_GET['tbid'] : '') . "'>Return to Sheet Detail</a></p>";
 ?>

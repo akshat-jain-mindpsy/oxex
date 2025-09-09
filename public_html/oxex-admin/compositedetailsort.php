@@ -1,7 +1,7 @@
 <?php
 include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
-// update table field sort order from draggable tabledetail.php
+// update table field sort order from draggable sheetdetail.php
 
 $position = $_POST['position'];
 $i = 1;

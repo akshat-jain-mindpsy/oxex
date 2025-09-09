@@ -42,7 +42,7 @@ function searchTables($mysqli, $searchTerm) {
             t.tab_name AS title,
             COALESCE(t.tab_notes, 'No description available') AS description,
             'Table' AS type,
-            CONCAT('tabledetail.php?which=', t.tbid) AS url,
+            CONCAT('sheetdetail.php?which=', t.tbid) AS url,
             (
                 CASE 
                     WHEN t.tab_name LIKE ? THEN 10 

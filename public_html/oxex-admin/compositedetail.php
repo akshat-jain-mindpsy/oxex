@@ -270,7 +270,7 @@ $tableset->close();
    <script src="https://code.jquery.com/ui/1.13.1/jquery-ui.min.js" integrity="sha256-eTyxS0rkjpLEo16uXTS0uVCS4815lc40K2iVpWDvdSY=" crossorigin="anonymous"></script>
 <script type="text/javascript">
    /* sort table field list and update table */
-   /* oxex admin tabledetail.php */
+   /* oxex admin sheetdetail.php */
  $( "#post_list" ).sortable({
      delay: 150,
      opacity: 0.6, 

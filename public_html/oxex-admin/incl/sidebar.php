@@ -81,7 +81,7 @@ $admintype = $admintype ?? 'Unknown';
                   ?>
                   <?php
                      $url = 'sheets.php';
-                     $urldetail = 'tabledetail.php';
+                     $urldetail = 'sheetdetail.php';
                      $page = 'Sheets';
                      if ($thispage == $url || $thispage == $urldetail) {
                         $isactive = ' active';

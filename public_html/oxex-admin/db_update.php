@@ -161,7 +161,7 @@ if (isset($_POST['migrate_options']) && $_POST['migrate_options'] == 'yes') {
                         <?php endif; ?>
                         
                         <div class="mt-4">
-                           <a href="tabledetail.php?which=<?php echo $table_id > 0 ? $table_id : 1; ?>" class="btn btn-outline-secondary">
+                           <a href="sheetdetail.php?which=<?php echo $table_id > 0 ? $table_id : 1; ?>" class="btn btn-outline-secondary">
                               Return to Table Detail
                            </a>
                         </div>

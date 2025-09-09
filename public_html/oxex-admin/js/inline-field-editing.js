@@ -1,5 +1,5 @@
 /**
- * Inline Field Editing Functionality for tabledetail.php
+ * Inline Field Editing Functionality for sheetdetail.php
  */
 
 // Wait for document and jQuery to be ready

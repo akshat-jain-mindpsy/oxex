@@ -111,7 +111,7 @@ while ($tableset->fetch()){
 ?>
 <tr>
    <td>
-      <a href="tabledetail.php?which=<?php echo $tbid ?>" class="table-link">
+      <a href="sheetdetail.php?which=<?php echo $tbid ?>" class="table-link">
          <?php echo htmlspecialchars($tab_name) ?>
       </a>
    </td>
@@ -120,7 +120,7 @@ while ($tableset->fetch()){
    <td><?php echo $num_fields ?></td>
    <td>
       <div class="btn-group" role="group">
-         <a href="tabledetail.php?which=<?php echo $tbid ?>" class="btn btn-sm btn-info">
+         <a href="sheetdetail.php?which=<?php echo $tbid ?>" class="btn btn-sm btn-info">
             <i class="fa fa-eye"></i> View Details
          </a>
          <a href="sheets.php?del=del&which=<?php echo $tbid ?>" class="btn btn-sm btn-danger delete-table" onclick="return confirm('Are you sure you want to delete this sheet?')">

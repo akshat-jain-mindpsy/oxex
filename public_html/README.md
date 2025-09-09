@@ -130,7 +130,7 @@ ADD COLUMN updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP;
 ```
 
 #### Table Management Improvements
-- Enhanced `tabledetail.php` to support section assignments
+- Enhanced `sheetdetail.php` to support section assignments
 - Added functionality to edit and delete section connections
 - Implemented section reordering capabilities
 - Added UI components for managing section relationships
