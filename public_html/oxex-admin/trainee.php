@@ -141,7 +141,7 @@ if ($newadmin == 'newadmin') {
   $year = isset($_POST['year']) && !empty($_POST['year']) ? trim($_POST['year']) : '';
   
   // Validate required fields
-  if (empty($name) || empty($email) || empty($uid) || empty($supervisor)) {
+  if (empty($name) || empty($email) || empty($uid)) {
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Required fields cannot be empty</strong></div></div></div>";
   } else {
   // create a user key and password
@@ -587,8 +587,8 @@ $tableset->close();
                                 ?>
                                 <div class="row">
                                     <div class="col form-group">
-                                        <label class="col-form-label" for="supervisor">Supervisor#1 <span class="text-danger">*</span></label>
-                                        <select class="custom-select custom-select mb-3" id="supervisor" name="supervisor" required>
+                                        <label class="col-form-label" for="supervisor">Supervisor#1</label>
+                                        <select class="custom-select custom-select mb-3" id="supervisor" name="supervisor">
                                          <option selected="selected" value="0">Select...</option>
                                          <?php
                                          // list Supervisors Only (& full admin)
@@ -673,8 +673,8 @@ $tableset->close();
                                        </select>
                                     </div>
                                     <div class="col form-group">
-                                        <label class="col-form-label" for="tutor">Tutor <span class="text-danger">*</span></label>
-                                        <select class="custom-select custom-select mb-3" id="tutor" name="tutor" required>
+                                        <label class="col-form-label" for="tutor">Tutor</label>
+                                        <select class="custom-select custom-select mb-3" id="tutor" name="tutor">
                                          <option selected="selected" value="0">Select...</option>
                                          <?php
                                          // list Tutors Only (& full admin)

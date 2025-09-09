@@ -605,7 +605,7 @@ $stmt->close();
                // Create divs for graphs from report manager
                // All have IDs that align with equivalent javascript
                // first loop through Tables (that are agreed for thsi Trainee)
-               $tableset = $mysqli->prepare("SELECT tabs_tbl.tbid, tabs_tbl.tab_name FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid ORDER BY tabs_tbl.sort_order");
+               $tableset = $mysqli->prepare("SELECT tabs_tbl.tbid, tabs_tbl.tab_name FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid AND tabs_tbl.isvis = 1 ORDER BY tabs_tbl.sort_order");
                $tableset->bind_param("s", $which);
                $tableset->execute();
                $tableset->store_result();
@@ -1084,7 +1084,7 @@ $tableset->close();
 // Two types of js, one for ranges and one for exact value
 // Exact value use $stid
 $labeltxt = '# of Settings';
-$tableset = $mysqli->prepare("SELECT tabs_tbl.tbid FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid ORDER BY tabs_tbl.sort_order");
+$tableset = $mysqli->prepare("SELECT tabs_tbl.tbid FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid AND tabs_tbl.isvis = 1 ORDER BY tabs_tbl.sort_order");
 $tableset->bind_param("s", $which);
 $tableset->execute();
 $tableset->store_result();

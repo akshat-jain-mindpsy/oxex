@@ -26,7 +26,7 @@ $stmt->store_result();
 $stmt->bind_result($name, $who_by, $date_added, $date_modified, $last_used);
 $stmt->fetch();
 $stmt->close();
-   $date_added = strtotime($date_added);
+   $date_added = $date_added ? strtotime($date_added) : false;
 
 
 $firstline = "$name,".date("D jS M Y", $todaydisp)."\n";
@@ -71,7 +71,7 @@ while ($tableset->fetch()){
 	$numpass = $stmt->num_rows;
 	$stmt->fetch();
 	$stmt->close();
-	$date_signed = strtotime($date_signed);
+	$date_signed = $date_signed ? strtotime($date_signed) : false;
 	if ($numpass > 0) {
 		// who signed it off?
 	  $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
@@ -81,7 +81,8 @@ while ($tableset->fetch()){
 	  $stmt->bind_result($supername);
 	  $stmt->fetch();
 	  $stmt->close();
-	  $nextline = $nextline."Signed off: , ".$supername.",".date("D jS M Y", $date_signed)."\n";
+	  $date_display = $date_signed ? date("D jS M Y", $date_signed) : 'N/A';
+	  $nextline = $nextline."Signed off: , ".$supername.",".$date_display."\n";
 	}
 
 	$tabctr++; # increment counter to now add space before titles
@@ -166,9 +167,12 @@ while ($tableset->fetch()){
 	      }
 	      if ($single == 3) {
 	        // $exselect_val is date YYYYMMDD
-	        $exselect_val = strtotime($exselect_val);
-	        //echo "<td>".date("d-m-y", $exselect_val)."</td>\n";
-	        $nextline = $nextline."".date("d-m-y", $exselect_val).",";
+	        if ($exselect_val && $exselect_val > 1) {
+	          $exselect_val = strtotime($exselect_val);
+	          $nextline = $nextline."".date("d-m-y", $exselect_val).",";
+	        } else {
+	          $nextline = $nextline." ,";
+	        }
 	      }
 	      if ($single == 1) {
           // $exselect_val is multiple values, one per record
@@ -255,7 +259,7 @@ foreach ($CSarr as $CSvalue) {
   $numpass = $stmt->num_rows;
   $stmt->fetch();
   $stmt->close();
-  $date_signed = strtotime($date_signed);
+  $date_signed = $date_signed ? strtotime($date_signed) : false;
   if ($numpass > 0) {
     // who signed it off?
     $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
@@ -265,7 +269,8 @@ foreach ($CSarr as $CSvalue) {
     $stmt->bind_result($supername);
     $stmt->fetch();
     $stmt->close();
-    $nextline = $nextline."Signed off: , ".$supername.",".date("D jS M Y", $date_signed)."\n";
+    $date_display = $date_signed ? date("D jS M Y", $date_signed) : 'N/A';
+    $nextline = $nextline."Signed off: , ".$supername.",".$date_display."\n";
   }
       
       // loop through fields for the generic table ($tbid == 1) and get field name 

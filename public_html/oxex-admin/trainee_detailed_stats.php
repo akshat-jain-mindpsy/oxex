@@ -43,12 +43,26 @@ include 'incl/sess.php';
 // Check permissions - allow all admin types to view trainee stats
 if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 
+// Fetch trainee subsets (groups) for filtering
+$subsets = [];
+$canViewAll = ($admintype == 'AT' || $admintype == 'DV');
+$subsets_query = "SELECT setkey, subset, usrkey FROM subset_tbl ORDER BY subset ASC";
+$subsets_result = $mysqli->query($subsets_query);
+if ($subsets_result) {
+    while ($subset = $subsets_result->fetch_assoc()) {
+        if ($canViewAll || $subset['usrkey'] == $usrkey) {
+            $subsets[] = $subset;
+        }
+    }
+}
+
 // Get parameters
 $thisyear = date("Y");
 $start_year = isset($_GET['start_year']) ? (int)$_GET['start_year'] : ($thisyear - 10); // Default to 10 years ago
 $end_year = isset($_GET['end_year']) ? (int)$_GET['end_year'] : ($thisyear + 1); // Default to next year
 $selected_course = isset($_GET['course']) ? (int)$_GET['course'] : 0;
 $selected_competency = isset($_GET['competency']) ? (int)$_GET['competency'] : 0;
+$selected_group = isset($_GET['group']) ? $_GET['group'] : ''; // empty = all groups, 'subset_123' = specific group, 'ALL_USERS' = all users
 $babcp_filter = isset($_GET['babcp_filter']) ? (int)$_GET['babcp_filter'] : 0; // 0 = all data, 1 = BABCP only
 $babcp_training = isset($_GET['babcp_training']) ? (int)$_GET['babcp_training'] : 0; // 0 = all, 1 = training cases only
 $supervised_case = isset($_GET['supervised_case']) ? (int)$_GET['supervised_case'] : 0; // 0 = all, 1 = supervised cases only
@@ -92,7 +106,7 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
                         LEFT JOIN uni_tbl u ON t.uid = u.uid
                         LEFT JOIN who_there w ON t.supervisor = w.usrkey
                         LEFT JOIN trainee_log tl ON t.trainkey = tl.trainkey
-                        WHERE 1=1 $course_condition $babcp_condition_simple $additional_conditions
+                        WHERE 1=1 $course_condition $group_condition $babcp_condition_simple $additional_conditions
                         GROUP BY t.tid ORDER BY t.name";
         
         $result = $mysqli->query($export_query);
@@ -120,7 +134,7 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
             FROM tabs_tbl tabs
             LEFT JOIN trainee_log tl ON tabs.tbid = tl.tbid
             LEFT JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-            WHERE tabs.isvis = 1 $course_condition $babcp_condition_simple $additional_conditions";
+            WHERE tabs.isvis = 1 $course_condition $group_condition $babcp_condition_simple $additional_conditions";
         
         if ($selected_competency > 0) {
             $competency_query .= " AND tabs.tbid = $selected_competency";
@@ -167,7 +181,7 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
                 WHERE 1=1
                 GROUP BY t2.trainkey
             ) trainee_stats ON t.trainkey = trainee_stats.trainkey
-            WHERE w.admintype IN ('SO', 'SE') $course_condition $babcp_condition_simple $additional_conditions
+            WHERE w.admintype IN ('SO', 'SE') $course_condition $group_condition $babcp_condition_simple $additional_conditions
             GROUP BY w.usrkey, w.realname ORDER BY avg_completion_rate DESC";
         
         $result = $mysqli->query($supervisor_query);
@@ -403,8 +417,9 @@ $listname = "Trainee Statistics";
 $datestart = $start_year . '0101';
 $dateend = $end_year . '1231';
 
-// Get course filter condition
+// Get course and group filter conditions
 $course_condition = "";
+$group_condition = "";
 $course_params = [];
 $course_param_types = "";
 
@@ -412,6 +427,21 @@ if ($selected_course > 0) {
     $course_condition = "AND t.uid = ?";
     $course_params[] = $selected_course;
     $course_param_types = "i";
+}
+
+// Handle group filtering
+if ($selected_group === 'ALL_USERS') {
+    // Show all users - no additional condition needed
+    $group_condition = "";
+} elseif (strpos($selected_group, 'subset_') === 0) {
+    // Filter by specific group
+    $setkey = substr($selected_group, 7); // Remove 'subset_' prefix
+    $group_condition = "AND t.trainkey IN (SELECT trainkey FROM subset_link_tbl WHERE setkey = ?)";
+    $course_params[] = $setkey;
+    $course_param_types .= "s";
+} else {
+    // No group filter - show all accessible trainees
+    $group_condition = "";
 }
 
 // OPTIMIZED: Pre-compute BABCP trainee list to avoid complex subqueries with caching
@@ -615,7 +645,7 @@ $monthly_activity_query = "
         COUNT(DISTINCT tl.trainkey) as active_trainees
     FROM trainee_log tl
     JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-    WHERE tl.date_added >= ? AND tl.date_added <= ? $course_condition $babcp_condition_simple $additional_conditions
+    WHERE tl.date_added >= ? AND tl.date_added <= ? $course_condition $group_condition $babcp_condition_simple $additional_conditions
     GROUP BY DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m')
     ORDER BY month DESC
     LIMIT 12
@@ -753,7 +783,7 @@ $competency_difficulty_query = "
     FROM tabs_tbl tabs
     LEFT JOIN trainee_log tl ON tabs.tbid = tl.tbid
     LEFT JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-    WHERE tabs.isvis = 1 $course_condition $babcp_condition_simple $additional_conditions
+    WHERE tabs.isvis = 1 $course_condition $group_condition $babcp_condition_simple $additional_conditions
     GROUP BY tabs.tbid, tabs.tab_name
     ORDER BY success_rate ASC
 ";
@@ -855,7 +885,7 @@ $babcp_case_analysis_query = "
         WHERE tl_hours.stid = 60 AND tl_hours.date_added >= ? AND tl_hours.date_added <= ?
         GROUP BY tl_hours.logkey
     ) session_hours ON tl.logkey = session_hours.logkey
-    WHERE 1=1 $course_condition $babcp_condition_simple $additional_conditions
+    WHERE 1=1 $course_condition $group_condition $babcp_condition_simple $additional_conditions
     AND tl.date_added >= ? AND tl.date_added <= ?
     GROUP BY t.trainkey, t.name
     ORDER BY t.name
@@ -937,7 +967,7 @@ $babcp_growth_query = "
     FROM trainee_log tl
     JOIN trainee_tbl t ON tl.trainkey = t.trainkey
     LEFT JOIN select_types st ON tl.stid = st.stid
-    WHERE tl.date_added >= ? AND tl.date_added <= ? $course_condition $babcp_condition_simple $additional_conditions
+    WHERE tl.date_added >= ? AND tl.date_added <= ? $course_condition $group_condition $babcp_condition_simple $additional_conditions
     GROUP BY DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m')
     ORDER BY month DESC
     LIMIT 12
@@ -1102,28 +1132,50 @@ if ($debug_sample_result) {
                </div>
             </div>
 
+            <!-- Group Filter Indicator -->
+            <?php if (!empty($selected_group)): ?>
+            <div class="alert alert-info mb-4">
+               <i class="fas fa-users"></i> <strong>Group Filter Active:</strong> 
+               <?php if ($selected_group === 'ALL_USERS'): ?>
+                  Data is aggregated across all accessible users
+               <?php elseif (strpos($selected_group, 'subset_') === 0): ?>
+                  <?php 
+                  $setkey = substr($selected_group, 7);
+                  $group_name = '';
+                  foreach ($subsets as $subset) {
+                      if ($subset['setkey'] === $setkey) {
+                          $group_name = $subset['subset'];
+                          break;
+                      }
+                  }
+                  ?>
+                  Data is filtered for the "<?php echo htmlspecialchars($group_name); ?>" group
+               <?php endif; ?>
+            </div>
+            <?php endif; ?>
+
             <!-- Export Section -->
             <?php if ($admintype == 'AT' || $admintype == 'DV'): ?>
             <div class="export-section">
                <h5>Export Data</h5>
                <div class="row">
                   <div class="col-md-3">
-                     <a href="?export=trainee_summary&course=<?php echo $selected_course ?>" class="btn btn-success btn-sm">
+                     <a href="?export=trainee_summary&course=<?php echo $selected_course ?>&group=<?php echo urlencode($selected_group) ?>" class="btn btn-success btn-sm">
                         <i class="fa fa-download"></i> Export Trainee Summary
                      </a>
                   </div>
                   <div class="col-md-3">
-                     <a href="?export=competency_data&course=<?php echo $selected_course ?>" class="btn btn-info btn-sm">
+                     <a href="?export=competency_data&course=<?php echo $selected_course ?>&group=<?php echo urlencode($selected_group) ?>" class="btn btn-info btn-sm">
                         <i class="fa fa-download"></i> Export Competency Data
                      </a>
                   </div>
                   <div class="col-md-3">
-                     <a href="?export=supervisor_report&course=<?php echo $selected_course ?>" class="btn btn-warning btn-sm">
+                     <a href="?export=supervisor_report&course=<?php echo $selected_course ?>&group=<?php echo urlencode($selected_group) ?>" class="btn btn-warning btn-sm">
                         <i class="fa fa-download"></i> Export Supervisor Report
                      </a>
                   </div>
                   <div class="col-md-3">
-                     <a href="?export=full_report&course=<?php echo $selected_course ?>" class="btn btn-primary btn-sm">
+                     <a href="?export=full_report&course=<?php echo $selected_course ?>&group=<?php echo urlencode($selected_group) ?>" class="btn btn-primary btn-sm">
                         <i class="fa fa-download"></i> Export Full Report
                      </a>
                   </div>
@@ -1177,6 +1229,22 @@ if ($debug_sample_result) {
                                        <?php echo htmlspecialchars($comp['tab_name']) ?>
                                     </option>
                                  <?php endforeach; ?>
+                              </select>
+                           </div>
+                           <div class="col-md-2">
+                              <label for="group">Group Filter</label>
+                              <select name="group" id="group" class="form-control">
+                                 <option value="" <?php echo $selected_group == '' ? 'selected' : '' ?>>All Groups</option>
+                                 <option value="ALL_USERS" <?php echo $selected_group == 'ALL_USERS' ? 'selected' : '' ?>>📊 All Users (Aggregated)</option>
+                                 <?php if (!empty($subsets)): ?>
+                                 <optgroup label="Trainee Groups">
+                                    <?php foreach ($subsets as $subset): ?>
+                                       <option value="subset_<?php echo $subset['setkey']; ?>" <?php echo $selected_group == 'subset_' . $subset['setkey'] ? 'selected' : '' ?>>
+                                          <?php echo htmlspecialchars($subset['subset']); ?> (Group)
+                                       </option>
+                                    <?php endforeach; ?>
+                                 </optgroup>
+                                 <?php endif; ?>
                               </select>
                            </div>
                            <div class="col-md-2">
@@ -2399,6 +2467,42 @@ if ($debug_sample_result) {
    }
    
 
+   
+   // Group filter indicator functionality
+   function updateGroupFilterIndicator() {
+       const groupSelect = document.getElementById('group');
+       if (!groupSelect) return;
+       
+       const selectedGroup = groupSelect.value;
+       const indicator = document.querySelector('.alert-info');
+       
+       if (selectedGroup === 'ALL_USERS') {
+           if (indicator) {
+               indicator.innerHTML = '<i class="fas fa-users"></i> <strong>All Users Mode:</strong> Data is aggregated across all accessible users';
+               indicator.style.display = 'block';
+           }
+       } else if (selectedGroup.startsWith('subset_')) {
+           const groupName = groupSelect.options[groupSelect.selectedIndex].text.replace(' (Group)', '').trim();
+           if (indicator) {
+               indicator.innerHTML = `<i class="fas fa-users-cog"></i> <strong>Group Filter Active:</strong> Data is filtered for the "${groupName}" group`;
+               indicator.style.display = 'block';
+           }
+       } else {
+           if (indicator) {
+               indicator.style.display = 'none';
+           }
+       }
+   }
+   
+   // Add event listener for group filter changes
+   document.addEventListener('DOMContentLoaded', function() {
+       const groupSelect = document.getElementById('group');
+       if (groupSelect) {
+           groupSelect.addEventListener('change', updateGroupFilterIndicator);
+           // Initialize on page load
+           updateGroupFilterIndicator();
+       }
+   });
    
    // Charts are now loaded directly with PHP data
    </script>

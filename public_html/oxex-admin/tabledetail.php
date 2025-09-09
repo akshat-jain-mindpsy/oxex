@@ -23,7 +23,12 @@ $done = isset($_POST['done']) ? $_POST['done'] : '';
 $newadmin = isset($_POST['newadmin']) ? $_POST['newadmin'] : '';
 $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delicon = isset($_GET['delicon']) ? $_GET['delicon'] : '';
-$which = isset($_GET['which']) ? (int)$_GET['which'] : 0;
+$which = isset($_POST['which']) ? (int)$_POST['which'] : (isset($_GET['which']) ? (int)$_GET['which'] : 0);
+
+// Debug: Log all POST data
+if (!empty($_POST)) {
+    error_log("TABLEDETAIL POST DATA: " . print_r($_POST, true));
+}
 
 // Handle field deletion
 if ($del == "delfield" && ($admintype == 'AT' || $admintype == 'DV')) {
@@ -45,15 +50,53 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $sort_order = isset($_POST['sort_order']) ? (int)$_POST['sort_order'] : 0;
   $isvis = isset($_POST['isvis']) ? (int)$_POST['isvis'] : 1;
   
-  // Update record
-  $stmt = $mysqli->prepare("UPDATE tabs_tbl SET tab_name = ?, tab_notes = ?, sort_order = ?, isvis = ? WHERE tbid = ? "); 
-  $stmt->bind_param("ssiii", $tab_name, $tab_notes, $sort_order, $isvis, $which);
-  $stmt->execute();
-  $stmt->close();
+  // Validate required parameters
+  if (empty($which) || $which <= 0) {
+    error_log("TABLEDETAIL VALIDATION: which=$which, empty=" . (empty($which) ? 'true' : 'false'));
+    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Invalid table ID ($which). Cannot update record.</strong></div></div></div>";
+  } else {
+    // Debug logging
+    error_log("TABLEDETAIL UPDATE: tab_name='$tab_name', tab_notes='$tab_notes', isvis=$isvis, sort_order=$sort_order, which=$which");
+    
+    // First check if the record exists
+    $check_stmt = $mysqli->prepare("SELECT tbid, tab_name FROM tabs_tbl WHERE tbid = ?");
+    $check_stmt->bind_param("i", $which);
+    $check_stmt->execute();
+    $check_stmt->store_result();
+    $record_exists = $check_stmt->num_rows > 0;
+    $check_stmt->close();
+    
+    if (!$record_exists) {
+      error_log("TABLEDETAIL ERROR: Record with ID $which does not exist");
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Record with ID $which does not exist in the database.</strong></div></div></div>";
+    } else {
+      // Update record
+    $stmt = $mysqli->prepare("UPDATE tabs_tbl SET tab_name = ?, tab_notes = ?, sort_order = ?, isvis = ? WHERE tbid = ?"); 
+    if (!$stmt) {
+      error_log("TABLEDETAIL PREPARE ERROR: " . $mysqli->error);
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to prepare statement: " . $mysqli->error . "</strong></div></div></div>";
+    } else {
+      $stmt->bind_param("ssiii", $tab_name, $tab_notes, $sort_order, $isvis, $which);
+      $result = $stmt->execute();
+      $affected_rows = $stmt->affected_rows;
+      $stmt->close();
+      
+      // Debug logging
+      error_log("TABLEDETAIL UPDATE RESULT: result=$result, affected_rows=$affected_rows, error=" . $mysqli->error);
+      error_log("TABLEDETAIL UPDATE VALUES: tab_name='$tab_name', tab_notes='$tab_notes', sort_order=$sort_order, isvis=$isvis, tbid=$which");
+      
+      if ($result && $affected_rows > 0) {
+        $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-success\" role=\"alert\"><strong>Sheet updated successfully!</strong></div></div></div>";
+      } else {
+        $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to update sheet. No rows affected. Check the error log for details.</strong></div></div></div>";
+      }
+    }
+    }
+  }
   
-  // Redirect to prevent form resubmission
-  header("Location: tabledetail.php?which=$which&msg=updated");
-  exit();
+  // Don't redirect - let the success message display
+  // header("Location: tabledetail.php?which=$which&msg=updated");
+  // exit();
 }
 
 // Handle new field addition
@@ -489,6 +532,11 @@ $changename = htmlspecialchars($tab_name);
                               </div>";
                     }
                 }
+                
+                // Display form submission alerts
+                if (isset($delalert) && !empty($delalert)) {
+                    echo $delalert;
+                }
                 ?>
                </div>
             </div>
@@ -496,7 +544,7 @@ $changename = htmlspecialchars($tab_name);
             <!-- Amend Card -->
             <div class="row">
                <div class="col-12">
-                  <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>" data-parsley-validate="" novalidate="">
+                  <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>">
                      <div class="card border-info mb-4">
                         <div class="card-header bg-info">
                            <div class="card-title">Amend "<?php echo $changename ?>"</div>
@@ -535,11 +583,11 @@ $changename = htmlspecialchars($tab_name);
                </div>
             </div>
 
-            <!-- Table Field Management Section -->
+            <!-- Sheet Field Management Section -->
             <div class="row">
                <div class="col-12">
                            <div class="form-group mt-2 w-100" style="margin-bottom: 1.5rem; padding: 1.5rem; background: #AEB7BD; border-radius: 8px;">
-                              <h4 class="mb-3">Table Field Management</h4>
+                              <h4 class="mb-3">Sheet Field Management</h4>
                               <p class="text-dark">Manage the fields that appear in this table. You can add new fields, change their order, or remove existing fields.</p>
                               <div class="d-flex">
                                 <button class="btn btn-success mr-2" data-toggle="modal" data-target="#addFieldModal">
@@ -694,8 +742,8 @@ $changename = htmlspecialchars($tab_name);
                   echo '<div class="section-container m-0 p-0">';
                   echo '<div class="section-header d-flex justify-content-between align-items-center m-0 p-2" style="background:#f8f9fa;border-left:4px solid #09c;">';
                   echo '<div>';
-                  echo '<h5 class="mb-1">Unsectioned Fields</h5>';
-                  echo '<p class="text-muted mb-0"><small>Fields not assigned to any section</small></p>';
+                  echo '<h5 class="mb-1">Available Fields</h5>';
+                  echo '<p class="text-muted mb-0"><small>Fields ready to be assigned to sections - drag to organize or assign to a specific section</small></p>';
                   echo '</div>';
                   echo '</div>';
                   
@@ -2556,7 +2604,7 @@ $changename = htmlspecialchars($tab_name);
          <div class="modal-content">
             <form id="assign_section_form" method="post" action="ajax/assign_section.php">
                <div class="modal-header bg-primary text-white">
-                  <h5 class="modal-title" id="assignSectionModalLabel">Assign Unsectioned Fields</h5>
+                  <h5 class="modal-title" id="assignSectionModalLabel">Assign Available Fields</h5>
                   <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                      <span aria-hidden="true">&times;</span>
                   </button>

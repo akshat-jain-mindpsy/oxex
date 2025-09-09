@@ -150,6 +150,7 @@ $thisyear = date("Y");
 $start_year = isset($_GET['start_year']) ? (int)$_GET['start_year'] : $thisyear;
 $end_year = isset($_GET['end_year']) ? (int)$_GET['end_year'] : $thisyear;
 $selected_course = isset($_GET['course']) ? (int)$_GET['course'] : 0; // 0 = all courses
+$selected_cohort_year = isset($_GET['cohort_year']) ? (int)$_GET['cohort_year'] : 0; // 0 = all cohort years
 $babcp_filter = isset($_GET['babcp_filter']) ? (int)$_GET['babcp_filter'] : 0; // 0 = all data, 1 = BABCP only
 $babcp_training = isset($_GET['babcp_training']) ? (int)$_GET['babcp_training'] : 0; // 0 = all, 1 = training cases only
 $supervised_case = isset($_GET['supervised_case']) ? (int)$_GET['supervised_case'] : 0; // 0 = all, 1 = supervised cases only
@@ -161,6 +162,7 @@ $filters = [
     'start_year' => $start_year,
     'end_year' => $end_year,
     'selected_course' => $selected_course,
+    'selected_cohort_year' => $selected_cohort_year,
     'babcp_filter' => $babcp_filter,
     'babcp_training' => $babcp_training,
     'supervised_case' => $supervised_case,
@@ -173,10 +175,9 @@ $stats_logger->logFilter($filters);
 $datestart = $start_year . '0101';
 $dateend = $end_year . '1231';
 
-// Get course filter condition
-
-// Get course filter condition
+// Get course and cohort year filter conditions
 $course_condition = "";
+$cohort_condition = "";
 $course_params = [];
 $course_param_types = "";
 
@@ -184,6 +185,12 @@ if ($selected_course > 0) {
     $course_condition = "AND t.uid = ?";
     $course_params[] = $selected_course;
     $course_param_types = "i";
+}
+
+if ($selected_cohort_year > 0) {
+    $cohort_condition = "AND t.year = ?";
+    $course_params[] = $selected_cohort_year;
+    $course_param_types .= "i";
 }
 
 // OPTIMIZED: Pre-compute BABCP trainee list to avoid complex subqueries
@@ -344,7 +351,7 @@ $query_start = microtime(true);
 // OPTIMIZED: Use STRAIGHT_JOIN hint and optimize WHERE clause structure
 $total_trainees_query = "SELECT /*+ USE_INDEX(t, idx_trainee_uid) */ COUNT(*) as total 
                         FROM trainee_tbl t 
-                        WHERE 1=1 $course_condition $babcp_condition_simple $additional_conditions";
+                        WHERE 1=1 $course_condition $cohort_condition $babcp_condition_simple $additional_conditions";
 $stmt = $mysqli->prepare($total_trainees_query);
 if (!empty($course_params)) {
     $stmt->bind_param($course_param_types, ...$course_params);
@@ -362,7 +369,7 @@ $query_start = microtime(true);
 // OPTIMIZED: Use index hint and optimize date comparison
 $active_trainees_query = "SELECT /*+ USE_INDEX(t, idx_trainee_last_used) */ COUNT(*) as active 
                          FROM trainee_tbl t 
-                         WHERE t.last_used >= ? $course_condition $babcp_condition_simple $additional_conditions";
+                         WHERE t.last_used >= ? $course_condition $cohort_condition $babcp_condition_simple $additional_conditions";
 $thirty_days_ago = date('Ymd', strtotime('-30 days'));
 $stmt = $mysqli->prepare($active_trainees_query);
 if (!empty($course_params)) {
@@ -381,7 +388,7 @@ $stats_logger->logQuery($active_trainees_query, array_merge([$thirty_days_ago], 
 // OPTIMIZED: Use composite index and year index for better performance
 $trainees_by_year_query = "SELECT /*+ USE_INDEX(t, idx_trainee_uid_year) USE_INDEX(t, idx_trainee_year) */ t.year, COUNT(*) as count 
                           FROM trainee_tbl t 
-                          WHERE 1=1 $course_condition $babcp_condition_simple $additional_conditions 
+                          WHERE 1=1 $course_condition $cohort_condition $babcp_condition_simple $additional_conditions 
                           GROUP BY t.year 
                           ORDER BY t.year DESC";
 $stmt = $mysqli->prepare($trainees_by_year_query);
@@ -412,7 +419,7 @@ $competency_stats_query = "
     LEFT JOIN trainee_tab_link ttl ON tabs.tbid = ttl.tbid
     LEFT JOIN trainee_tbl t ON ttl.trainkey = t.trainkey
     LEFT JOIN trainee_log tl ON t.trainkey = tl.trainkey AND tl.tbid = tabs.tbid
-    WHERE tabs.isvis = 1 $course_condition $babcp_condition_with_tabs $additional_conditions
+    WHERE tabs.isvis = 1 $course_condition $cohort_condition $babcp_condition_with_tabs $additional_conditions
     GROUP BY tabs.tbid, tabs.tab_name
     ORDER BY tabs.sort_order
 ";
@@ -442,7 +449,7 @@ $recent_activity_query = "
         COUNT(*) as entries
     FROM trainee_log tl
     JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-    WHERE tl.date_added >= ? $course_condition $babcp_condition_simple $additional_conditions
+    WHERE tl.date_added >= ? $course_condition $cohort_condition $babcp_condition_simple $additional_conditions
     GROUP BY DATE(FROM_UNIXTIME(tl.date_added))
     ORDER BY activity_date DESC
     LIMIT 7
@@ -471,7 +478,7 @@ $supervisor_query = "
         COUNT(t.tid) as trainee_count
     FROM who_there w
     JOIN trainee_tbl t ON (w.usrkey = t.supervisor OR w.usrkey = t.supervisor2 OR w.usrkey = t.supervisor3)
-    WHERE w.admintype IN ('SO', 'SE') $course_condition $babcp_condition_simple $additional_conditions
+    WHERE w.admintype IN ('SO', 'SE') $course_condition $cohort_condition $babcp_condition_simple $additional_conditions
     GROUP BY w.usrkey, w.realname
     ORDER BY trainee_count DESC
     LIMIT 10
@@ -562,6 +569,17 @@ if ($courses === null) {
                                        <?php echo htmlspecialchars($course['university']) ?>
                                     </option>
                                  <?php endforeach; ?>
+                              </select>
+                           </div>
+                           <div class="col-md-2">
+                              <label for="cohort_year">Cohort Year</label>
+                              <select name="cohort_year" id="cohort_year" class="form-control">
+                                 <option value="0" <?php echo $selected_cohort_year == 0 ? 'selected' : '' ?>>All Years</option>
+                                 <?php for ($year = $thisyear - 5; $year <= $thisyear + 2; $year++): ?>
+                                    <option value="<?php echo $year ?>" <?php echo $selected_cohort_year == $year ? 'selected' : '' ?>>
+                                       <?php echo $year ?>
+                                    </option>
+                                 <?php endfor; ?>
                               </select>
                            </div>
                            <div class="col-md-2">

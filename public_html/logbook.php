@@ -192,7 +192,7 @@ $stmt->bind_result($tab_name, $tab_notes);
 $stmt->fetch();
 $stmt->close();
 
-$vids = $mysqli->prepare("SELECT ttid FROM trainee_tab_link WHERE tbid = ? AND trainkey = ? ");
+$vids = $mysqli->prepare("SELECT ttid FROM trainee_tab_link ttl JOIN tabs_tbl tt ON ttl.tbid = tt.tbid WHERE ttl.tbid = ? AND ttl.trainkey = ? AND tt.isvis = 1");
 $vids->bind_param("is", $tbid, $trainkey);
 $vids->execute();
 $vids->store_result();
