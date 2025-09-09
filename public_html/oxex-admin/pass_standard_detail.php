@@ -213,6 +213,7 @@ $fields_result = $mysqli->query($fields_query);
                                             <option value="UNIQUE_VALUES" <?php echo ($standard['requirement_type'] == 'UNIQUE_VALUES') ? 'selected' : ''; ?>>Unique Values</option>
                                             <option value="TOTAL_COUNT" <?php echo ($standard['requirement_type'] == 'TOTAL_COUNT') ? 'selected' : ''; ?>>Total Count</option>
                                             <option value="UNIQUE_VALUES_IN_RANGE" <?php echo ($standard['requirement_type'] == 'UNIQUE_VALUES_IN_RANGE') ? 'selected' : ''; ?>>Unique Values in Range</option>
+                                            <option value="PER_CASE_MINIMUM" <?php echo ($standard['requirement_type'] == 'PER_CASE_MINIMUM') ? 'selected' : ''; ?>>Per-Case Minimum</option>
                                         </select>
                                     </div>
                                 </div>
@@ -285,9 +286,17 @@ $fields_result = $mysqli->query($fields_query);
                                     </div>
                                 </div>
 
-                                <div class="form-group">
-                            <label for="required_value">Required Value*</label>
-                            <input type="number" class="form-control" id="required_value" name="required_value" value="<?php echo (int)$standard['required_value']; ?>" required min="0">
+                                <div class="row">
+                                    <div class="col-md-6 form-group">
+                                        <label for="required_value">Required Value*</label>
+                                        <input type="number" class="form-control" id="required_value" name="required_value" value="<?php echo (int)$standard['required_value']; ?>" required min="0">
+                                        <small class="form-text text-muted" id="requiredValueHelp">Number of cases/items required</small>
+                                    </div>
+                                    <div class="col-md-6 form-group" id="minimumThresholdContainer" style="display:none;">
+                                        <label for="minimum_threshold">Minimum Threshold per Case*</label>
+                                        <input type="number" class="form-control" id="minimum_threshold" name="minimum_threshold" value="<?php echo (int)($standard['minimum_threshold'] ?? 0); ?>" min="0" step="0.1">
+                                        <small class="form-text text-muted">Minimum value each case must meet (e.g., 5 hours)</small>
+                                    </div>
                                 </div>
                                 
                                 <div class="form-check">
@@ -552,11 +561,13 @@ $(document).ready(function() {
                         <option value="TOTAL_COUNT">Total Count</option>
                         <option value="UNIQUE_VALUES">Unique Values</option>
                         <option value="UNIQUE_VALUES_IN_RANGE">Unique Values in Range</option>
+                        <option value="PER_CASE_MINIMUM">Per-Case Minimum</option>
                     </select>
                     <small class="form-text text-muted">What to count for this rule</small>
                 </div>
                 <div class="rule-col">
                     <input type="text" class="form-control" name="subfield_rules[${ruleIndex}][specific_value]" placeholder="e.g., 100 or 18-64" required>
+                    <input type="number" class="form-control mt-1" name="subfield_rules[${ruleIndex}][minimum_threshold]" placeholder="Min per case (e.g., 5)" min="0" step="0.1" style="display:none;">
                     <small class="form-text text-muted">The value this rule must meet</small>
                 </div>
                 <div class="rule-col-actions">
@@ -587,6 +598,17 @@ $(document).ready(function() {
             rebuildAllSubfieldOptions();
         });
         
+        // Add change event for requirement type to show/hide minimum threshold
+        $newSelect.closest('.subfield-rule-row').find('select[name*="[requirement_type]"]').on('change', function() {
+            var $row = $(this).closest('.subfield-rule-row');
+            var $minThreshold = $row.find('input[name*="[minimum_threshold]"]');
+            if ($(this).val() === 'PER_CASE_MINIMUM') {
+                $minThreshold.show().prop('required', true);
+            } else {
+                $minThreshold.hide().prop('required', false);
+            }
+        });
+        
         console.log('✅ addSubfieldRule() completed');
     }
     
@@ -608,11 +630,13 @@ $(document).ready(function() {
                         <option value="TOTAL_COUNT">Total Count</option>
                         <option value="UNIQUE_VALUES">Unique Values</option>
                         <option value="UNIQUE_VALUES_IN_RANGE">Unique Values in Range</option>
+                        <option value="PER_CASE_MINIMUM">Per-Case Minimum</option>
                     </select>
                     <small class="form-text text-muted">What to count for this rule</small>
                 </div>
                 <div class="rule-col">
                     <input type="text" class="form-control" name="subfield_rules[${ruleIndex}][specific_value]" placeholder="e.g., 100 or 18-64" required>
+                    <input type="number" class="form-control mt-1" name="subfield_rules[${ruleIndex}][minimum_threshold]" placeholder="Min per case (e.g., 5)" min="0" step="0.1" style="display:none;">
                     <small class="form-text text-muted">The value this rule must meet</small>
                 </div>
                 <div class="rule-col-actions">
@@ -643,11 +667,28 @@ $(document).ready(function() {
             rebuildAllSubfieldOptions();
         });
         
+        // Add change event for requirement type to show/hide minimum threshold
+        $newSelect.closest('.subfield-rule-row').find('select[name*="[requirement_type]"]').on('change', function() {
+            var $row = $(this).closest('.subfield-rule-row');
+            var $minThreshold = $row.find('input[name*="[minimum_threshold]"]');
+            if ($(this).val() === 'PER_CASE_MINIMUM') {
+                $minThreshold.show().prop('required', true);
+            } else {
+                $minThreshold.hide().prop('required', false);
+            }
+        });
+        
         // Populate the form fields with existing data
         console.log('   Populating form fields with existing data');
         $newSelect.val(ruleData.subfield_value).trigger('change');
         $newSelect.closest('.subfield-rule-row').find('select[name*="[requirement_type]"]').val(ruleData.requirement_type);
         $newSelect.closest('.subfield-rule-row').find('input[name*="[specific_value]"]').val(ruleData.specific_value);
+        
+        // Handle minimum threshold for existing data
+        if (ruleData.requirement_type === 'PER_CASE_MINIMUM') {
+            var $minThreshold = $newSelect.closest('.subfield-rule-row').find('input[name*="[minimum_threshold]"]');
+            $minThreshold.show().prop('required', true).val(ruleData.minimum_threshold || '');
+        }
         
         console.log('✅ addSubfieldRuleWithData() completed');
     }
@@ -797,6 +838,8 @@ $(document).ready(function() {
     
     function toggleFieldDependent(type) {
         var helpText = "If set, only entries matching this value will be counted. For OR conditions, separate values with a pipe (|).";
+        var requiredValueHelp = "Number of cases/items required";
+        
         if (type === 'TOTAL_HOURS') {
             $('#fieldDependentSection').slideUp();
         } else {
@@ -805,7 +848,20 @@ $(document).ready(function() {
                 helpText = "Define the numeric range to check (e.g., 18-64).";
             }
         }
+        
+        // Handle per-case minimum requirements
+        if (type === 'PER_CASE_MINIMUM') {
+            $('#minimumThresholdContainer').show();
+            $('#minimum_threshold').prop('required', true);
+            requiredValueHelp = "Number of cases that must each meet the minimum threshold";
+            helpText = "Each case must meet the minimum threshold value. Use field value to filter which cases to check.";
+        } else {
+            $('#minimumThresholdContainer').hide();
+            $('#minimum_threshold').prop('required', false);
+        }
+        
         $('#fieldValueHelp').text(helpText);
+        $('#requiredValueHelp').text(requiredValueHelp);
     }
     
     function toggleFieldLogicMode() {
@@ -921,6 +977,16 @@ $(document).ready(function() {
         } else {
             console.log('   Disabling single field input (multiple mode)');
             $('#stid').prop('disabled', true);
+        }
+        
+        // Handle minimum threshold validation
+        if ($('#requirement_type').val() === 'PER_CASE_MINIMUM') {
+            var minThreshold = $('#minimum_threshold').val();
+            if (!minThreshold || parseFloat(minThreshold) <= 0) {
+                console.log('❌ Minimum threshold validation failed');
+                alert('Please enter a valid minimum threshold value for per-case minimum requirements.');
+                return;
+            }
         }
 
         console.log('📊 Serializing form data...');

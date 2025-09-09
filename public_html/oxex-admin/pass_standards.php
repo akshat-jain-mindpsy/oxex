@@ -7,6 +7,121 @@ include 'incl/sess.php';
 $pagetitle = "Pass Standards";
 $subtitle = "Manage Pass/Fail Criteria";
 
+// Function to generate human-readable explanation of a pass standard
+function generateStandardExplanation($row) {
+    $explanation = "";
+    
+    // Basic structure
+    $requirement_type = $row['requirement_type'];
+    $required_value = $row['required_value'];
+    $table_name = $row['tab_name'];
+    $field_name = $row['field_name'];
+    $or_fields = $row['or_fields'];
+    $field_value = $row['field_value'];
+    $parent_name = $row['parent_name'];
+    
+    // Get minimum threshold if available (will be null until database column is added)
+    $minimum_threshold = isset($row['minimum_threshold']) ? $row['minimum_threshold'] : null;
+    
+    // Start with the basic requirement - be very specific
+    if ($requirement_type == 'PER_CASE_MINIMUM') {
+        $explanation = "This rule requires <strong>{$required_value} cases</strong> where <strong>each individual case</strong> must meet a minimum threshold";
+        if ($minimum_threshold) {
+            $explanation .= " of <strong>{$minimum_threshold}</strong>";
+        }
+    } elseif ($requirement_type == 'TOTAL_HOURS') {
+        $explanation = "This rule requires a <strong>total of {$required_value} hours</strong> across all cases";
+    } elseif ($requirement_type == 'TOTAL_COUNT') {
+        $explanation = "This rule requires a <strong>total count of {$required_value}</strong> records";
+    } elseif ($requirement_type == 'UNIQUE_VALUES') {
+        $explanation = "This rule requires <strong>{$required_value} unique values</strong>";
+    } elseif ($requirement_type == 'UNIQUE_VALUES_IN_RANGE') {
+        $explanation = "This rule requires <strong>{$required_value} unique values within a specified range</strong>";
+    } else {
+        $explanation = "This rule requires <strong>{$required_value}</strong> " . str_replace('_', ' ', strtolower($requirement_type));
+    }
+    
+    // Add table context
+    $explanation .= " in the <strong>{$table_name}</strong> table";
+    
+    // Add field context - be very specific about which field(s)
+    if (!empty($field_name)) {
+        $explanation .= " for the <strong>{$field_name}</strong> field";
+    } elseif (!empty($or_fields)) {
+        $explanation .= " for <strong>any of these fields: {$or_fields}</strong>";
+    } else {
+        $explanation .= " (no specific field selected)";
+    }
+    
+    // Add field value filter - be specific about what values are checked
+    if (!empty($field_value) && strpos($field_value, 'SUBFIELD_RULES:') === false) {
+        $explanation .= " where the field value equals <strong>{$field_value}</strong>";
+    }
+    
+    // Add subfield rules explanation - be very detailed
+    if (!empty($field_value) && strpos($field_value, 'SUBFIELD_RULES:') !== false) {
+        try {
+            $subfield_rules = json_decode(str_replace('SUBFIELD_RULES:', '', $field_value), true);
+            if (is_array($subfield_rules) && !empty($subfield_rules)) {
+                $explanation .= "<br><br><strong>Within the main requirement, there are specific subfield rules:</strong>";
+                foreach ($subfield_rules as $index => $rule) {
+                    if (!empty($rule['subfield_value']) && !empty($rule['requirement_type']) && !empty($rule['specific_value'])) {
+                        $rule_num = $index + 1;
+                        $rule_type = str_replace('_', ' ', strtolower($rule['requirement_type']));
+                        
+                        // Get subfield name from database
+                        global $mysqli;
+                        $subfield_query = "SELECT select_val FROM select_gen WHERE pid = ?";
+                        $subfield_name = "Unknown Subfield";
+                        if ($subfield_stmt = $mysqli->prepare($subfield_query)) {
+                            $subfield_stmt->bind_param("i", $rule['subfield_value']);
+                            $subfield_stmt->execute();
+                            $subfield_result = $subfield_stmt->get_result();
+                            if ($subfield_row = $subfield_result->fetch_assoc()) {
+                                $subfield_name = $subfield_row['select_val'];
+                            }
+                            $subfield_stmt->close();
+                        }
+                        
+                        $explanation .= "<br><strong>Rule {$rule_num}:</strong> For subfield <strong>{$subfield_name}</strong>, require <strong>{$rule['specific_value']}</strong> " . $rule_type;
+                        
+                        if ($rule['requirement_type'] == 'PER_CASE_MINIMUM' && !empty($rule['minimum_threshold'])) {
+                            $explanation .= " where each case must meet a minimum of <strong>{$rule['minimum_threshold']}</strong>";
+                        }
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            $explanation .= "<br><br><strong>Subfield rules:</strong> (Error parsing subfield rules)";
+        }
+    }
+    
+    // Add parent context
+    if (!empty($parent_name)) {
+        $explanation .= "<br><br><em><strong>Note:</strong> This is a sub-rule that applies within the context of: <strong>{$parent_name}</strong></em>";
+    }
+    
+    // Add summary at the end
+    $explanation .= "<br><br><div class='alert alert-info'><strong>Summary:</strong> ";
+    if ($requirement_type == 'PER_CASE_MINIMUM') {
+        $explanation .= "You need {$required_value} cases, and each case must meet the minimum threshold";
+        if ($minimum_threshold) {
+            $explanation .= " of {$minimum_threshold}";
+        }
+    } else {
+        $explanation .= "You need {$required_value} " . str_replace('_', ' ', strtolower($requirement_type));
+    }
+    $explanation .= " in the {$table_name} table";
+    if (!empty($field_name)) {
+        $explanation .= " for the {$field_name} field";
+    } elseif (!empty($or_fields)) {
+        $explanation .= " for any of: {$or_fields}";
+    }
+    $explanation .= ".</div>";
+    
+    return $explanation;
+}
+
 if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'DV')) {
 
 // Handle Delete Action
@@ -80,6 +195,7 @@ if ($del == "del" && $which > 0) {
                                         <th>Requirement Type</th>
                                         <th>Required Value</th>
                                         <th>Active</th>
+                                        <th>Explanation</th>
                                         <th data-priority="1">Actions</th>
                                     </tr>
                                 </thead>
@@ -157,6 +273,9 @@ if ($del == "del" && $which > 0) {
                                                 $field_display = "<i>Multiple (OR):</i><br>" . htmlspecialchars($row['or_fields']);
                                             }
 
+                                            // Generate explanation
+                                            $explanation = generateStandardExplanation($row);
+                                            
                                             echo "<tr>
                                                 <td>" . htmlspecialchars($row['standard_name']) . "</td>
                                                 <td>" . htmlspecialchars($row['tab_name']) . "</td>
@@ -165,6 +284,11 @@ if ($del == "del" && $which > 0) {
                                                 <td>" . htmlspecialchars(str_replace('_', ' ', $row['requirement_type'])) . "</td>
                                                 <td>" . htmlspecialchars($row['required_value']) . "</td>
                                                 <td>{$status_badge}</td>
+                                                <td>
+                                                    <button type='button' class='btn btn-sm btn-outline-info' data-toggle='modal' data-target='#explanationModal' data-explanation='" . htmlspecialchars($explanation, ENT_QUOTES) . "' data-title='" . htmlspecialchars($row['standard_name'], ENT_QUOTES) . "'>
+                                                        <i class='fa fa-info-circle'></i>
+                                                    </button>
+                                                </td>
                                                 <td>
                                                     <div class='btn-group' role='group'>
                                                         <a href='view_pass_standard.php?which={$row['psid']}' class='btn btn-sm btn-secondary'>View</a>
@@ -185,6 +309,28 @@ if ($del == "del" && $which > 0) {
             </div>
         </section>
     </div>
+
+    <!-- Explanation Modal -->
+    <div class="modal fade" id="explanationModal" tabindex="-1" role="dialog" aria-labelledby="explanationModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="explanationModalLabel">Rule Explanation</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div id="explanationContent">
+                        <!-- Content will be populated by JavaScript -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <?php include 'incl/adminjs.php' ?>
     <script>
         $(document).ready(function() {
@@ -192,8 +338,19 @@ if ($del == "del" && $which > 0) {
                 "pageLength": 25,
                 "order": [[ 1, "asc" ], [ 2, "asc" ]],
                 "columnDefs": [
-                    { "orderable": false, "targets": 6 }
+                    { "orderable": false, "targets": [7, 8] } // Explanation and Actions columns
                 ]
+            });
+            
+            // Handle explanation modal
+            $('#explanationModal').on('show.bs.modal', function (event) {
+                var button = $(event.relatedTarget);
+                var explanation = button.data('explanation');
+                var title = button.data('title');
+                
+                var modal = $(this);
+                modal.find('.modal-title').text('Rule Explanation: ' + title);
+                modal.find('#explanationContent').html(explanation);
             });
         });
     </script>
