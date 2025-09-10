@@ -25,9 +25,12 @@ $section_id = $_POST['section_id'] === 'null' ? null : (int)$_POST['section_id']
 $table_id = (int)$_POST['table_id'];
 $field_ids = json_decode($_POST['field_ids'], true);
 
+// Debug logging
+error_log("UPDATE_FIELD_ORDER DEBUG: section_id=$section_id, table_id=$table_id, field_ids=" . print_r($field_ids, true));
+
 // Validate parameters
 if($table_id <= 0 || !is_array($field_ids)) {
-    echo json_encode(['status' => 'error', 'message' => 'Invalid parameters']);
+    echo json_encode(['status' => 'error', 'message' => 'Invalid parameters: table_id=' . $table_id . ', field_ids=' . print_r($field_ids, true)]);
     exit();
 }
 

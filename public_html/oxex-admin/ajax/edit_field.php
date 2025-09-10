@@ -85,7 +85,7 @@ try {
         }
         $options_stmt->close();
         
-        echo json_encode([
+        $response = [
             'status' => 'success',
             'field_id' => $field_id,
             'field_name' => $field['field_name'],
@@ -93,7 +93,10 @@ try {
             'options' => $options,
             'table_id' => $table_id, // Include table_id in response
             'current_section_id' => $field['section_id'] // Include current section ID
-        ]);
+        ];
+        
+        error_log("Edit field GET response: " . json_encode($response));
+        echo json_encode($response);
     }
     // For POST requests - update field data
     else if ($request_method === 'POST') {

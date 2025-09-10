@@ -6,12 +6,16 @@ include '../incl/sess.php';
 
 header('Content-Type: application/json');
 
-// Ensure proper access control
-if(!(login_check($mysqli) == true && 
-     ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
-      $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
-    echo json_encode(['status' => 'error', 'message' => 'Access denied']);
-    exit();
+// Get admin type from session
+$admintype = isset($_SESSION['admintype']) ? $_SESSION['admintype'] : '';
+
+// Check login and permissions
+if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+    echo json_encode([
+        'status' => 'error', 
+        'message' => 'Unauthorized access'
+    ]);
+    exit;
 }
 
 // Get the table ID from the request
@@ -28,7 +32,7 @@ if ($table_id <= 0) {
 try {
     error_log("get_sections.php: table_id = $table_id");
     
-    // Get all sections and mark if they're used with this table
+    // Get all sections - for Edit Field dialog, we need ALL sections, not just table-linked ones
     $query = "
         SELECT 
             fs.section_id, 
@@ -65,6 +69,8 @@ try {
             ];
         }
         $result->free();
+    } else {
+        error_log("get_sections.php: No sections found in database");
     }
     
     error_log("get_sections.php: total sections found = " . count($sections));
@@ -79,7 +85,8 @@ try {
     error_log("Error retrieving sections: " . $e->getMessage());
     echo json_encode([
         'status' => 'error',
-        'message' => 'Failed to retrieve sections: ' . $e->getMessage()
+        'message' => 'Failed to retrieve sections: ' . $e->getMessage(),
+        'sections' => []
     ]);
 }
 

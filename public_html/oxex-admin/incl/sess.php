@@ -12,6 +12,27 @@ function custom_log($message) {
 	error_log('[SESSION DEBUG] ' . $message);
 }
 
+// Robust redirect helper with header + JS/meta fallbacks
+function redirect_to_login($reason) {
+	$login_url = 'login.html?error=' . urlencode($reason);
+	// Prefer HTTP redirect if headers aren't sent yet
+	if (!headers_sent()) {
+		http_response_code(302);
+		header('Location: ' . $login_url);
+		header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+		header('Pragma: no-cache');
+		// Echo minimal HTML fallback for overly strict clients
+		echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=' . htmlspecialchars($login_url, ENT_QUOTES, 'UTF-8') . '"><script>window.location.replace(' . json_encode($login_url) . ');</script></head><body><noscript><a href="' . htmlspecialchars($login_url, ENT_QUOTES, 'UTF-8') . '">Continue to login</a></noscript></body></html>';
+		session_write_close();
+		exit();
+	}
+	// Headers already sent: use JS/meta fallback only
+	echo '<script>window.location.replace(' . json_encode($login_url) . ');</script>';
+	echo '<noscript><meta http-equiv="refresh" content="0;url=' . htmlspecialchars($login_url, ENT_QUOTES, 'UTF-8') . '"></noscript>';
+	session_write_close();
+	exit();
+}
+
 // Start session if not already started
 if (session_status() === PHP_SESSION_NONE) {
 	sec_session_start();
@@ -55,8 +76,7 @@ if (!empty($missing_vars)) {
 		echo json_encode(['status' => 'error', 'message' => 'Session incomplete', 'redirect' => 'login.html?error=session_incomplete']);
 		exit();
 	} else {
-		header('Location: login.html?error=session_incomplete');
-		exit();
+		redirect_to_login('session_incomplete');
 	}
 }
 
@@ -70,8 +90,7 @@ if (!login_check($mysqli)) {
 		echo json_encode(['status' => 'error', 'message' => 'Session expired', 'redirect' => 'login.html?error=session_expired']);
 		exit();
 	} else {
-		header('Location: login.html?error=session_expired');
-		exit();
+		redirect_to_login('session_expired');
 	}
 }
 
@@ -86,8 +105,7 @@ if (!in_array($_SESSION['admintype'], $allowed_admin_types)) {
 		echo json_encode(['status' => 'error', 'message' => 'Unauthorized access', 'redirect' => 'login.html?error=unauthorized']);
 		exit();
 	} else {
-		header('Location: login.html?error=unauthorized');
-		exit();
+		redirect_to_login('unauthorized');
 	}
 }
 
@@ -107,8 +125,7 @@ if ($stmt->num_rows === 0) {
 		echo json_encode(['status' => 'error', 'message' => 'User not found', 'redirect' => 'login.html?error=user_not_found']);
 		exit();
 	} else {
-		header('Location: login.html?error=user_not_found');
-		exit();
+		redirect_to_login('user_not_found');
 	}
 }
 
@@ -126,8 +143,7 @@ if ($admintype !== $_SESSION['admintype']) {
 		echo json_encode(['status' => 'error', 'message' => 'Admin type mismatch', 'redirect' => 'login.html?error=type_mismatch']);
 		exit();
 	} else {
-		header('Location: login.html?error=type_mismatch');
-		exit();
+		redirect_to_login('type_mismatch');
 	}
 }
 
