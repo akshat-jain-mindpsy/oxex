@@ -513,8 +513,8 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                   <input type="hidden" id="target_section_id" name="target_section_id">
                   
                   <div class="form-group">
-                     <label for="field_search">Search Fields</label>
-                     <input type="text" class="form-control" id="field_search" placeholder="Start typing to search fields...">
+                     <label for="field_search">Search Categories</label>
+                     <input type="text" class="form-control" id="field_search" placeholder="Start typing to search categories...">
                      <div id="field_search_results" class="list-group mt-2" style="max-height: 300px; overflow-y: auto;">
                         <?php
                         // Pre-load all fields

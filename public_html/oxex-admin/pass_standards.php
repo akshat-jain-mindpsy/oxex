@@ -44,18 +44,18 @@ function generateStandardExplanation($row) {
     // Add table context
     $explanation .= " in the <strong>{$table_name}</strong> table";
     
-    // Add field context - be very specific about which field(s)
+    // Add category context - be very specific about which category/categories
     if (!empty($field_name)) {
-        $explanation .= " for the <strong>{$field_name}</strong> field";
+        $explanation .= " for the <strong>{$field_name}</strong> category";
     } elseif (!empty($or_fields)) {
-        $explanation .= " for <strong>any of these fields: {$or_fields}</strong>";
+        $explanation .= " for <strong>any of these categories: {$or_fields}</strong>";
     } else {
-        $explanation .= " (no specific field selected)";
+        $explanation .= " (no specific category selected)";
     }
     
-    // Add field value filter - be specific about what values are checked
+    // Add category value filter - be specific about what values are checked
     if (!empty($field_value) && strpos($field_value, 'SUBFIELD_RULES:') === false) {
-        $explanation .= " where the field value equals <strong>{$field_value}</strong>";
+        $explanation .= " where the category value equals <strong>{$field_value}</strong>";
     }
     
     // Add subfield rules explanation - be very detailed
@@ -83,7 +83,7 @@ function generateStandardExplanation($row) {
                             $subfield_stmt->close();
                         }
                         
-                        $explanation .= "<br><strong>Rule {$rule_num}:</strong> For subfield <strong>{$subfield_name}</strong>, require <strong>{$rule['specific_value']}</strong> " . $rule_type;
+                        $explanation .= "<br><strong>Rule {$rule_num}:</strong> For subcategory <strong>{$subfield_name}</strong>, require <strong>{$rule['specific_value']}</strong> " . $rule_type;
                         
                         if ($rule['requirement_type'] == 'PER_CASE_MINIMUM' && !empty($rule['minimum_threshold'])) {
                             $explanation .= " where each case must meet a minimum of <strong>{$rule['minimum_threshold']}</strong>";
@@ -113,7 +113,7 @@ function generateStandardExplanation($row) {
     }
     $explanation .= " in the {$table_name} table";
     if (!empty($field_name)) {
-        $explanation .= " for the {$field_name} field";
+        $explanation .= " for the {$field_name} category";
     } elseif (!empty($or_fields)) {
         $explanation .= " for any of: {$or_fields}";
     }
@@ -191,7 +191,7 @@ if ($del == "del" && $which > 0) {
                                         <th>Standard Name</th>
                                         <th>Applies to Table</th>
                                         <th>Parent Standard</th>
-                                        <th>Field(s)</th>
+                                        <th>Category/Categories</th>
                                         <th>Requirement Type</th>
                                         <th>Required Value</th>
                                         <th>Active</th>
@@ -234,7 +234,7 @@ if ($del == "del" && $which > 0) {
                                         while ($row = $result->fetch_assoc()) {
                                             $status_badge = $row['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-secondary">Inactive</span>';
                                             
-                                            // Determine what to show in the field column
+                                            // Determine what to show in the category column
                                             $field_display = 'N/A';
                                             if (!empty($row['field_name'])) {
                                                 $field_display = htmlspecialchars($row['field_name']);
@@ -261,7 +261,7 @@ if ($del == "del" && $which > 0) {
                                                                 }
                                                             }
                                                             if (!empty($subfield_names)) {
-                                                                $field_display .= '<br><small class="text-muted">Subfields: ' . implode(', ', $subfield_names) . '</small>';
+                                                                $field_display .= '<br><small class="text-muted">Subcategories: ' . implode(', ', $subfield_names) . '</small>';
                                                             }
                                                         }
                                                     } catch (Exception $e) {
@@ -270,7 +270,7 @@ if ($del == "del" && $which > 0) {
                                                     }
                                                 }
                                             } elseif (!empty($row['or_fields'])) {
-                                                $field_display = "<i>Multiple (OR):</i><br>" . htmlspecialchars($row['or_fields']);
+                                                $field_display = "<i>Multiple Categories (OR):</i><br>" . htmlspecialchars($row['or_fields']);
                                             }
 
                                             // Generate explanation

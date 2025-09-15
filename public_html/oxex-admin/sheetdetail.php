@@ -720,8 +720,8 @@ $changename = htmlspecialchars($tab_name);
                 if (empty($sectioned_fields) && empty($unsectioned_fields)) {
                   echo '<div class="section-container m-0 p-0">';
                   echo '<div class="alert alert-info m-3">';
-                  echo '<h5><i class="fas fa-info-circle"></i> No Fields Found</h5>';
-                  echo '<p>This table has no fields assigned to it yet. Use the "Add New Field" button above to start adding fields.</p>';
+                  echo '<h5><i class="fas fa-info-circle"></i> No Categories Found</h5>';
+                  echo '<p>This table has no categories assigned to it yet. Use the "Add New Category" button above to start adding categories.</p>';
                   echo '</div>';
                   echo '</div>';
                 }
@@ -861,6 +861,33 @@ $changename = htmlspecialchars($tab_name);
          </div>
       </section>
    </div>
+
+   <!-- Delete Field Confirmation Modal -->
+   <div class="modal fade" id="deleteFieldModal" tabindex="-1" role="dialog" aria-labelledby="deleteFieldModalLabel" aria-hidden="true">
+      <div class="modal-dialog" role="document">
+         <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+               <h5 class="modal-title" id="deleteFieldModalLabel">Remove Field from Sheet</h5>
+               <button type="button" class="close text-dark" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+               </button>
+            </div>
+            <div class="modal-body">
+               <p id="deleteFieldMessage">Are you sure you want to remove this field from the sheet?</p>
+               <p class="text-muted"><small>This will unlink the field from this sheet but keep it available for other sheets.</small></p>
+               <input type="hidden" id="deleteFieldStid">
+               <input type="hidden" id="deleteFieldTbid">
+            </div>
+            <div class="modal-footer">
+               <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+               <button type="button" class="btn btn-warning" id="confirmDeleteFieldBtn">
+                  <i class="fas fa-trash"></i> Remove Field
+               </button>
+            </div>
+         </div>
+      </div>
+   </div>
+
    <!-- JavaScript will be loaded after jQuery -->
    <script type="text/javascript">
     $(document).ready(function() {
@@ -2333,7 +2360,7 @@ $changename = htmlspecialchars($tab_name);
       <div class="modal-dialog" role="document">
          <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="editFieldModalLabel">Edit Field</h5>
+                <h5 class="modal-title" id="editFieldModalLabel">Edit Category</h5>
                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                   <span aria-hidden="true">&times;</span>
                </button>
@@ -2343,12 +2370,12 @@ $changename = htmlspecialchars($tab_name);
                     <input type="hidden" id="edit_field_id" name="field_id">
                     
                     <div class="form-group">
-                        <label for="edit_field_name">Field Name</label>
+                        <label for="edit_field_name">Category Name</label>
                         <input type="text" class="form-control" id="edit_field_name" name="field_name" required>
                   </div>
                     
                     <div class="form-group">
-                        <label for="edit_field_type">Field Type</label>
+                        <label for="edit_field_type">Category Type</label>
                         <select class="form-control" id="edit_field_type" name="field_type" required>
                             <option value="0">Select</option>
                             <option value="1">Multi-Select</option>
@@ -3466,6 +3493,74 @@ $changename = htmlspecialchars($tab_name);
         return notification;
     }
     
+    // Handle field deletion - show confirmation modal
+    $(document).on('click', '.delete-field-btn', function(e) {
+        e.preventDefault();
+        
+        const $button = $(this);
+        const $fieldCard = $button.closest('.field-card');
+        const fieldName = $fieldCard.find('.field-name').text().trim() || 'this field';
+        const stid = $button.data('stid');
+        const tbid = $button.data('tbid');
+        
+        // Populate modal with field details
+        $('#deleteFieldMessage').text(`Are you sure you want to remove "${fieldName}" from this sheet?`);
+        $('#deleteFieldStid').val(stid);
+        $('#deleteFieldTbid').val(tbid);
+        
+        // Show confirmation modal
+        $('#deleteFieldModal').modal('show');
+    });
+    
+    // Handle confirmation of field deletion
+    $('#confirmDeleteFieldBtn').on('click', function() {
+        const stid = $('#deleteFieldStid').val();
+        const tbid = $('#deleteFieldTbid').val();
+        const $button = $(this);
+        const $fieldCard = $('.delete-field-btn[data-stid="' + stid + '"]').closest('.field-card');
+        
+        // Add visual feedback
+        $button.html('<i class="fa fa-spinner fa-spin"></i> Processing...');
+        $button.prop('disabled', true);
+        
+        // Make AJAX call to remove field from database
+        $.ajax({
+            url: 'delete_table_field.php',
+            type: 'POST',
+            data: {
+                stid: stid,
+                tbid: tbid
+            },
+            dataType: 'json',
+            success: function(response) {
+                if (response.status === 'success') {
+                    // Close modal
+                    $('#deleteFieldModal').modal('hide');
+                    
+                    // Fade out the entire field card
+                    $fieldCard.fadeOut(500, function() {
+                        // Show success notification
+                        showNotification('success', 'Field removed from sheet successfully!', true);
+                    });
+                } else {
+                    // Show error notification
+                    showNotification('danger', 'Error removing field: ' + response.message, true);
+                    
+                    // Reset button state
+                    $button.html('<i class="fas fa-trash"></i> Remove Field');
+                    $button.prop('disabled', false);
+                }
+            },
+            error: function(xhr, status, error) {
+                // Show error notification
+                showNotification('danger', 'Network error removing field. Please try again.', true);
+                
+                // Reset button state
+                $button.html('<i class="fas fa-trash"></i> Remove Field');
+                $button.prop('disabled', false);
+            }
+        });
+    });
 
     </script>
     

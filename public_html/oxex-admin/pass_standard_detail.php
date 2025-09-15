@@ -74,7 +74,7 @@ while($parent = $parents_result->fetch_assoc()) {
     $all_parents[] = $parent;
 }
 
-// Fetch all fields for the dropdown
+// Fetch all categories for the dropdown
 $fields_query = "SELECT stid, str FROM select_types ORDER BY str ASC";
 $fields_result = $mysqli->query($fields_query);
 
@@ -233,19 +233,19 @@ $fields_result = $mysqli->query($fields_query);
 
                         <div id="fieldDependentSection" class="card card-body mb-3">
                                     <div class="form-group">
-                                        <label>How should the field(s) be checked?</label>
+                                        <label>How should the category/categories be checked?</label>
                                         <div class="form-check">
                                     <input class="form-check-input" type="radio" name="field_logic_mode" id="logicSingle" value="single" <?php echo (is_null($standard['stid']) && !empty($selected_or_fields)) ? '' : 'checked'; ?>>
-                                    <label class="form-check-label" for="logicSingle">On a Single Field</label>
+                                    <label class="form-check-label" for="logicSingle">On a Single Category</label>
                                         </div>
                                         <div class="form-check">
                                     <input class="form-check-input" type="radio" name="field_logic_mode" id="logicMultiple" value="multiple" <?php echo (is_null($standard['stid']) && !empty($selected_or_fields)) ? 'checked' : ''; ?>>
-                                    <label class="form-check-label" for="logicMultiple">On Multiple Fields (OR condition)</label>
+                                    <label class="form-check-label" for="logicMultiple">On Multiple Categories (OR condition)</label>
                                         </div>
                                     </div>
                                 
                                     <div class="form-group" id="singleFieldContainer">
-                                <label for="stid">Field to Check</label>
+                                <label for="stid">Category to Check</label>
                                 <select class="form-control" id="stid" name="stid">
                                             <option value="">-- Select a Table First --</option>
                                         </select>
@@ -253,10 +253,10 @@ $fields_result = $mysqli->query($fields_query);
                                     </div>
 
                             <div class="form-group" id="subfieldContainer" style="display:none;">
-                                <label>Subfield Rules (Optional)</label>
+                                <label>Subcategory Rules (Optional)</label>
                                 <div class="subfield-rules-table">
                                                                     <div class="subfield-rules-header">
-                                    <div class="rule-col">Subfield Value</div>
+                                    <div class="rule-col">Subcategory Value</div>
                                     <div class="rule-col">Rule Type</div>
                                     <div class="rule-col">Rule Value</div>
                                     <div class="rule-col-actions">Actions</div>
@@ -268,21 +268,21 @@ $fields_result = $mysqli->query($fields_query);
                                 <button type="button" id="addSubfieldRuleBtn" class="btn btn-success btn-sm mt-2">
                                     <i class="fa fa-plus"></i> Add Rule
                                 </button>
-                                <small class="form-text text-muted">Create specific rules for individual subfield values. Each rule can have different requirement types and values. These rules will be applied to the selected subfield values.</small>
+                                <small class="form-text text-muted">Create specific rules for individual subcategory values. Each rule can have different requirement types and values. These rules will be applied to the selected subcategory values.</small>
                             </div>
 
                             <div class="form-group" id="multipleFieldContainer" style="display:none;">
-                                <label for="stids">Fields to Check (OR condition)</label>
+                                <label for="stids">Categories to Check (OR condition)</label>
                                 <select class="form-control" id="stids" name="stids[]" multiple>
                                              <!-- Options loaded by JS -->
                                         </select>
-                                        <small class="form-text text-muted">The rule will pass if the condition is met in ANY of the selected fields.</small>
+                                        <small class="form-text text-muted">The rule will pass if the condition is met in ANY of the selected categories.</small>
                                     </div>
 
                             <div class="form-group" id="mainFieldValueContainer">
-                                <label for="field_value">Field Value Filter (Optional)</label>
+                                <label for="field_value">Category Value Filter (Optional)</label>
                                 <input type="text" class="form-control" id="field_value" name="field_value" value="<?php echo htmlspecialchars($standard['field_value'] ?? ''); ?>">
-                                <small class="form-text text-muted">Filter the main field before applying subfield rules. For ranges, use a hyphen (e.g., 18-64). Leave empty to check all field values.</small>
+                                <small class="form-text text-muted">Filter the main category before applying subcategory rules. For ranges, use a hyphen (e.g., 18-64). Leave empty to check all category values.</small>
                                     </div>
                                 </div>
 
@@ -478,15 +478,15 @@ $(document).ready(function() {
         console.log('   Current fieldId parameter:', fieldId);
         console.log('   Current stid select value:', $('#stid').val());
         
-        // Get the actual subfield values from select_gen table
+        // Get the actual subcategory values from select_gen table
         $.getJSON('ajax/get_subfields_for_field.php', { stid: fieldId }, function(subfields) {
             console.log('   AJAX response received:', subfields);
             
             if (subfields && subfields.length > 0) {
-                console.log(`   Found ${subfields.length} subfields, showing subfield container`);
-                // Store subfields globally for use in rule creation
+                console.log(`   Found ${subfields.length} subcategories, showing subcategory container`);
+                // Store subcategories globally for use in rule creation
                 window.availableSubfields = subfields;
-                console.log('   Stored subfields in window.availableSubfields');
+                console.log('   Stored subcategories in window.availableSubfields');
                 
                 $subfieldContainer.show();
                 $mainFieldValueContainer.hide(); // Hide main field value when using subfield rules
@@ -515,15 +515,15 @@ $(document).ready(function() {
                     addSubfieldRule();
                 }
             } else {
-                console.log('   No subfields found, hiding subfield container');
+                console.log('   No subcategories found, hiding subcategory container');
                 $subfieldContainer.hide();
                 $mainFieldValueContainer.show(); // Show main field value when no subfields
                 
-                // If editing and we have existing field_value (not subfield rules), populate it
+                // If editing and we have existing field_value (not subcategory rules), populate it
                 if (existingSubfieldRules.length === 0 && <?php echo json_encode($standard['field_value'] ?? ''); ?>) {
                     var existingFieldValue = <?php echo json_encode($standard['field_value'] ?? ''); ?>;
                     if (existingFieldValue && !existingFieldValue.includes('SUBFIELD_RULES:')) {
-                        console.log('   Populating existing field value:', existingFieldValue);
+                        console.log('   Populating existing category value:', existingFieldValue);
                         $('#field_value').val(existingFieldValue);
                     }
                 }
@@ -550,10 +550,10 @@ $(document).ready(function() {
             <div class="subfield-rule-row" data-rule="${ruleIndex}">
                 <div class="rule-col">
                     <select class="form-control subfield-select" name="subfield_rules[${ruleIndex}][subfield_values]">
-                        <option value="">-- Select One Subfield Value --</option>
+                        <option value="">-- Select One Subcategory Value --</option>
                         ${getAvailableSubfieldOptions()}
                     </select>
-                    <small class="form-text text-muted">Choose one subfield value for this rule</small>
+                    <small class="form-text text-muted">Choose one subcategory value for this rule</small>
                             </div>
                 <div class="rule-col">
                     <select class="form-control" name="subfield_rules[${ruleIndex}][requirement_type]" required>
@@ -585,7 +585,7 @@ $(document).ready(function() {
         
         console.log('   Initializing Select2');
         $newSelect.select2({
-            placeholder: '-- Select One Subfield Value --',
+            placeholder: '-- Select One Subcategory Value --',
             width: '100%',
             allowClear: true
         });
@@ -619,10 +619,10 @@ $(document).ready(function() {
             <div class="subfield-rule-row" data-rule="${ruleIndex}">
                 <div class="rule-col">
                     <select class="form-control subfield-select" name="subfield_rules[${ruleIndex}][subfield_values]">
-                        <option value="">-- Select One Subfield Value --</option>
+                        <option value="">-- Select One Subcategory Value --</option>
                         ${getAvailableSubfieldOptions()}
                     </select>
-                    <small class="form-text text-muted">Choose one subfield value for this rule</small>
+                    <small class="form-text text-muted">Choose one subcategory value for this rule</small>
                 </div>
                 <div class="rule-col">
                     <select class="form-control" name="subfield_rules[${ruleIndex}][requirement_type]" required>
@@ -654,7 +654,7 @@ $(document).ready(function() {
         
         console.log('   Initializing Select2');
         $newSelect.select2({
-            placeholder: '-- Select One Subfield Value --',
+            placeholder: '-- Select One Subcategory Value --',
             width: '100%',
             allowClear: true
         });
@@ -903,22 +903,22 @@ $(document).ready(function() {
                     console.log('   stid options:', $('#stid').find('option').map(function() { return {value: $(this).val(), text: $(this).text()}; }).get());
                 }, 100);
                 
-                // Load subfields if editing and field is selected
+                // Load subcategories if editing and category is selected
                 if (initialStid && initialStid !== 'null') {
-                    console.log('   Field selected, loading subfields');
+                    console.log('   Category selected, loading subcategories');
                     loadSubfieldsForField(initialStid);
                 } else if (initialStid === 'null' && existingSubfieldRules.length === 0) {
-                    console.log('   No field selected, checking for existing field value');
-                    // If editing but no field selected and no subfield rules, show main field value
+                    console.log('   No category selected, checking for existing category value');
+                    // If editing but no category selected and no subcategory rules, show main category value
                     var fieldValueData = <?php echo json_encode($standard['field_value'] ?? ''); ?>;
                     if (fieldValueData && !fieldValueData.includes('SUBFIELD_RULES:')) {
-                        console.log('   Editing with existing field value, showing main field value container');
+                        console.log('   Editing with existing category value, showing main category value container');
                         $('#mainFieldValueContainer').show();
                         $('#field_value').val(fieldValueData);
                     }
                 }
             } else {
-                console.log('   Multiple fields mode, setting selected fields');
+                console.log('   Multiple categories mode, setting selected categories');
                 $('#stids').val(selectedOrFields).trigger('change');
             }
         });
@@ -933,7 +933,7 @@ $(document).ready(function() {
         var tableId = $(this).val();
         filterParents(tableId);
         loadFieldsForTable(tableId);
-        // Clear subfields when table changes
+        // Clear subcategories when table changes
         $('#subfieldContainer').hide();
         $('#subfieldRulesContainer').empty();
         $('#mainFieldValueContainer').show();
@@ -942,7 +942,7 @@ $(document).ready(function() {
     $('#stid').on('change', function() {
         console.log('🎯 stid change event triggered');
         var fieldId = $(this).val();
-        console.log('   Selected fieldId:', fieldId);
+        console.log('   Selected categoryId:', fieldId);
         loadSubfieldsForField(fieldId);
     });
     
@@ -993,7 +993,7 @@ $(document).ready(function() {
         var formData = $(this).serialize();
         console.log('   Form data:', formData);
         
-        // Log subfield rules specifically
+        // Log subcategory rules specifically
         var subfieldRules = [];
         $('.subfield-rule-row').each(function(index) {
             var rule = {
@@ -1003,9 +1003,9 @@ $(document).ready(function() {
             };
             subfieldRules.push(rule);
         });
-        console.log('   Subfield rules to be sent:', subfieldRules);
-        console.log('   Number of subfield rule rows found:', $('.subfield-rule-row').length);
-        console.log('   Subfield rules container HTML:', $('#subfieldRulesContainer').html());
+        console.log('   Subcategory rules to be sent:', subfieldRules);
+        console.log('   Number of subcategory rule rows found:', $('.subfield-rule-row').length);
+        console.log('   Subcategory rules container HTML:', $('#subfieldRulesContainer').html());
         
         // Log all form inputs for debugging
         console.log('🔍 All form inputs:');

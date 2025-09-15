@@ -134,7 +134,7 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
             FROM tabs_tbl tabs
             LEFT JOIN trainee_log tl ON tabs.tbid = tl.tbid
             LEFT JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-            WHERE tabs.isvis = 1 $course_condition $group_condition $babcp_condition_simple $additional_conditions";
+            WHERE tabs.isvis = 1 $course_condition $group_condition $babcp_condition_with_tabs $additional_conditions";
         
         if ($selected_competency > 0) {
             $competency_query .= " AND tabs.tbid = $selected_competency";
@@ -182,7 +182,9 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
                 GROUP BY t2.trainkey
             ) trainee_stats ON t.trainkey = trainee_stats.trainkey
             WHERE w.admintype IN ('SO', 'SE') $course_condition $group_condition $babcp_condition_simple $additional_conditions
-            GROUP BY w.usrkey, w.realname ORDER BY avg_completion_rate DESC";
+            GROUP BY w.usrkey, w.realname ORDER BY avg_completion_rate DESC
+            LIMIT 10
+        ";
         
         $result = $mysqli->query($supervisor_query);
         while ($row = $result->fetch_assoc()) {
@@ -444,6 +446,10 @@ if ($selected_group === 'ALL_USERS') {
     $group_condition = "";
 }
 
+// Combine course and group parameters for consistent binding
+$all_basic_params = $course_params;
+$all_basic_param_types = $course_param_types;
+
 // OPTIMIZED: Pre-compute BABCP trainee list to avoid complex subqueries with caching
 $babcp_trainees = [];
 if ($babcp_filter == 1) {
@@ -657,8 +663,8 @@ $dateend_yyyymmdd = $end_year . '1231';     // YYYYMMDD format
 
 error_log("Using YYYYMMDD format - Start: $datestart_yyyymmdd, End: $dateend_yyyymmdd");
 $stmt = $mysqli->prepare($monthly_activity_query);
-if (!empty($course_params)) {
-    $stmt->bind_param("ii" . $course_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$course_params);
+if (!empty($all_basic_params)) {
+    $stmt->bind_param("ii" . $all_basic_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$all_basic_params);
 } else {
     $stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
 }
@@ -707,8 +713,8 @@ if (count($monthly_activity) > 0) {
     error_log("Debug query: $debug_query");
     
     $debug_stmt = $mysqli->prepare($debug_query);
-    if (!empty($course_params)) {
-        $debug_stmt->bind_param("ii" . $course_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$course_params);
+    if (!empty($all_basic_params)) {
+        $debug_stmt->bind_param("ii" . $all_basic_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$all_basic_params);
     } else {
         $debug_stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
     }
@@ -746,15 +752,15 @@ $supervisor_performance_query = "
         WHERE tl.date_added >= ? AND tl.date_added <= ?
         GROUP BY t2.trainkey
     ) trainee_stats ON t.trainkey = trainee_stats.trainkey
-    WHERE w.admintype IN ('SO', 'SE') $course_condition $babcp_condition_simple $additional_conditions
+    WHERE w.admintype IN ('SO', 'SE') $course_condition $group_condition $babcp_condition_simple $additional_conditions
     GROUP BY w.usrkey, w.realname
     ORDER BY avg_completion_rate DESC
     LIMIT 10
 ";
 
 $stmt = $mysqli->prepare($supervisor_performance_query);
-if (!empty($course_params)) {
-    $stmt->bind_param("ii" . $course_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$course_params);
+if (!empty($all_basic_params)) {
+    $stmt->bind_param("ii" . $all_basic_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$all_basic_params);
 } else {
     $stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
 }
@@ -783,14 +789,14 @@ $competency_difficulty_query = "
     FROM tabs_tbl tabs
     LEFT JOIN trainee_log tl ON tabs.tbid = tl.tbid
     LEFT JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-    WHERE tabs.isvis = 1 $course_condition $group_condition $babcp_condition_simple $additional_conditions
+    WHERE tabs.isvis = 1 $course_condition $group_condition $babcp_condition_with_tabs $additional_conditions
     GROUP BY tabs.tbid, tabs.tab_name
     ORDER BY success_rate ASC
 ";
 
 $stmt = $mysqli->prepare($competency_difficulty_query);
-if (!empty($course_params)) {
-    $stmt->bind_param($course_param_types, ...$course_params);
+if (!empty($all_basic_params)) {
+    $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
 }
 $stmt->execute();
 $stmt->store_result();
@@ -892,8 +898,8 @@ $babcp_case_analysis_query = "
 ";
 
 $stmt = $mysqli->prepare($babcp_case_analysis_query);
-if (!empty($course_params)) {
-    $stmt->bind_param("iiiiii" . $course_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$course_params);
+if (!empty($all_basic_params)) {
+    $stmt->bind_param("iiiiii" . $all_basic_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$all_basic_params);
 } else {
     $stmt->bind_param("iiiiii", $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd);
 }
@@ -974,8 +980,8 @@ $babcp_growth_query = "
 ";
 
 $stmt = $mysqli->prepare($babcp_growth_query);
-if (!empty($course_params)) {
-    $stmt->bind_param("ii" . $course_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$course_params);
+if (!empty($all_basic_params)) {
+    $stmt->bind_param("ii" . $all_basic_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$all_basic_params);
 } else {
     $stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
 }
@@ -2558,8 +2564,9 @@ if ($debug_sample_result) {
        const supervised_case = urlParams.get('supervised_case') || '';
        const primary_modality = urlParams.get('primary_modality') || '';
        const min_sessions = urlParams.get('min_sessions') || '';
-       const datestart = urlParams.get('datestart') || '';
-       const dateend = urlParams.get('dateend') || '';
+       const start_year = urlParams.get('start_year') || '';
+       const end_year = urlParams.get('end_year') || '';
+       const babcp_filter = urlParams.get('babcp_filter') || '';
        
        const params = new URLSearchParams({
            data_type: 'babcp_contact_modality_grouping',
@@ -2569,8 +2576,9 @@ if ($debug_sample_result) {
            supervised_case: supervised_case,
            primary_modality: primary_modality,
            min_sessions: min_sessions,
-           datestart: datestart,
-           dateend: dateend
+           start_year: start_year,
+           end_year: end_year,
+           babcp_filter: babcp_filter
        });
        
        fetch('ajax/trainee_stats_data.php?' + params.toString(), {

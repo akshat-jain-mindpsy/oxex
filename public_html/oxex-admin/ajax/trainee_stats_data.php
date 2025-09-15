@@ -79,6 +79,10 @@ try {
         }
     }
     
+    // Combine course and group parameters for consistent binding
+    $all_basic_params = array_merge($course_params, $group_params);
+    $all_basic_param_types = $course_param_types . $group_param_types;
+    
         // Get BABCP filter conditions for different query contexts
     $babcp_condition_simple = "";
     $babcp_condition_with_tabs = "";
@@ -135,15 +139,29 @@ try {
                                         WHERE tl6.trainkey = t.trainkey) >= $min_sessions";
     }
     
+    // Log filters to StatsLogger for traceability
+    $stats_logger->logFilter([
+        'data_type' => $data_type,
+        'start_year' => $start_year,
+        'end_year' => $end_year,
+        'course' => $selected_course,
+        'babcp_filter' => $babcp_filter,
+        'babcp_training' => $babcp_training,
+        'supervised_case' => $supervised_case,
+        'primary_modality' => $primary_modality,
+        'min_sessions' => $min_sessions,
+        'group' => $selected_group,
+    ]);
+
     error_log("BABCP Grouping API - About to enter switch statement with data_type: " . $data_type);
     switch ($data_type) {
         case 'overview':
             // Get overview statistics with logging
             $query_start = microtime(true);
-            $total_trainees_query = "SELECT COUNT(*) as total FROM trainee_tbl t WHERE 1=1 $course_condition $babcp_condition_simple $additional_conditions";
+            $total_trainees_query = "SELECT COUNT(*) as total FROM trainee_tbl t WHERE 1=1 $course_condition $group_condition $babcp_condition_simple $additional_conditions";
             $stmt = $mysqli->prepare($total_trainees_query);
-            if (!empty($course_params)) {
-                $stmt->bind_param($course_param_types, ...$course_params);
+            if (!empty($all_basic_params)) {
+                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
             }
             $stmt->execute();
             $stmt->bind_result($total_trainees);
@@ -154,11 +172,11 @@ try {
             
             // Get active trainees with logging
             $query_start = microtime(true);
-            $active_trainees_query = "SELECT COUNT(*) as active FROM trainee_tbl t WHERE t.last_used >= ? $course_condition $babcp_condition_simple $additional_conditions";
+            $active_trainees_query = "SELECT COUNT(*) as active FROM trainee_tbl t WHERE t.last_used >= ? $course_condition $group_condition $babcp_condition_simple $additional_conditions";
             $thirty_days_ago = date('Ymd', strtotime('-30 days'));
             $stmt = $mysqli->prepare($active_trainees_query);
-            if (!empty($course_params)) {
-                $stmt->bind_param("i" . $course_param_types, $thirty_days_ago, ...$course_params);
+            if (!empty($all_basic_params)) {
+                $stmt->bind_param("i" . $all_basic_param_types, $thirty_days_ago, ...$all_basic_params);
             } else {
                 $stmt->bind_param("i", $thirty_days_ago);
             }
@@ -187,10 +205,10 @@ try {
             
         case 'enrollment_trend':
             // Get trainees by year
-            $trainees_by_year_query = "SELECT t.year, COUNT(*) as count FROM trainee_tbl t WHERE 1=1 $course_condition $babcp_condition_simple $additional_conditions GROUP BY t.year ORDER BY t.year DESC";
+            $trainees_by_year_query = "SELECT t.year, COUNT(*) as count FROM trainee_tbl t WHERE 1=1 $course_condition $group_condition $babcp_condition_simple $additional_conditions GROUP BY t.year ORDER BY t.year DESC";
             $stmt = $mysqli->prepare($trainees_by_year_query);
-            if (!empty($course_params)) {
-                $stmt->bind_param($course_param_types, ...$course_params);
+            if (!empty($all_basic_params)) {
+                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
             }
             $stmt->execute();
             $stmt->store_result();
@@ -215,13 +233,13 @@ try {
                 LEFT JOIN trainee_tab_link ttl ON tabs.tbid = ttl.tbid
                 LEFT JOIN trainee_tbl t ON ttl.trainkey = t.trainkey
                 LEFT JOIN trainee_log tl ON t.trainkey = tl.trainkey AND tl.tbid = tabs.tbid
-                WHERE tabs.isvis = 1 $course_condition $babcp_condition_with_tabs $additional_conditions
+                WHERE tabs.isvis = 1 $course_condition $group_condition $babcp_condition_with_tabs $additional_conditions
                 GROUP BY tabs.tbid, tabs.tab_name
                 ORDER BY tabs.sort_order
             ";
             $stmt = $mysqli->prepare($competency_stats_query);
-            if (!empty($course_params)) {
-                $stmt->bind_param($course_param_types, ...$course_params);
+            if (!empty($all_basic_params)) {
+                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
             }
             $stmt->execute();
             $stmt->store_result();
@@ -247,15 +265,15 @@ try {
                     COUNT(*) as entries
                 FROM trainee_log tl
                 JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-                WHERE tl.date_added >= ? $course_condition $babcp_condition_simple $additional_conditions
+                WHERE tl.date_added >= ? $course_condition $group_condition $babcp_condition_simple $additional_conditions
                 GROUP BY DATE(FROM_UNIXTIME(tl.date_added))
                 ORDER BY activity_date DESC
                 LIMIT 7
             ";
             $seven_days_ago = strtotime('-7 days');
             $stmt = $mysqli->prepare($recent_activity_query);
-            if (!empty($course_params)) {
-                $stmt->bind_param("i" . $course_param_types, $seven_days_ago, ...$course_params);
+            if (!empty($all_basic_params)) {
+                $stmt->bind_param("i" . $all_basic_param_types, $seven_days_ago, ...$all_basic_params);
             } else {
                 $stmt->bind_param("i", $seven_days_ago);
             }
@@ -279,14 +297,14 @@ try {
                     COUNT(t.tid) as trainee_count
                 FROM who_there w
                 JOIN trainee_tbl t ON (w.usrkey = t.supervisor OR w.usrkey = t.supervisor2 OR w.usrkey = t.supervisor3)
-                WHERE w.admintype IN ('SO', 'SE') $course_condition $babcp_condition_simple $additional_conditions
+                WHERE w.admintype IN ('SO', 'SE') $course_condition $group_condition $babcp_condition_simple $additional_conditions
                 GROUP BY w.usrkey, w.realname
                 ORDER BY trainee_count DESC
                 LIMIT 10
             ";
             $stmt = $mysqli->prepare($supervisor_query);
-            if (!empty($course_params)) {
-                $stmt->bind_param($course_param_types, ...$course_params);
+            if (!empty($all_basic_params)) {
+                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
             }
             $stmt->execute();
             $stmt->store_result();
@@ -312,13 +330,13 @@ try {
                 LEFT JOIN trainee_tab_link ttl ON tabs.tbid = ttl.tbid
                 LEFT JOIN trainee_tbl t ON ttl.trainkey = t.trainkey
                 LEFT JOIN trainee_log tl ON t.trainkey = tl.trainkey AND tl.tbid = tabs.tbid
-                WHERE tabs.isvis = 1 $course_condition $babcp_condition_with_tabs $additional_conditions
+                WHERE tabs.isvis = 1 $course_condition $group_condition $babcp_condition_with_tabs $additional_conditions
                 GROUP BY tabs.tbid, tabs.tab_name
                 ORDER BY tabs.sort_order
             ";
             $stmt = $mysqli->prepare($pass_fail_query);
-            if (!empty($course_params)) {
-                $stmt->bind_param($course_param_types, ...$course_params);
+            if (!empty($all_basic_params)) {
+                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
             }
             $stmt->execute();
             $stmt->store_result();
@@ -353,13 +371,13 @@ try {
                 FROM tabs_tbl tabs
                 LEFT JOIN trainee_log tl ON tabs.tbid = tl.tbid
                 LEFT JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-                WHERE tabs.isvis = 1 $course_condition $babcp_condition_with_tabs $additional_conditions
+                WHERE tabs.isvis = 1 $course_condition $group_condition $babcp_condition_with_tabs $additional_conditions
                 GROUP BY tabs.tbid, tabs.tab_name
                 ORDER BY success_rate ASC
             ";
             $stmt = $mysqli->prepare($competency_difficulty_query);
-            if (!empty($course_params)) {
-                $stmt->bind_param($course_param_types, ...$course_params);
+            if (!empty($all_basic_params)) {
+                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
             }
             $stmt->execute();
             $stmt->store_result();
@@ -387,15 +405,15 @@ try {
                     COUNT(DISTINCT tl.trainkey) as active_trainees
                 FROM trainee_log tl
                 JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-                WHERE tl.date_added >= ? $course_condition $babcp_condition_simple $additional_conditions
+                WHERE tl.date_added >= ? $course_condition $group_condition $babcp_condition_simple $additional_conditions
                 GROUP BY DATE_FORMAT(FROM_UNIXTIME(tl.date_added), '%Y-%m')
                 ORDER BY month DESC
                 LIMIT 12
             ";
             $twelve_months_ago = strtotime('-12 months');
             $stmt = $mysqli->prepare($monthly_activity_query);
-            if (!empty($course_params)) {
-                $stmt->bind_param("i" . $course_param_types, $twelve_months_ago, ...$course_params);
+            if (!empty($all_basic_params)) {
+                $stmt->bind_param("i" . $all_basic_param_types, $twelve_months_ago, ...$all_basic_params);
             } else {
                 $stmt->bind_param("i", $twelve_months_ago);
             }
@@ -431,14 +449,14 @@ try {
                     WHERE 1=1
                     GROUP BY t2.trainkey
                 ) trainee_stats ON t.trainkey = trainee_stats.trainkey
-                WHERE w.admintype IN ('SO', 'SE') $course_condition $babcp_condition_simple $additional_conditions
+                WHERE w.admintype IN ('SO', 'SE') $course_condition $group_condition $babcp_condition_simple $additional_conditions
                 GROUP BY w.usrkey, w.realname
                 ORDER BY avg_completion_rate DESC
                 LIMIT 10
             ";
             $stmt = $mysqli->prepare($supervisor_performance_query);
-            if (!empty($course_params)) {
-                $stmt->bind_param($course_param_types, ...$course_params);
+            if (!empty($all_basic_params)) {
+                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
             }
             $stmt->execute();
             $stmt->store_result();
@@ -488,13 +506,13 @@ try {
                     FROM trainee_log 
                     GROUP BY logkey
                 ) session_counts ON tl.logkey = session_counts.logkey
-                WHERE 1=1 $course_condition $babcp_condition_simple $additional_conditions
+                WHERE 1=1 $course_condition $group_condition $babcp_condition_simple $additional_conditions
                 GROUP BY t.trainkey, t.name
                 ORDER BY t.name
             ";
             $stmt = $mysqli->prepare($babcp_case_analysis_query);
-            if (!empty($course_params)) {
-                $stmt->bind_param($course_param_types, ...$course_params);
+            if (!empty($all_basic_params)) {
+                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
             }
             $stmt->execute();
             $stmt->store_result();
@@ -521,21 +539,11 @@ try {
             // Simple and fast query that groups clients by Primary Contact Type and Primary modality
             error_log("BABCP Grouping API - Entered babcp_contact_modality_grouping case");
             
-            // For this specific report, we'll ignore most filters to ensure we get data
-            // Only apply basic date filters if they exist
-            $date_condition = '';
-            $date_params = [];
-            $date_param_types = '';
-            
             // Use current year as default if no date range specified
             if (empty($start_year) || empty($end_year)) {
                 $start_year = date('Y');
                 $end_year = date('Y');
             }
-            
-            $date_condition = " AND YEAR(tl.date) BETWEEN ? AND ?";
-            $date_params = [$start_year, $end_year];
-            $date_param_types = 'ii';
             
             error_log("BABCP Grouping API - Date params: start_year=$start_year, end_year=$end_year");
             error_log("BABCP Grouping API - About to test database connection");
@@ -555,38 +563,67 @@ try {
                 error_log("BABCP Grouping API - Test query exception: " . $e->getMessage());
             }
             
-            // Use a much simpler query to avoid memory/timeout issues
+            // Build date range filter using YYYYMMDD format
+            $start_date = $start_year . '0101';
+            $end_date = $end_year . '1231';
+            
+            // Apply all page filters to the BABCP grouping query
             $babcp_grouping_query = "
                 SELECT 
-                    'Individual' as contact_type,
-                    'CBT' as modality_type,
-                    COUNT(DISTINCT tl.logkey) as client_count,
-                    COUNT(DISTINCT tl.trainkey) as trainee_count
+                    CASE 
+                        WHEN LOWER(st.str) LIKE '%group%' THEN 'Group'
+                        ELSE 'Individual'
+                    END AS contact_type,
+                    CASE
+                        WHEN st.str LIKE '%CBT%' THEN 'CBT'
+                        WHEN st.str LIKE '%ACT%' THEN 'ACT'
+                        WHEN st.str LIKE '%DBT%' THEN 'DBT'
+                        WHEN st.str LIKE '%Family%' THEN 'Family Therapy'
+                        WHEN st.str LIKE '%Behavioural%' OR st.str LIKE '%Behavioral%' THEN 'Behavioural'
+                        WHEN st.str LIKE '%Cognitive%' THEN 'Cognitive'
+                        ELSE 'Other'
+                    END AS modality_type,
+                    COUNT(DISTINCT tl.logkey) AS client_count,
+                    COUNT(DISTINCT tl.trainkey) AS trainee_count
                 FROM trainee_log tl
-                LEFT JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-                LEFT JOIN select_gen sg ON tl.pid = sg.pid
-                WHERE tl.stid = 18 
-                AND sg.select_val LIKE '%CBT%'
-                AND YEAR(tl.date) = ?
+                JOIN trainee_tbl t ON tl.trainkey = t.trainkey
+                JOIN select_types st ON tl.stid = st.stid
+                WHERE tl.date_added BETWEEN ? AND ?
+                $course_condition
+                $group_condition
+                $babcp_condition_simple
+                $additional_conditions
+                GROUP BY contact_type, modality_type
+                ORDER BY client_count DESC
                 LIMIT 1000
             ";
             
-            error_log("BABCP Grouping API - Using simplified query");
+            error_log("BABCP Grouping API - Using filtered query with all page filters");
+            
+            // Prepare parameters array for logging
+            $all_params = array_merge([$start_date, $end_date], $all_basic_params);
+            $stats_logger->logQuery($babcp_grouping_query, $all_params, 0);
             
             $stmt = $mysqli->prepare($babcp_grouping_query);
             if (!$stmt) {
                 error_log("BABCP Grouping Query Prepare Error: " . $mysqli->error);
+                $stats_logger->logError("Prepare failed: " . $mysqli->error, "babcp_contact_modality_grouping | params=" . json_encode($all_params));
                 throw new Exception("Query preparation failed: " . $mysqli->error);
             }
             
-            // Bind the year parameter
-            $stmt->bind_param('i', $start_year);
+            // Bind all parameters: date range + course + group
+            $param_types = 'ii' . $all_basic_param_types;
+            $stmt->bind_param($param_types, $start_date, $end_date, ...$all_basic_params);
             
+            $query_start_time = microtime(true);
             $execute_result = $stmt->execute();
             if (!$execute_result) {
                 error_log("BABCP Grouping Query Execute Error: " . $stmt->error);
+                $stats_logger->logError("Execute failed: " . $stmt->error, "babcp_contact_modality_grouping | params=" . json_encode($all_params));
                 throw new Exception("Query execution failed: " . $stmt->error);
             }
+            $query_duration_ms = round((microtime(true) - $query_start_time) * 1000, 2);
+            $stats_logger->logQuery($babcp_grouping_query, $all_params, $query_duration_ms);
             
             $result = $stmt->get_result();
             $babcp_grouping_data = [];
@@ -601,6 +638,7 @@ try {
             $stmt->close();
             
             error_log("BABCP Grouping Data Count: " . count($babcp_grouping_data));
+            $stats_logger->logQuery('BABCP Grouping Result Count', ['count' => count($babcp_grouping_data)], 0);
             $data = $babcp_grouping_data;
             break;
             

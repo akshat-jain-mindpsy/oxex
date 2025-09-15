@@ -20,7 +20,7 @@ if (login_check($mysqli) != false) {// show account nav
     // only if permitted for this trainee
 
     // loop through tabs
-    $tableset = $mysqli->prepare("SELECT tbid, tab_name, sort_order FROM tabs_tbl ORDER BY sort_order");
+    $tableset = $mysqli->prepare("SELECT tbid, tab_name, sort_order FROM tabs_tbl WHERE isvis = 1 ORDER BY sort_order");
     //$tableset->bind_param("i", $value0);
     $tableset->execute();
     $tableset->store_result();

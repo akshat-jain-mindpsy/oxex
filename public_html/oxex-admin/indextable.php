@@ -125,7 +125,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                         <div class="card-title">Global Search</div>
                      </div>
                      <div class="card-body">
-                        <p>Search for tables, fields, sections, and documentation across the system:</p>
+                        <p>Search for sheets, categories, sections, and documentation across the system:</p>
                         
                         <!-- Global search container -->
                         <div class="global-search-container">
@@ -192,6 +192,27 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
    </div>
    <?php include 'incl/adminjs.php' ?>
    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js" integrity="sha256-VazP97ZCwtekAsvgPBSUwPFKdrwD3unUfSGVYrahUqU=" crossorigin="anonymous"></script>
+   <style>
+   .badge {
+     font-size: 0.8em;
+     padding: 0.4em 0.6em;
+     font-weight: 500;
+   }
+   
+   .results-table .badge {
+     min-width: 80px;
+     text-align: center;
+     display: inline-block;
+   }
+   
+   .results-table tbody tr {
+     cursor: pointer;
+   }
+   
+   .results-table tbody tr:hover {
+     background-color: #f8f9fa;
+   }
+   </style>
   <script>
   jQuery(document).ready(function($) {
     $( function() {
@@ -292,11 +313,23 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
       // Add results to table
       for (var i = startIndex; i < endIndex; i++) {
         var result = allResults[i];
-        var typeBadgeClass = 'badge-' + result.type.toLowerCase();
+        
+        // Define specific colors for each type
+        var typeColors = {
+          'Table': 'badge-primary',
+          'Category': 'badge-success', 
+          'Category Value': 'badge-info',
+          'Section': 'badge-warning',
+          'Documentation': 'badge-secondary',
+          'Trainee': 'badge-dark',
+          'Blog Post': 'badge-light'
+        };
+        
+        var typeBadgeClass = typeColors[result.type] || 'badge-secondary';
         
         var row = `
           <tr data-url="${result.url}">
-            <td><span class="results-type-badge ${typeBadgeClass}">${result.type}</span></td>
+            <td><span class="badge ${typeBadgeClass}">${result.type}</span></td>
             <td>${result.title}</td>
             <td>${result.excerpt}</td>
           </tr>

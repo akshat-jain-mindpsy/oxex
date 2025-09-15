@@ -84,14 +84,14 @@ function searchTables($mysqli, $searchTerm) {
     return $tableResults;
 }
 
-// Search function for fields
+// Search function for categories
 function searchFields($mysqli, $searchTerm) {
     $query = "
         SELECT 
             st.stid AS id,
             st.str AS title,
             t.tab_name AS description,
-            'Field' AS type,
+            'Category' AS type,
             CONCAT('listtypedetail.php?which=', st.stid) AS url,
             (
                 CASE 
@@ -133,14 +133,14 @@ function searchFields($mysqli, $searchTerm) {
     return $fieldResults;
 }
 
-// Search function for field values
+// Search function for category values
 function searchFieldValues($mysqli, $searchTerm) {
     $query = "
         SELECT 
             sg.pid AS id,
             sg.select_val AS title,
             st.str AS description,
-            'Field Value' AS type,
+            'Category Value' AS type,
             CONCAT('listdetail.php?which=', sg.pid) AS url,
             (
                 CASE 
@@ -171,7 +171,7 @@ function searchFieldValues($mysqli, $searchTerm) {
             $fieldValueResults[] = [
                 'id' => $row['id'],
                 'title' => $row['title'],
-                'excerpt' => 'Field: ' . $row['description'],
+                'excerpt' => 'Category: ' . $row['description'],
                 'url' => $row['url'],
                 'type' => $row['type'],
                 'relevance' => $row['relevance']
