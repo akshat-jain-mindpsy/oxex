@@ -245,17 +245,7 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                    </div>
                                </form>
                            </div>
-                           <div class="card-footer">
-                               <div class="float-right">
-                                   <button type="button" id="generateAllGraphsBtn" class="btn btn-success">Generate Selected Combinations</button>
-                               </div>
-                               <div class="float-left">
-                                   <button type="button" id="selectAllXFields" class="btn btn-outline-secondary btn-sm" style="display:none;">Select All X</button>
-                                   <button type="button" id="clearAllXFields" class="btn btn-outline-secondary btn-sm ml-1" style="display:none;">Clear All X</button>
-                                   <button type="button" id="selectAllYFields" class="btn btn-outline-secondary btn-sm ml-3" style="display:none;">Select All Y</button>
-                                   <button type="button" id="clearAllYFields" class="btn btn-outline-secondary btn-sm ml-1" style="display:none;">Clear All Y</button>
-                               </div>
-                           </div>
+                           
                        </div>
                    </div>
                </div>
@@ -323,7 +313,7 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                            </div>
                            <div class="card-footer">
                                <div class="float-right">
-                                   <button type="button" id="generateAllGraphsBtn" class="btn btn-success" disabled>Generate Selected Combinations</button>
+                                   <button type="button" id="generateAllGraphsBtn" class="btn btn-success">Generate Selected Combinations</button>
                                </div>
                                <div class="float-left">
                                    <button type="button" id="selectAllXFields" class="btn btn-outline-secondary btn-sm" style="display:none;">Select All X</button>
@@ -360,59 +350,21 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                    </div>
                </div>
 
-               <!-- Graph container -->
-               <div class="row">
-                   <div class="col-12">
-                       <div class="card border-info mb-4">
-                           <div class="card-header bg-info">
-                               <div class="card-title">Field Combination Results</div>
-                           </div>
-                           <div class="card-body p-0">
-                               <div class="graph-container">
-                                   <div id="graphLoadingIndicator" class="graph-loading" style="display:none;">
-                                       <div class="spinner-border text-primary" role="status">
-                                           <span class="sr-only">Loading...</span>
-                                       </div>
-                                   </div>
-                                   <div id="noDataMessage" class="no-data-message">
-                                       <i class="fas fa-chart-line fa-3x mb-3"></i>
-                                       <h4>Select data source and generate field combinations</h4>
-                                       <p class="text-muted">Use the filters above to select your data and visualization options</p>
-                                   </div>
-                                   <canvas id="graphCanvas" style="display:none;"></canvas>
-                               </div>
-                           </div>
-                       </div>
-                   </div>
-               </div>
+               
 
-               <!-- Data table section -->
+               <!-- Data tables (tabbed) section -->
                <div class="row">
                    <div class="col-12">
                        <div class="card border-info mb-4">
                            <div class="card-header bg-info">
-                               <div class="card-title">Data Table</div>
+                               <div class="card-title">Data Tables</div>
                            </div>
                            <div class="card-body">
-                               <div id="dataTableContainer" style="display:none;">
-                                   <div class="table-responsive">
-                                       <table id="graphDataTable" class="table table-striped table-hover">
-                                           <thead>
-                                               <tr>
-                                                   <th>Category</th>
-                                                   <th>Value</th>
-                                                   <th>Percentage</th>
-                                               </tr>
-                                           </thead>
-                                           <tbody id="graphDataTableBody">
-                                               <!-- Data will be populated here -->
-                                           </tbody>
-                                       </table>
-                                   </div>
-                               </div>
                                <div id="noTableDataMessage" class="text-center py-5">
-                                   <p class="text-muted">Generate a graph to see the data table</p>
+                                   <p class="text-muted">Generate graphs to see data tables per combination</p>
                                </div>
+                               <ul class="nav nav-tabs" id="graphTabsNav" role="tablist" style="display:none;"></ul>
+                               <div class="tab-content" id="graphTabsContent"></div>
                            </div>
                        </div>
                    </div>
@@ -425,7 +377,6 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
 
    <script type="text/javascript">
        // Global variables
-       let myChart = null;
        
        $(document).ready(function() {
            // Handle time frame change to show/hide custom date range
@@ -706,6 +657,10 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                $('#graphsLoadingIndicator').show();
                $('#allGraphsContainer').show();
                $('#allGraphsList').empty();
+               // Reset tabbed data tables for new generation
+               $('#graphTabsNav').empty().hide();
+               $('#graphTabsContent').empty();
+               $('#noTableDataMessage').show();
                
                // Generate field combinations and create graphs
                generateSelectedFieldCombinations(tableId, selectedXFields, selectedYFields, traineeKey, timeFrame);
@@ -806,6 +761,8 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                        if (response.status === 'success') {
                            // Render the graph
                            renderSmallGraph(graphId, response.data, config.chartType, response.labels);
+                           // Add/update a tabbed data table for this graph
+                           upsertGraphDataTab(graphId, `${config.fieldXName} vs ${config.fieldYName}`.trim(), response.data, response.labels);
                        } else {
                            // Show error message
                            $(`#${graphId}`).parent().html(`<div class="alert alert-warning">Unable to generate graph: ${response.message}</div>`);
@@ -913,7 +870,74 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                    }
                });
            }
-       });
+
+        // Create or update a tab for a graph's data table
+        function upsertGraphDataTab(graphId, title, data, labels) {
+            if (!Array.isArray(data) || data.length === 0) {
+                return;
+            }
+
+            const safeId = graphId.replace(/[^a-zA-Z0-9_-]/g, '');
+            const tabId = 'tab-' + safeId;
+            const paneId = 'pane-' + safeId;
+
+            // Build rows
+            const total = data.reduce(function(sum, item) {
+                const val = Number(item.value) || 0;
+                return sum + val;
+            }, 0);
+
+            const rowsHtml = data.map(function(item, idx) {
+                const label = (labels && labels[idx]) || item.label || '';
+                const value = Number(item.value) || 0;
+                const pct = total ? ((value / total) * 100).toFixed(1) + '%' : '0%';
+                return '<tr>' +
+                    '<td>' + label + '</td>' +
+                    '<td>' + value + '</td>' +
+                    '<td>' + pct + '</td>' +
+                '</tr>';
+            }).join('');
+
+            // If first tab, show nav and hide empty message
+            if ($('#graphTabsNav li').length === 0) {
+                $('#noTableDataMessage').hide();
+                $('#graphTabsNav').show();
+            }
+
+            // Upsert nav tab
+            const existingTab = $('#' + tabId);
+            if (existingTab.length === 0) {
+                const isActive = $('#graphTabsNav li').length === 0 ? 'active' : '';
+                $('#graphTabsNav').append(
+                    '<li class="nav-item" role="presentation">' +
+                        '<a class="nav-link ' + isActive + '" id="' + tabId + '" data-toggle="tab" href="#' + paneId + '" role="tab" aria-controls="' + paneId + '" aria-selected="' + (isActive ? 'true' : 'false') + '">' +
+                            title +
+                        '</a>' +
+                    '</li>'
+                );
+
+                // Upsert content pane
+                $('#graphTabsContent').append(
+                    '<div class="tab-pane fade ' + (isActive ? 'show active' : '') + '" id="' + paneId + '" role="tabpanel" aria-labelledby="' + tabId + '">' +
+                        '<div class="table-responsive mt-3">' +
+                            '<table class="table table-striped table-hover">' +
+                                '<thead>' +
+                                    '<tr><th>Category</th><th>Value</th><th>Percentage</th></tr>' +
+                                '</thead>' +
+                                '<tbody>' + rowsHtml + '</tbody>' +
+                            '</table>' +
+                        '</div>' +
+                    '</div>'
+                );
+            } else {
+                // Update rows in existing pane
+                $('#' + paneId + ' tbody').html(rowsHtml);
+                // Update title if changed
+                existingTab.text(title);
+            }
+        }
+        
+    });
    </script>
    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js" integrity="sha256-VazP97ZCwtekAsvgPBSUwPFKdrwD3unUfSGVYrahUqU=" crossorigin="anonymous"></script>
 </body>

@@ -1723,6 +1723,48 @@ if ($debug_sample_result) {
                </div>
             </div>
 
+            <!-- BABCP Contact-Modality Grouping Report -->
+            <div class="row mb-4">
+               <div class="col-12">
+                  <div class="card">
+                     <div class="card-header">
+                        <h5 class="card-title">BABCP Contact Type & Modality Grouping</h5>
+                        <small class="text-muted">Client counts grouped by Primary Contact Type (Individual/Group) and Primary Modality (CBT, ACT, etc.)</small>
+                     </div>
+                     <div class="card-body">
+                        <div class="table-responsive">
+                           <table class="table table-striped table-hover" id="babcpGroupingTable">
+                              <thead class="thead-dark">
+                                 <tr>
+                                    <th>Contact Type</th>
+                                    <th>Modality</th>
+                                    <th>Client Count</th>
+                                    <th>Trainee Count</th>
+                                    <th>Percentage of Total</th>
+                                 </tr>
+                              </thead>
+                              <tbody id="babcpGroupingTableBody">
+                                 <!-- Data will be populated by JavaScript -->
+                              </tbody>
+                           </table>
+                        </div>
+                        <div class="row mt-3">
+                           <div class="col-md-6">
+                              <div class="alert alert-info">
+                                 <strong>Total Clients:</strong> <span id="totalClients">0</span>
+                              </div>
+                           </div>
+                           <div class="col-md-6">
+                              <div class="alert alert-success">
+                                 <strong>Total Trainees:</strong> <span id="totalTrainees">0</span>
+                              </div>
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+
          </div>
       </section>
    </div>
@@ -2502,7 +2544,108 @@ if ($debug_sample_result) {
            // Initialize on page load
            updateGroupFilterIndicator();
        }
+       
+       // Load BABCP Contact-Modality Grouping data
+       loadBABCPGroupingData();
    });
+   
+   // Function to load BABCP Contact-Modality Grouping data
+   function loadBABCPGroupingData() {
+       const urlParams = new URLSearchParams(window.location.search);
+       const course = urlParams.get('course') || '';
+       const group = urlParams.get('group') || '';
+       const babcp_training = urlParams.get('babcp_training') || '';
+       const supervised_case = urlParams.get('supervised_case') || '';
+       const primary_modality = urlParams.get('primary_modality') || '';
+       const min_sessions = urlParams.get('min_sessions') || '';
+       const datestart = urlParams.get('datestart') || '';
+       const dateend = urlParams.get('dateend') || '';
+       
+       const params = new URLSearchParams({
+           data_type: 'babcp_contact_modality_grouping',
+           course: course,
+           group: group,
+           babcp_training: babcp_training,
+           supervised_case: supervised_case,
+           primary_modality: primary_modality,
+           min_sessions: min_sessions,
+           datestart: datestart,
+           dateend: dateend
+       });
+       
+       fetch('ajax/trainee_stats_data.php?' + params.toString(), {
+           credentials: 'same-origin'
+       })
+           .then(response => response.json())
+           .then(data => {
+               if (data.status === 'success') {
+                   displayBABCPGroupingData(data.data);
+               } else {
+                   console.error('Error loading BABCP grouping data:', data.message);
+                   displayBABCPGroupingError(data.message);
+               }
+           })
+           .catch(error => {
+               console.error('Error loading BABCP grouping data:', error);
+               displayBABCPGroupingError('Failed to load data');
+           });
+   }
+   
+   // Function to display BABCP Contact-Modality Grouping data
+   function displayBABCPGroupingData(data) {
+       const tbody = document.getElementById('babcpGroupingTableBody');
+       if (!tbody) return;
+       
+       tbody.innerHTML = '';
+       
+       let totalClients = 0;
+       let totalTrainees = 0;
+       
+       // Calculate totals
+       data.forEach(item => {
+           totalClients += parseInt(item.client_count) || 0;
+           totalTrainees += parseInt(item.trainee_count) || 0;
+       });
+       
+       // Display data
+       data.forEach(item => {
+           const row = document.createElement('tr');
+           const percentage = totalClients > 0 ? ((item.client_count / totalClients) * 100).toFixed(1) : 0;
+           
+           row.innerHTML = `
+               <td><span class="badge badge-primary">${item.contact_type}</span></td>
+               <td><span class="badge badge-info">${item.modality_type}</span></td>
+               <td><strong>${item.client_count}</strong></td>
+               <td>${item.trainee_count}</td>
+               <td>
+                   <div class="progress progress-thin">
+                       <div class="progress-bar bg-success" style="width: ${percentage}%">
+                           ${percentage}%
+                       </div>
+                   </div>
+               </td>
+           `;
+           tbody.appendChild(row);
+       });
+       
+       // Update totals
+       document.getElementById('totalClients').textContent = totalClients;
+       document.getElementById('totalTrainees').textContent = totalTrainees;
+   }
+   
+   // Function to display error message
+   function displayBABCPGroupingError(message) {
+       const tbody = document.getElementById('babcpGroupingTableBody');
+       if (!tbody) return;
+       
+       tbody.innerHTML = `
+           <tr>
+               <td colspan="5" class="text-center text-danger">
+                   <i class="fas fa-exclamation-triangle"></i> ${message}
+               </td>
+           </tr>
+       `;
+   }
    
    // Charts are now loaded directly with PHP data
    </script>

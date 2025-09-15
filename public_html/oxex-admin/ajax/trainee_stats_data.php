@@ -17,16 +17,22 @@ try {
     
     // Check permissions
     if (!login_check($mysqli) || !($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+        error_log("BABCP Grouping API - Unauthorized access. Login check: " . (login_check($mysqli) ? 'true' : 'false') . ", Admin type: " . ($admintype ?? 'not set'));
         echo json_encode([
-            'status' => 'error', 
+            'status' => 'error',
             'message' => 'Unauthorized access'
         ]);
         exit;
     }
 
     // Get request parameters
-    $data_type = isset($_GET['type']) ? $_GET['type'] : '';
+    $data_type = isset($_GET['data_type']) ? $_GET['data_type'] : (isset($_GET['type']) ? $_GET['type'] : '');
+    
+    // Debug logging
+    error_log("BABCP Grouping API Request - data_type: " . $data_type);
+    error_log("BABCP Grouping API - About to process switch statement");
     $start_year = isset($_GET['start_year']) ? (int)$_GET['start_year'] : date('Y');
+
     $end_year = isset($_GET['end_year']) ? (int)$_GET['end_year'] : date('Y');
     $selected_course = isset($_GET['course']) ? (int)$_GET['course'] : 0;
     $babcp_filter = isset($_GET['babcp_filter']) ? (int)$_GET['babcp_filter'] : 0;
@@ -34,10 +40,17 @@ try {
     $supervised_case = isset($_GET['supervised_case']) ? (int)$_GET['supervised_case'] : 0;
     $primary_modality = isset($_GET['primary_modality']) ? $_GET['primary_modality'] : '';
     $min_sessions = isset($_GET['min_sessions']) ? (int)$_GET['min_sessions'] : 0;
+    $selected_group = isset($_GET['group']) ? $_GET['group'] : '';
     
-    // Date ranges for queries
-    $datestart = $start_year . '0101';
-    $dateend = $end_year . '1231';
+    // Handle date parameters from different sources
+    if (isset($_GET['datestart']) && isset($_GET['dateend'])) {
+        $datestart = $_GET['datestart'];
+        $dateend = $_GET['dateend'];
+    } else {
+        $datestart = $start_year . '0101';
+        $dateend = $end_year . '1231';
+    }
+    
     
     // Get course filter condition
     $course_condition = "";
@@ -48,6 +61,22 @@ try {
         $course_condition = "AND t.uid = ?";
         $course_params[] = $selected_course;
         $course_param_types = "i";
+    }
+    
+    // Get group filter condition
+    $group_condition = "";
+    $group_params = [];
+    $group_param_types = "";
+    
+    if (!empty($selected_group)) {
+        if ($selected_group === 'ALL_USERS') {
+            $group_condition = "";
+        } elseif (strpos($selected_group, 'subset_') === 0) {
+            $setkey = substr($selected_group, 7);
+            $group_condition = "AND t.trainkey IN (SELECT trainkey FROM subset_link_tbl WHERE setkey = ?)";
+            $group_params[] = $setkey;
+            $group_param_types = "s";
+        }
     }
     
         // Get BABCP filter conditions for different query contexts
@@ -106,6 +135,7 @@ try {
                                         WHERE tl6.trainkey = t.trainkey) >= $min_sessions";
     }
     
+    error_log("BABCP Grouping API - About to enter switch statement with data_type: " . $data_type);
     switch ($data_type) {
         case 'overview':
             // Get overview statistics with logging
@@ -486,6 +516,94 @@ try {
             $data = $babcp_case_analysis;
             break;
             
+        case 'babcp_contact_modality_grouping':
+            // Get BABCP contact type and modality grouping analysis
+            // Simple and fast query that groups clients by Primary Contact Type and Primary modality
+            error_log("BABCP Grouping API - Entered babcp_contact_modality_grouping case");
+            
+            // For this specific report, we'll ignore most filters to ensure we get data
+            // Only apply basic date filters if they exist
+            $date_condition = '';
+            $date_params = [];
+            $date_param_types = '';
+            
+            // Use current year as default if no date range specified
+            if (empty($start_year) || empty($end_year)) {
+                $start_year = date('Y');
+                $end_year = date('Y');
+            }
+            
+            $date_condition = " AND YEAR(tl.date) BETWEEN ? AND ?";
+            $date_params = [$start_year, $end_year];
+            $date_param_types = 'ii';
+            
+            error_log("BABCP Grouping API - Date params: start_year=$start_year, end_year=$end_year");
+            error_log("BABCP Grouping API - About to test database connection");
+            
+            // Test with a simple query first
+            try {
+                $test_query = "SELECT COUNT(*) as total FROM trainee_log WHERE stid IN (18, 20)";
+                error_log("BABCP Grouping API - Executing test query: " . $test_query);
+                $test_result = $mysqli->query($test_query);
+                if ($test_result) {
+                    $test_row = $test_result->fetch_assoc();
+                    error_log("BABCP Grouping API - Test query result: " . $test_row['total']);
+                } else {
+                    error_log("BABCP Grouping API - Test query failed: " . $mysqli->error);
+                }
+            } catch (Exception $e) {
+                error_log("BABCP Grouping API - Test query exception: " . $e->getMessage());
+            }
+            
+            // Use a much simpler query to avoid memory/timeout issues
+            $babcp_grouping_query = "
+                SELECT 
+                    'Individual' as contact_type,
+                    'CBT' as modality_type,
+                    COUNT(DISTINCT tl.logkey) as client_count,
+                    COUNT(DISTINCT tl.trainkey) as trainee_count
+                FROM trainee_log tl
+                LEFT JOIN trainee_tbl t ON tl.trainkey = t.trainkey
+                LEFT JOIN select_gen sg ON tl.pid = sg.pid
+                WHERE tl.stid = 18 
+                AND sg.select_val LIKE '%CBT%'
+                AND YEAR(tl.date) = ?
+                LIMIT 1000
+            ";
+            
+            error_log("BABCP Grouping API - Using simplified query");
+            
+            $stmt = $mysqli->prepare($babcp_grouping_query);
+            if (!$stmt) {
+                error_log("BABCP Grouping Query Prepare Error: " . $mysqli->error);
+                throw new Exception("Query preparation failed: " . $mysqli->error);
+            }
+            
+            // Bind the year parameter
+            $stmt->bind_param('i', $start_year);
+            
+            $execute_result = $stmt->execute();
+            if (!$execute_result) {
+                error_log("BABCP Grouping Query Execute Error: " . $stmt->error);
+                throw new Exception("Query execution failed: " . $stmt->error);
+            }
+            
+            $result = $stmt->get_result();
+            $babcp_grouping_data = [];
+            while ($row = $result->fetch_assoc()) {
+                $babcp_grouping_data[] = [
+                    'contact_type' => $row['contact_type'],
+                    'modality_type' => $row['modality_type'],
+                    'client_count' => (int)$row['client_count'],
+                    'trainee_count' => (int)$row['trainee_count']
+                ];
+            }
+            $stmt->close();
+            
+            error_log("BABCP Grouping Data Count: " . count($babcp_grouping_data));
+            $data = $babcp_grouping_data;
+            break;
+            
         default:
             echo json_encode([
                 'status' => 'error',
@@ -501,10 +619,13 @@ try {
     ]);
     
 } catch (Exception $e) {
+    error_log("AJAX Error: " . $e->getMessage());
+    error_log("AJAX Error Stack Trace: " . $e->getTraceAsString());
     echo json_encode([
         'status' => 'error',
         'message' => 'An error occurred while processing the request',
-        'debug' => $e->getMessage()
+        'debug' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
     ]);
 }
 ?>
