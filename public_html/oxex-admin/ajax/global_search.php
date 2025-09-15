@@ -302,7 +302,7 @@ function searchTrainees($mysqli, $searchTerm) {
         SELECT 
             t.tid AS id,
             t.name AS title,
-            CONCAT(t.email, ' - ', IFNULL(u.uni_name, 'No university')) AS description,
+            CONCAT(t.email, ' - ', IFNULL(u.university, 'No university')) AS description,
             'Trainee' AS type,
             CONCAT('trainee.php?id=', t.tid) AS url,
             (
@@ -343,6 +343,116 @@ function searchTrainees($mysqli, $searchTerm) {
     }
     
     return $traineeResults;
+}
+
+// Search function for trainee groups
+function searchTraineeGroups($mysqli, $searchTerm) {
+    // Check if trainee_group table exists
+    $checkTable = $mysqli->query("SHOW TABLES LIKE 'trainee_group'")->num_rows;
+    
+    if ($checkTable == 0) {
+        return [];
+    }
+    
+    $query = "
+        SELECT 
+            tg.tgif AS id,
+            tg.group_name AS title,
+            CONCAT('Group Key: ', tg.groupkey) AS description,
+            'Trainee Group' AS type,
+            'trainee_groups.php' AS url,
+            (
+                CASE 
+                    WHEN tg.group_name LIKE ? THEN 10 
+                    WHEN tg.groupkey LIKE ? THEN 5 
+                    ELSE 1 
+                END
+            ) AS relevance
+        FROM 
+            trainee_group tg
+        WHERE 
+            tg.group_name LIKE ? OR
+            tg.groupkey LIKE ?
+        ORDER BY 
+            relevance DESC
+        LIMIT 20
+    ";
+    
+    $params = [$searchTerm, $searchTerm, $searchTerm, $searchTerm];
+    
+    $result = safeExecuteQuery($mysqli, $query, $params, 'ssss');
+    
+    $groupResults = [];
+    if ($result) {
+        while ($row = $result->fetch_assoc()) {
+            $groupResults[] = [
+                'id' => $row['id'],
+                'title' => $row['title'],
+                'excerpt' => $row['description'],
+                'url' => $row['url'],
+                'type' => $row['type'],
+                'relevance' => $row['relevance']
+            ];
+        }
+    }
+    
+    return $groupResults;
+}
+
+// Search function for admin users
+function searchAdminUsers($mysqli, $searchTerm) {
+    // Check if who_there table exists
+    $checkTable = $mysqli->query("SHOW TABLES LIKE 'who_there'")->num_rows;
+    
+    if ($checkTable == 0) {
+        return [];
+    }
+    
+    $query = "
+        SELECT 
+            wt.whid AS id,
+            wt.realname AS title,
+            CONCAT(wt.email, ' - ', wt.admintype) AS description,
+            'Admin User' AS type,
+            CONCAT('adminusers.php?which=', wt.whid) AS url,
+            (
+                CASE 
+                    WHEN wt.realname LIKE ? THEN 10 
+                    WHEN wt.email LIKE ? THEN 5 
+                    WHEN wt.admintype LIKE ? THEN 3 
+                    ELSE 1 
+                END
+            ) AS relevance
+        FROM 
+            who_there wt
+        WHERE 
+            wt.realname LIKE ? OR
+            wt.email LIKE ? OR
+            wt.admintype LIKE ?
+        ORDER BY 
+            relevance DESC
+        LIMIT 20
+    ";
+    
+    $params = [$searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm];
+    
+    $result = safeExecuteQuery($mysqli, $query, $params, 'ssssss');
+    
+    $adminResults = [];
+    if ($result) {
+        while ($row = $result->fetch_assoc()) {
+            $adminResults[] = [
+                'id' => $row['id'],
+                'title' => $row['title'],
+                'excerpt' => $row['description'],
+                'url' => $row['url'],
+                'type' => $row['type'],
+                'relevance' => $row['relevance']
+            ];
+        }
+    }
+    
+    return $adminResults;
 }
 
 // Search function for blog posts
@@ -428,6 +538,8 @@ function globalSearch($mysqli, $query) {
             searchSections($mysqli, $searchTerm),
             searchDocumentation($mysqli, $searchTerm),
             searchTrainees($mysqli, $searchTerm),
+            searchTraineeGroups($mysqli, $searchTerm),
+            searchAdminUsers($mysqli, $searchTerm),
             searchBlogPosts($mysqli, $searchTerm)
         );
 

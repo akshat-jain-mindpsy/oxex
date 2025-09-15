@@ -125,7 +125,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                         <div class="card-title">Global Search</div>
                      </div>
                      <div class="card-body">
-                        <p>Search for sheets, categories, sections, and documentation across the system:</p>
+                        <p>Search for sheets, categories, sections, documentation, trainees, trainee groups, and admin users across the system:</p>
                         
                         <!-- Global search container -->
                         <div class="global-search-container">
@@ -322,6 +322,8 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
           'Section': 'badge-warning',
           'Documentation': 'badge-secondary',
           'Trainee': 'badge-dark',
+          'Trainee Group': 'badge-danger',
+          'Admin User': 'badge-primary',
           'Blog Post': 'badge-light'
         };
         
