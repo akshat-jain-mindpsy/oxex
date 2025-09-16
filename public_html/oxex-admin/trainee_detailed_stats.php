@@ -70,6 +70,15 @@ $primary_modality = isset($_GET['primary_modality']) ? $_GET['primary_modality']
 $min_sessions = isset($_GET['min_sessions']) ? (int)$_GET['min_sessions'] : 0; // minimum number of sessions
 $export_type = isset($_GET['export']) ? $_GET['export'] : '';
 
+// Ensure filter variables exist before export block; full values built later
+if (!isset($course_condition)) $course_condition = "";
+if (!isset($group_condition)) $group_condition = "";
+if (!isset($babcp_condition_simple)) $babcp_condition_simple = "";
+if (!isset($babcp_condition_with_tabs)) $babcp_condition_with_tabs = "";
+if (!isset($additional_conditions)) $additional_conditions = "";
+
+// (moved) Timeline JSON now served from trainee_stats.php
+
 // Handle export functionality - MUST be before any HTML output
 if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
     header('Content-Type: text/csv');
@@ -410,6 +419,31 @@ $listname = "Trainee Statistics";
          padding: 1rem;
          margin-bottom: 1rem;
       }
+
+      /* Loading overlay for charts */
+      .chart-container {
+         position: relative;
+         min-height: 220px;
+      }
+      .loading-overlay {
+         position: absolute;
+         inset: 0;
+         display: none;
+         align-items: center;
+         justify-content: center;
+         background: rgba(255,255,255,0.6);
+         z-index: 2;
+      }
+      .loading-overlay.active { display: flex; }
+      .spinner {
+         width: 28px;
+         height: 28px;
+         border: 3px solid #ccc;
+         border-top-color: #007bff;
+         border-radius: 50%;
+         animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
 
    </style>
 </head>
@@ -1380,6 +1414,8 @@ if ($debug_sample_result) {
                      </div>
                   </div>
                </div>
+               
+               
             </div>
 
             <!-- Supervisor Performance -->
@@ -1785,6 +1821,7 @@ if ($debug_sample_result) {
    let charts = {};
    let babcpPagination = null;
    
+   
    // Simple Pagination Class
    class SimplePagination {
        constructor(containerId, pageSizeId, infoId, paginationId) {
@@ -1966,6 +2003,28 @@ if ($debug_sample_result) {
    }
    
    // Simplified chart update functions
+   
+
+   function renderTraineeTimelineTable(rows) {
+           const tbody = document.querySelector('#traineeTimelineTable tbody');
+           if (!tbody) return;
+           tbody.innerHTML = '';
+           if (!rows || rows.length === 0) {
+               tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center">No data</td></tr>';
+               return;
+           }
+           rows.forEach(r => {
+               const tr = document.createElement('tr');
+               tr.innerHTML = `
+                   <td>${r.month}</td>
+                   <td>${r.total_cases}</td>
+                   <td>${r.babcp_training_cases}</td>
+                   <td>${r.supervised_cases}</td>
+                   <td>${r.cbt_cases}</td>
+               `;
+               tbody.appendChild(tr);
+           });
+   }
    function updateDifficultyChart(data, level) {
            const canvas = document.getElementById('difficultyChart');
            if (!canvas) return;
@@ -2192,6 +2251,8 @@ if ($debug_sample_result) {
            babcpPagination.setData(initialBabcpData);
        }
        
+       
+
        // Load charts with PHP data directly
        loadChartsWithPHPData();
    });
@@ -2200,7 +2261,7 @@ if ($debug_sample_result) {
    function loadChartsWithPHPData() {
        // Monthly Activity Trends Chart
        const monthlyData = <?php echo json_encode($monthly_activity); ?>;
-       console.log('Monthly activity data:', monthlyData);
+
        if (monthlyData && monthlyData.length > 0) {
            updateMonthlyChart(monthlyData, 'detailed');
        } else {
@@ -2234,7 +2295,6 @@ if ($debug_sample_result) {
        
        // BABCP Growth Chart
        const babcpGrowthData = <?php echo json_encode($babcp_growth_data); ?>;
-       console.log('BABCP growth data:', babcpGrowthData);
        if (babcpGrowthData && babcpGrowthData.length > 0) {
            updateBabcpGrowthChart(babcpGrowthData, 'detailed');
        } else {
@@ -2243,7 +2303,6 @@ if ($debug_sample_result) {
        
        // Clinical Issues Chart
        const clinicalIssuesData = <?php echo json_encode($babcp_summary_stats); ?>;
-       console.log('Clinical issues data:', clinicalIssuesData);
        if (clinicalIssuesData) {
            updateClinicalIssuesChart(clinicalIssuesData, 'detailed');
        }
@@ -2286,7 +2345,6 @@ if ($debug_sample_result) {
        
        // Handle both direct array and nested structure
        const trends = Array.isArray(data) ? data : (data.trends || []);
-       console.log('BABCP Growth Chart - trends data:', trends);
        
        // If no data, show empty chart with message
        if (trends.length === 0) {
@@ -2385,7 +2443,6 @@ if ($debug_sample_result) {
        const ctx = canvas.getContext('2d');
        ctx.clearRect(0, 0, canvas.width, canvas.height);
        
-       console.log('Clinical Issues Chart - data:', data);
        
        // Check if we have valid data
        if (!data || (data.total_anxiety_cases === 0 && data.total_depression_cases === 0 && data.total_trauma_cases === 0 && data.total_ocd_cases === 0)) {

@@ -69,6 +69,63 @@ $listname = "Dashboard";
 
 // Check permissions - allow all admin types to view BABCP stats
 if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+    // Lightweight JSON endpoint for per-trainee monthly timeline (honors basic filters)
+    if (isset($_GET['data_type']) && $_GET['data_type'] === 'trainee_timeline') {
+        header('Content-Type: application/json');
+        $timeline_trainkey = isset($_GET['trainkey']) ? (int)$_GET['trainkey'] : 0;
+        if ($timeline_trainkey <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Missing trainkey']);
+            exit;
+        }
+
+        $thisyear_tmp = date('Y');
+        $start_year_tmp = isset($_GET['start_year']) ? (int)$_GET['start_year'] : $thisyear_tmp;
+        $end_year_tmp = isset($_GET['end_year']) ? (int)$_GET['end_year'] : $thisyear_tmp;
+        $datestart_yyyymmdd_tmp = $start_year_tmp . '0101';
+        $dateend_yyyymmdd_tmp = $end_year_tmp . '1231';
+        $selected_course_tmp = isset($_GET['course']) ? (int)$_GET['course'] : 0;
+
+        $course_condition_tmp = '';
+        if ($selected_course_tmp > 0) {
+            $course_condition_tmp = " AND t.uid = " . (int)$selected_course_tmp;
+        }
+
+        $timeline_query = "
+            SELECT 
+                DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m') AS month,
+                COUNT(DISTINCT tl.logkey) AS total_cases,
+                COUNT(DISTINCT CASE WHEN st.str LIKE '%BABCP%' OR st.str LIKE '%Behavioural%' OR st.str LIKE '%Cognitive%' THEN tl.logkey END) AS babcp_training_cases,
+                COUNT(DISTINCT CASE WHEN st.str LIKE '%supervised%' OR st.str LIKE '%supervision%' OR st.str LIKE '%supervisor%' THEN tl.logkey END) AS supervised_cases,
+                COUNT(DISTINCT CASE WHEN st.str LIKE '%CBT%' THEN tl.logkey END) AS cbt_cases
+            FROM trainee_log tl
+            JOIN trainee_tbl t ON tl.trainkey = t.trainkey
+            LEFT JOIN select_types st ON tl.stid = st.stid
+            WHERE tl.date_added >= ? AND tl.date_added <= ?
+              AND t.trainkey = ?
+              $course_condition_tmp
+            GROUP BY DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m')
+            ORDER BY month ASC
+        ";
+
+        $stmt = $mysqli->prepare($timeline_query);
+        $stmt->bind_param('iii', $datestart_yyyymmdd_tmp, $dateend_yyyymmdd_tmp, $timeline_trainkey);
+        $stmt->execute();
+        $stmt->bind_result($month, $total_cases, $babcp_training_cases, $supervised_cases, $cbt_cases);
+        $data = [];
+        while ($stmt->fetch()) {
+            $data[] = [
+                'month' => $month,
+                'total_cases' => (int)$total_cases,
+                'babcp_training_cases' => (int)$babcp_training_cases,
+                'supervised_cases' => (int)$supervised_cases,
+                'cbt_cases' => (int)$cbt_cases,
+            ];
+        }
+        $stmt->close();
+
+        echo json_encode(['status' => 'success', 'data' => $data]);
+        exit;
+    }
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -141,6 +198,12 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
       .retry-button:hover {
          background-color: #c82333;
       }
+      /* Shared timeline styles */
+      .chart-container { position: relative; min-height: 220px; }
+      .loading-overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(255,255,255,0.6); z-index: 2; }
+      .loading-overlay.active { display: flex; }
+      .spinner { width: 28px; height: 28px; border: 3px solid #ccc; border-top-color: #007bff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
    </style>
 </head>
 
@@ -715,6 +778,67 @@ if ($courses === null) {
                </div>
             </div>
 
+            <!-- Individual Trainee Timeline -->
+            <div class="row mb-4">
+               <div class="col-12">
+                  <div class="card">
+                     <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                           <h5 class="card-title mb-0">Individual Trainee Timeline</h5>
+                           <small class="text-muted">Monthly trajectory for a selected trainee</small>
+                        </div>
+                        <div class="d-flex align-items-center">
+                           <label for="timelineTraineeSelect" class="mr-2 mb-0">Select Trainee</label>
+                           <select id="timelineTraineeSelect" class="form-control form-control-sm" style="min-width: 240px;">
+                              <option value="">-- Choose Trainee --</option>
+                              <?php
+                              $trainee_list_query = "SELECT t.trainkey, t.name 
+                                FROM trainee_tbl t 
+                                WHERE t.trainkey IS NOT NULL 
+                                  AND t.trainkey > 0 
+                                  AND NOT EXISTS (
+                                      SELECT 1 FROM who_there w 
+                                      WHERE w.realname = t.name 
+                                        AND w.admintype IN ('AT','AO','AE','SO','SE','DV')
+                                  )
+                                  $course_condition $cohort_condition 
+                                ORDER BY t.name";
+                              $trainee_list_res = $mysqli->query($trainee_list_query);
+                              if ($trainee_list_res) {
+                                 while ($trow = $trainee_list_res->fetch_assoc()) {
+                                    echo '<option value="' . (int)$trow['trainkey'] . '">' . htmlspecialchars($trow['name']) . '</option>';
+                                 }
+                              }
+                              ?>
+                           </select>
+                        </div>
+                     </div>
+                     <div class="card-body">
+                        <div class="chart-container">
+                           <div class="loading-overlay" id="timelineLoading"><div class="spinner"></div></div>
+                           <canvas id="traineeTimelineChart" width="400" height="200"></canvas>
+                        </div>
+                        <div class="table-responsive mt-3">
+                           <table class="table table-striped table-sm" id="traineeTimelineTable">
+                              <thead>
+                                 <tr>
+                                    <th>Month</th>
+                                    <th>Total Cases</th>
+                                    <th>BABCP Training</th>
+                                    <th>Supervised</th>
+                                    <th>CBT</th>
+                                 </tr>
+                              </thead>
+                              <tbody>
+                                 <tr><td colspan="5" class="text-muted text-center">Select a trainee to view timeline</td></tr>
+                              </tbody>
+                           </table>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+
             <!-- Performance Monitoring Panel (only visible to admins) -->
             <?php if ($admintype == 'AT' || $admintype == 'DV'): ?>
             <div class="row mb-4">
@@ -846,6 +970,8 @@ if ($courses === null) {
    
    // Initialize charts object
    let charts = {};
+   let traineeTimelineChart = null;
+   let traineeTimelineController = null;
    
 
 
@@ -998,6 +1124,68 @@ if ($courses === null) {
        });
    }
 
+   function renderTraineeTimelineChart(rows) {
+       const canvas = document.getElementById('traineeTimelineChart');
+       if (!canvas) return;
+       const ctx = canvas.getContext('2d');
+       if (!rows || rows.length === 0) {
+           ctx.clearRect(0,0,canvas.width,canvas.height);
+           ctx.fillStyle = '#666';
+           ctx.font = '16px Arial';
+           ctx.textAlign = 'center';
+           ctx.fillText('No timeline data', canvas.width/2, canvas.height/2);
+           return;
+       }
+       const labels = rows.map(r => r.month);
+       const dsTotal = rows.map(r => r.total_cases);
+       const dsBabcp = rows.map(r => r.babcp_training_cases);
+       const dsSup = rows.map(r => r.supervised_cases);
+       const dsCbt = rows.map(r => r.cbt_cases);
+       if (!traineeTimelineChart) {
+           traineeTimelineChart = new Chart(ctx, {
+               type: 'line',
+               data: {
+                   labels,
+                   datasets: [
+                       { label: 'Total Cases', data: dsTotal, borderColor: 'rgba(54, 162, 235, 1)', backgroundColor: 'rgba(54, 162, 235, 0.2)', tension: 0.1 },
+                       { label: 'BABCP Training', data: dsBabcp, borderColor: 'rgba(75, 192, 192, 1)', backgroundColor: 'rgba(75, 192, 192, 0.2)', tension: 0.1 },
+                       { label: 'Supervised', data: dsSup, borderColor: 'rgba(255, 206, 86, 1)', backgroundColor: 'rgba(255, 206, 86, 0.2)', tension: 0.1 },
+                       { label: 'CBT', data: dsCbt, borderColor: 'rgba(255, 99, 132, 1)', backgroundColor: 'rgba(255, 99, 132, 0.2)', tension: 0.1 }
+                   ]
+               },
+               options: { responsive: true, maintainAspectRatio: false, animation: { duration: 300 } }
+           });
+       } else {
+           traineeTimelineChart.data.labels = labels;
+           traineeTimelineChart.data.datasets[0].data = dsTotal;
+           traineeTimelineChart.data.datasets[1].data = dsBabcp;
+           traineeTimelineChart.data.datasets[2].data = dsSup;
+           traineeTimelineChart.data.datasets[3].data = dsCbt;
+           traineeTimelineChart.update('active');
+       }
+   }
+
+   function renderTraineeTimelineTable(rows) {
+       const tbody = document.querySelector('#traineeTimelineTable tbody');
+       if (!tbody) return;
+       tbody.innerHTML = '';
+       if (!rows || rows.length === 0) {
+           tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center">No data</td></tr>';
+           return;
+       }
+       rows.forEach(r => {
+           const tr = document.createElement('tr');
+           tr.innerHTML = `
+               <td>${r.month}</td>
+               <td>${r.total_cases}</td>
+               <td>${r.babcp_training_cases}</td>
+               <td>${r.supervised_cases}</td>
+               <td>${r.cbt_cases}</td>
+           `;
+           tbody.appendChild(tr);
+       });
+   }
+
    // Debug Panel Functions
    function toggleDebugPanel() {
        const panel = document.getElementById('debugPanel');
@@ -1071,6 +1259,58 @@ if ($courses === null) {
                // No need to prevent default
            });
        }
+
+       // Event listener for trainee timeline select
+        const traineeSelect = document.getElementById('timelineTraineeSelect');
+        if (traineeSelect) {
+            traineeSelect.addEventListener('change', function() {
+                const raw = this.value;
+                const trainkey = parseInt(raw, 10);
+                if (!trainkey || trainkey <= 0 || Number.isNaN(trainkey)) {
+                    console.warn('[Timeline] Ignoring invalid trainkey:', raw);
+                    return;
+                }
+                const loader = document.getElementById('timelineLoading');
+                this.disabled = true;
+                if (loader) loader.classList.add('active');
+                if (traineeTimelineController) {
+                    try { traineeTimelineController.abort(); } catch (e) {}
+                }
+                traineeTimelineController = new AbortController();
+                const signal = traineeTimelineController.signal;
+                const params = new URLSearchParams(window.location.search);
+                params.set('data_type', 'trainee_timeline');
+                params.set('trainkey', trainkey);
+                console.log('[Timeline] Request', { trainkey, query: params.toString() });
+                fetch('trainee_stats.php?' + params.toString(), { credentials: 'same-origin', signal })
+                    .then(r => r.json())
+                    .then(json => {
+                        console.log('[Timeline] Status:', json.status);
+                        if (json.status === 'success') {
+                            console.log('[Timeline] Rows:', json.data);
+                            renderTraineeTimelineChart(json.data);
+                            renderTraineeTimelineTable(json.data);
+                        } else {
+                            console.warn('[Timeline] Message:', json.message || 'No data');
+                            renderTraineeTimelineChart([]);
+                            renderTraineeTimelineTable([]);
+                        }
+                    })
+                    .catch((err) => {
+                        if (err && err.name === 'AbortError') {
+                            console.log('[Timeline] Aborted');
+                            return;
+                        }
+                        console.error('[Timeline] Error:', err);
+                        renderTraineeTimelineChart([]);
+                        renderTraineeTimelineTable([]);
+                    })
+                    .finally(() => {
+                        this.disabled = false;
+                        if (loader) loader.classList.remove('active');
+                    });
+            });
+        }
    });
    
    // Function to load charts with PHP data
