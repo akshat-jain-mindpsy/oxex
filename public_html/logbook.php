@@ -661,6 +661,11 @@ function validateAndConvertTime($timeValue) {
         position: relative;
       }
       
+      /* Simple fix for dropdown */
+      .dropdown-menu {
+        z-index: 9999 !important;
+      }
+      
       /* Ensure main content area has proper z-index */
       #main {
         z-index: 10;
@@ -675,6 +680,20 @@ function validateAndConvertTime($timeValue) {
         z-index: 1002 !important;
         position: relative !important;
       }
+    /* Minimal fix: ensure header dropdown isn't clipped by page containers */
+    .container, .container-fluid {
+      overflow: visible !important;
+    }
+    /* Ensure dropdown stacks above page content */
+    .dropdown-menu {
+      z-index: 2000 !important;
+    }
+    /* Give banner/subnav a stacking context above content if needed */
+    .bg_nhsuk-blue,
+    #subnavbar {
+      position: relative;
+      z-index: 1500;
+    }
     </style>
   </head>
   <?php
@@ -697,11 +716,11 @@ function validateAndConvertTime($timeValue) {
               echo "<div class=\"row justify-content-center mb-4\">";
               echo "<div class=\"col-md-10\">";
               echo "<div class=\"card border-primary\">";
-              echo "<div class=\"card-header text-white d-flex justify-content-between align-items-center\" style=\"cursor: pointer; z-index: 1100; position: relative; background-color: #025DB8;\" onclick=\"toggleNotes()\">";
-              echo "<h2 class=\"mb-0\" style=\"z-index: 1101; position: relative;\">" . htmlentities($tab_name) . "</h2>";
-              echo "<div class=\"d-flex align-items-center\" style=\"z-index: 1102; position: relative;\">";
-              echo "<i class=\"fa fa-arrow-down text-white mr-2\" style=\"opacity: 0.9; font-size: 1rem; z-index: 1103; position: relative;\"></i>"; 
-              echo "<i class=\"fa fa-chevron-down text-white\" id=\"notesToggleIcon\" style=\"font-size: 2rem; font-weight: 900; color: #ffffff !important; z-index: 1104; position: relative; background-color: #025DB8; padding: 5px;\">⌄</i>";
+              echo "<div class=\"card-header text-white d-flex justify-content-between align-items-center\" style=\"cursor: pointer; background-color: #025DB8;\" onclick=\"toggleNotes()\">";
+              echo "<h2 class=\"mb-0\">" . htmlentities($tab_name) . "</h2>";
+              echo "<div class=\"d-flex align-items-center\">";
+              echo "<i class=\"fa fa-arrow-down text-white mr-2\" style=\"opacity: 0.9; font-size: 1rem;\"></i>"; 
+              echo "<i class=\"fa fa-chevron-down text-white\" id=\"notesToggleIcon\" style=\"font-size: 2rem; font-weight: 900; color: #ffffff !important; background-color: #025DB8; padding: 5px;\">⌄</i>";
               echo "</div>";
               echo "</div>";
               
@@ -751,6 +770,26 @@ function validateAndConvertTime($timeValue) {
             
             //echo $tab_notes;
             //echo "modifylog $modifylog";
+            
+            // Debug: Show what tables user has access to
+            echo "<!-- DEBUG: User has access to these tables: -->";
+            $debug_tables = $mysqli->prepare("SELECT tbid, tab_name FROM tabs_tbl WHERE isvis = 1 ORDER BY sort_order");
+            $debug_tables->execute();
+            $debug_tables->store_result();
+            $debug_tables->bind_result($debug_tbid, $debug_tab_name);
+            while ($debug_tables->fetch()){
+              $debug_isok = 0;
+              $debug_vids = $mysqli->prepare("SELECT ttid FROM trainee_tab_link WHERE tbid = ? AND trainkey = ? ");
+              $debug_vids->bind_param("is", $debug_tbid, $trainkey);
+              $debug_vids->execute();
+              $debug_vids->store_result();
+              $debug_isok = $debug_vids->num_rows;
+              $debug_vids->close();
+              if ($debug_isok == 1) {
+                echo "<!-- DEBUG: User can access: " . htmlentities($debug_tab_name) . " (ID: $debug_tbid) -->";
+              }
+            }
+            $debug_tables->close();
             ?>
           </div>
         </div>
@@ -1544,6 +1583,7 @@ function validateAndConvertTime($timeValue) {
         }
       }
     }
+    
   </script>
 
 </body>
