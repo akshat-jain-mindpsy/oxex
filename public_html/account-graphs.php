@@ -581,7 +581,7 @@ $tables_result = $mysqli->query($tables_query);
                 <!-- Field Selection Section for Combinations -->
                 <div id="combinationFieldSelectionSection" style="display:none;">
                   <hr>
-                  <h5>Select Fields for Graph Combinations</h5>
+                  <h5>Select Categories for Graph Combinations</h5>
                   <div class="alert alert-info">
                     <i class="fas fa-info-circle"></i> Select multiple fields to create comprehensive visualizations of your data.
                   </div>
@@ -589,7 +589,7 @@ $tables_result = $mysqli->query($tables_query);
                   <div class="row">
                     <div class="col-md-6">
                       <div class="form-group">
-                        <label class="col-form-label"><strong>X-Axis Fields (select multiple)</strong></label>
+                        <label class="col-form-label"><strong>X-Axis Categories (select multiple)</strong></label>
                         <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
                           <div id="xAxisFieldsList">
                             <!-- Checkboxes will be populated here -->
@@ -600,7 +600,7 @@ $tables_result = $mysqli->query($tables_query);
                     </div>
                     <div class="col-md-6">
                       <div class="form-group">
-                        <label class="col-form-label"><strong>Y-Axis Fields (select multiple)</strong></label>
+                        <label class="col-form-label"><strong>Y-Axis Categories (select multiple)</strong></label>
                         <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
                           <div id="yAxisFieldsList">
                             <!-- Checkboxes will be populated here -->
@@ -819,7 +819,7 @@ while ($tableset->fetch()){
                                     }
                                 });
                             } else {
-                                alert('Error loading fields: ' + (response.message || 'Unknown error'));
+                                alert('Error loading categories: ' + (response.message || 'Unknown error'));
                                 return;
                             }
                             
@@ -859,9 +859,9 @@ while ($tableset->fetch()){
                                 errorMessage = `HTTP Error ${xhr.status}: ${error}`;
                             }
                             
-                            alert('Error loading fields: ' + errorMessage);
+                            alert('Error loading categories: ' + errorMessage);
                             
-                            $('#fieldSelectionPrompt').html('<p class="text-danger">Error loading fields. Please try again.</p>');
+                            $('#fieldSelectionPrompt').html('<p class="text-danger">Error loading categories. Please try again.</p>');
                         }
                     });
                 } else {

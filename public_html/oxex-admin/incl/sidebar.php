@@ -69,9 +69,10 @@ $admintype = $admintype ?? 'Unknown';
                    <?php if ($admintype == "DV" || $admintype == "AT"): ?>
                    <li class="sidebar-subnav-header-sub">Structure</li>
                   <?php
-                     $url = 'sections.php';
-                     $page = 'Sections';
-                     if ($thispage == $url) {
+                     $url = 'sheets.php';
+                     $urldetail = 'sheetdetail.php';
+                     $page = 'Sheets';
+                     if ($thispage == $url || $thispage == $urldetail) {
                         $isactive = ' active';
                         $whichDocModal = 3;
                      } else {
@@ -80,10 +81,9 @@ $admintype = $admintype ?? 'Unknown';
                      echo "<li class=\"$isactive\"><a href=\"$url\" title=\"$page\"><span>$page</span></a></li>";
                   ?>
                   <?php
-                     $url = 'sheets.php';
-                     $urldetail = 'sheetdetail.php';
-                     $page = 'Sheets';
-                     if ($thispage == $url || $thispage == $urldetail) {
+                     $url = 'sections.php';
+                     $page = 'Sections';
+                     if ($thispage == $url) {
                         $isactive = ' active';
                         $whichDocModal = 3;
                      } else {

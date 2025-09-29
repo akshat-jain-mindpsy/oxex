@@ -355,7 +355,7 @@ $table_stmt->close();
                                         <div class="col-md-4">
                                             <div class="card">
                                                 <div class="card-header">
-                                                    <h5 class="card-title mb-0">Unassigned Fields</h5>
+                                                    <h5 class="card-title mb-0">Unassigned Categories</h5>
                                                 </div>
                                                 <div class="card-body">
                                                     <div id="unassigned-fields" class="fields-container" data-section-id="0">

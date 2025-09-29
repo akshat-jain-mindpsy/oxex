@@ -20,6 +20,30 @@ $stmt->fetch();
 $numrows = $stmt->num_rows;
 $stmt->close();
 
+// Check if this is an admin reset token by looking up the usrkey in who_there table
+$is_admin_token = false;
+if ($numrows == 1 && $usrkey) {
+  $admin_check = $mysqli->prepare("SELECT whid FROM who_there WHERE usrkey = ? LIMIT 1");
+  $admin_check->bind_param('s', $usrkey);
+  $admin_check->execute();
+  $admin_check->store_result();
+  $admin_check->bind_result($whid);
+  $admin_check->fetch();
+  $is_admin_token = ($admin_check->num_rows == 1);
+  $admin_check->close();
+  
+  // If this is an admin token, redirect to admin reset page
+  if ($is_admin_token) {
+    header("Location: https://www.oxex.co.uk/oxex-admin/r3.php?t=" . urlencode($_GET['t']));
+    exit();
+  }
+}
+
+// Define error message texts
+$page_txt4 = "Reset links can only be used once. You will need to apply again to reset your password";
+$page_txt5 = "That reset link is invalid. You will need to apply again to reset your password. ";
+$page_txt6 = "That reset link has timed-out. You will need to apply again to reset your password.";
+
 // error message texts, remove html
 $page_txt4 = str_replace("<p>", " ", $page_txt4);
 $page_txt4 = str_replace("</p>", " ", $page_txt4);
@@ -28,28 +52,26 @@ $page_txt5 = str_replace("</p>", " ", $page_txt5);
 $page_txt6 = str_replace("<p>", " ", $page_txt6);
 $page_txt6 = str_replace("</p>", " ", $page_txt6);
 
-if ($invalidated == 0) {
-  // token already invalidated
-  $valid_attampt = 0;
-  $err_msg = $err_msg.$page_txt4;
-}
 if ($numrows != 1) {
   // not found
   $valid_attampt = 0;
-  $err_msg = $err_msg.$page_txt5;
-}
-if ($timeexp > $expired) {
+  $err_msg = $page_txt5;
+} elseif ($invalidated == 1) {
+  // token already invalidated
+  $valid_attampt = 0;
+  $err_msg = $page_txt4;
+} elseif ($timestamp > $timeexp) {
   // too late
   $valid_attampt = 0;
-  $err_msg = $err_msg.$page_txt6;
+  $err_msg = $page_txt6;
 }
 if ($valid_attampt == 1) {
   // ok
-  $cancel = 0;
+  $used = 1;
   $err_msg = $err_msg.' ';
   // set record to say it's now been used
   $stmt = $mysqli->prepare("UPDATE reset_tbl SET invalidated = ? WHERE usrkey = ?"); 
-  $stmt->bind_param("is", $cancel, $usrkey);
+  $stmt->bind_param("is", $used, $usrkey);
   $stmt->execute();
   $stmt->close();
 }

@@ -80,7 +80,7 @@ if ($newadmin == 'newadmin') {
                                  <th class="sort-alpha" data-priority="1">Competency</th>
                                  <th>Sort Order</th>
                                  <th>Default for Trainees?</th>
-                                 <th>No. of Fields</th>
+                                 <th>No. of Categories</th>
                                  <th>Actions</th>
                               </tr>
                            </thead>

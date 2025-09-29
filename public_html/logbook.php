@@ -1171,10 +1171,10 @@ function validateAndConvertTime($timeValue) {
               }
               
               if ($field_count == 0) {
-                echo '<div class="col-12"><p class="text-muted">No fields found in this section</p></div>';
+                echo '<div class="col-12"><p class="text-muted">No categories found in this section</p></div>';
               }
             } else {
-              echo '<div class="col-12"><p class="text-muted">No fields found in this section</p></div>';
+              echo '<div class="col-12"><p class="text-muted">No categories found in this section</p></div>';
             }
             
             echo '</div>'; // Close section-container
@@ -1183,7 +1183,7 @@ function validateAndConvertTime($timeValue) {
         
         // Add a section for unsectioned fields (fields not belonging to any section)
         echo '<div class="col-12 mb-4 d-flex justify-content-between align-items-center">';
-        echo '<h4>Other Fields</h4>';
+        echo '<h4>Other Categories</h4>';
         echo '<button type="button" class="btn btn-secondary btn-sm clear-section" data-section="unsectioned">Clear</button>';
         echo '</div>';
 
@@ -1316,7 +1316,7 @@ function validateAndConvertTime($timeValue) {
             echo '</div></div>';
           }
         } else {
-          echo '<div class="col-12"><p class="text-muted">No additional fields found</p></div>';
+          echo '<div class="col-12"><p class="text-muted">No additional categories found</p></div>';
         }
 
         echo '</div>'; // Close unsectioned section-container

@@ -6,7 +6,7 @@ $validform = 1;
 $today = date("H:i j/m/Y");#
 $timestamp = time();
 $expired = strtotime('+24 hour', $timestamp);
-$invalidated = 1;
+$invalidated = 0;
 $email = isset($_POST['email']) ? $_POST['email'] : '';
 $err_msg = '';
 $tid = 0;
@@ -42,13 +42,13 @@ if ($tid < 1) {
 if ($valid_email != "no") {
   // create reset info and email user
   $token = substr(md5(rand()), 0, 32);
-  $hashed_salt = '93b97938d3249309c9f30a25318671e911d0d5f6c06820fc0ee9d92fc3bb1f19fedf55735142864a93ff4e5c128c41c4c613728cf247cc2eab1ecad9e4402448';
-  $hashed_token = hash('sha512', $token.$hashed_salt);
+  $hashed_token = hash('sha512', $token.$reset_salt);
   $salt = '';
   
   // write to reset table
-  $insert_stmt = $mysqli->prepare("INSERT INTO reset_tbl (usrkey, timesent, timeexp, req_date, tokenhash, tokensalt, invalidated) VALUES (?, ?, ?, ?, ?, ?, ? )");
-    $insert_stmt->bind_param("ssssssi", $trainkey, $timestamp, $expired, $today, $hashed_token, $salt, $invalidated );
+  $pid = 0; // Set pid to 0 as seen in existing records
+  $insert_stmt = $mysqli->prepare("INSERT INTO reset_tbl (pid, usrkey, timesent, timeexp, req_date, tokenhash, tokensalt, invalidated) VALUES (?, ?, ?, ?, ?, ?, ?, ? )");
+    $insert_stmt->bind_param("issssssi", $pid, $trainkey, $timestamp, $expired, $today, $hashed_token, $salt, $invalidated );
     $insert_stmt->execute();
     $insert_stmt->close();
   
@@ -73,33 +73,25 @@ if ($valid_email != "no") {
   $message .= "$email_body3\n\n";
   
 
-  require 'OXEXfolder/PHPMailerAutoload.php';
-  $MailHost = 'smtp.stackmail.com';
-  $FromEmail = 'admin@oxex.co.uk';
-  $frompassword = '3u(**zL€bWA[';
-  //$BCCEmail = 'design@icatching.co.uk';
-
-  $mail = new PHPMailer;
-  $mail->CharSet = 'UTF-8';
-
-  //$mail->Debugoutput = 'html';
-  $mail->isSMTP();
-  $mail->Host = $MailHost;
-  $mail->SMTPAuth = true;
-  $mail->Username = $FromEmail;
-  $mail->Password = $frompassword;
-  $mail->Port = 587;
-  $mail->setFrom($FromEmail, 'E-log Website');
-  $mail->isHTML(false);
-  $mail->AddAddress($valid_email);
-  //$mail->AddBCC($BCCEmail);
-  $mail->Subject = $subject;
-  $mail->Body = $message;
-  if(!$mail->send()) {
-      $err_msg = 'We cannot fulfil your request at the moment. ';
-      echo 'Mailer Error: ' . $mail->ErrorInfo;
-  } else {
+  // Use secure mail handler with multiple fallback options
+  require 'OXEXfolder/secure_mail.php';
+  
+  // Log email attempt
+  error_log("=== PASSWORD RESET EMAIL ATTEMPT (SECURE) ===");
+  error_log("Trainee email: $valid_email");
+  error_log("Subject: $subject");
+  error_log("Message length: " . strlen($message) . " characters");
+  
+  $mail = new SecureMail();
+  
+  if($mail->send($valid_email, $subject, $message, 'noreply@oxex.co.uk', 'E-log Website')) {
+      error_log("✅ SECURE EMAIL PROCESSED SUCCESSFULLY for: $valid_email");
       $err_msg = $err_msg."$page_txt9 $valid_email. $page_txt10 ";
+      $err_msg .= "<br><small style='color: green;'>✅ Email sent successfully! Check your inbox or contact admin if not received.</small>";
+  } else {
+      error_log("❌ SECURE EMAIL PROCESSING FAILED for: $valid_email");
+      $err_msg = 'We cannot fulfil your request at the moment. ';
+      $err_msg .= "<br><small style='color: red;'>❌ Email processing failed. Please try again later or contact support.</small>";
   }
 }
 ?><!doctype html>

@@ -267,7 +267,7 @@ $session_timeout_js = "";
             <div class="container mt-4">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h4>Database Tables and Fields</h4>
+                        <h4>Database Tables and Categories</h4>
                         <button type="button" class="btn btn-success" data-toggle="modal" data-target="#selectTableModal">
                             <i class="fa fa-plus"></i> Add Existing Table to Template
                         </button>
@@ -278,7 +278,7 @@ $session_timeout_js = "";
                                 <thead class="thead-dark">
                                     <tr>
                                         <th>Table Name</th>
-                                        <th>Fields</th>
+                                        <th>Categories</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -367,7 +367,7 @@ $session_timeout_js = "";
                 <div class="col-12">
                     <div class="card">
                         <div class="card-header">
-                            <h4>CSV Template Tables and Fields</h4>
+                            <h4>CSV Template Tables and Categories</h4>
                         </div>
                         <div class="card-body">
                             <div class="table-responsive">
@@ -375,7 +375,7 @@ $session_timeout_js = "";
                                     <thead class="thead-dark">
                                         <tr>
                                             <th>Table Name</th>
-                                            <th>Fields</th>
+                                            <th>Categories</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
@@ -508,7 +508,7 @@ $session_timeout_js = "";
                                         endif; 
                                         ?>
                                     </div>
-                                    <button type="button" class="btn btn-success mt-2" data-toggle="modal" data-target="#selectTableModal">Add Fields to Template</button>
+                                    <button type="button" class="btn btn-success mt-2" data-toggle="modal" data-target="#selectTableModal">Add Categories to Template</button>
                                 </div>
 
                                 <div class="form-group">
@@ -640,7 +640,7 @@ $session_timeout_js = "";
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Select Fields for <span id="selectedTableName"></span></h5>
+                    <h5 class="modal-title">Select Categories for <span id="selectedTableName"></span></h5>
                     <button type="button" class="close" data-dismiss="modal">&times;</button>
                 </div>
                 <div class="modal-body">
@@ -651,7 +651,7 @@ $session_timeout_js = "";
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="add-selected-fields-btn">Add Selected Fields</button>
+                    <button type="button" class="btn btn-primary" id="add-selected-fields-btn">Add Selected Categories</button>
                 </div>
             </div>
         </div>
@@ -780,7 +780,7 @@ $session_timeout_js = "";
                     const errorMsg = document.createElement('div');
                     errorMsg.className = 'alert alert-danger';
                     errorMsg.innerHTML = `
-                        <strong>Error Loading Fields</strong>
+                        <strong>Error Loading Categories</strong>
                         <p>${error.message}</p>
                         <small>Please contact support or check the server logs.</small>
                     `;
@@ -1078,7 +1078,7 @@ $session_timeout_js = "";
                         const errorMsg = document.createElement('div');
                         errorMsg.className = 'alert alert-danger';
                         errorMsg.innerHTML = `
-                            <strong>Error Loading Fields</strong>
+                            <strong>Error Loading Categories</strong>
                             <p>${error.message}</p>
                             <small>Please contact support or check the server logs.</small>
                         `;
@@ -1123,7 +1123,7 @@ $session_timeout_js = "";
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    alert('Fields added to template successfully!');
+                    alert('Categories added to template successfully!');
                     location.reload();
                 } else {
                     alert(`Error: ${data.message}`);
@@ -1131,7 +1131,7 @@ $session_timeout_js = "";
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('An error occurred while adding fields to the template.');
+                alert('An error occurred while adding categories to the template.');
             });
             
             $('#selectFieldModal').modal('hide');
@@ -1353,7 +1353,7 @@ $session_timeout_js = "";
                     const errorMsg = document.createElement('div');
                     errorMsg.className = 'alert alert-danger';
                     errorMsg.innerHTML = `
-                        <strong>Error Loading Fields</strong>
+                        <strong>Error Loading Categories</strong>
                         <p>${error.message}</p>
                         <small>Please contact support or check the server logs.</small>
                     `;

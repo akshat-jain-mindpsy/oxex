@@ -272,7 +272,7 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                    <div class="row">
                                        <div class="col-md-6">
                                            <div class="form-group">
-                                               <label class="col-form-label"><strong>X-Axis Fields (select multiple)</strong></label>
+                                               <label class="col-form-label"><strong>X-Axis Categories (select multiple)</strong></label>
                                                <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
                                                    <div id="xAxisFieldsList">
                                                        <!-- Checkboxes will be populated here -->
@@ -283,7 +283,7 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                        </div>
                                        <div class="col-md-6">
                                            <div class="form-group">
-                                               <label class="col-form-label"><strong>Y-Axis Fields (select multiple)</strong></label>
+                                               <label class="col-form-label"><strong>Y-Axis Categories (select multiple)</strong></label>
                                                <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
                                                    <div id="yAxisFieldsList">
                                                        <!-- Checkboxes will be populated here -->
@@ -470,7 +470,7 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                    // No need to populate single field selects
                                });
                            } else {
-                               alert('Error loading fields: ' + (response.message || 'Unknown error'));
+                               alert('Error loading categories: ' + (response.message || 'Unknown error'));
                                return;
                            }
                            

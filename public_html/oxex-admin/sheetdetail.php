@@ -14,7 +14,7 @@ if(!(login_check($mysqli) == true &&
 
 // Page setup
 $pagetitle = "Sheet Details";
-$subtitle = "Sheet Fields";
+$subtitle = "Sheet Categories";
 $listurl = "sheets.php";
 $listname = "Sheets";
 
@@ -346,7 +346,7 @@ $changename = htmlspecialchars($tab_name);
           width: 100%;
       }
       
-      .edit-option-btn, .delete-option-btn {
+      .edit-option-btn, .delete-option-btn, .move-up-btn, .move-down-btn {
           margin-left: 5px;
       }
       
@@ -357,6 +357,11 @@ $changename = htmlspecialchars($tab_name);
       
       .edit-option-btn:hover {
           background-color: #17a2b8;
+          color: white;
+      }
+      
+      .move-up-btn:hover, .move-down-btn:hover {
+          background-color: #6c757d;
           color: white;
       }
       
@@ -544,25 +549,28 @@ $changename = htmlspecialchars($tab_name);
                </div>
             </div>
 
-            <!-- Sheet Field Management Section -->
+            <!-- Sheet Category Management Section -->
             <div class="row">
                <div class="col-12">
                            <div class="form-group mt-2 w-100" style="margin-bottom: 1.5rem; padding: 1.5rem; background: #AEB7BD; border-radius: 8px;">
-                              <h4 class="mb-3">Sheet Field Management</h4>
-                              <p class="text-dark">Manage the fields that appear in this table. You can add new fields, change their order, or remove existing fields.</p>
+                              <h4 class="mb-3">Sheet Category Management</h4>
+                              <p class="text-dark">Manage the categories that appear in this table. You can add new categories, change their order, or remove existing categories.</p>
+                              <div class="alert alert-info mt-2 mb-3">
+                                 <i class="fas fa-info-circle"></i> <strong>Note:</strong> If you need to create a new category, please go to the <a href="sections.php" class="alert-link">Categories section</a> first.
+                              </div>
                               <div class="d-flex">
                                 <button class="btn btn-success mr-2" data-toggle="modal" data-target="#addFieldModal">
-                                   <i class="fa fa-plus"></i> Add New Field
+                                   <i class="fa fa-plus"></i> Add New Category
                                 </button>
                               </div>
                         </div>
                      </div>
                   </div>
                   
-            <!-- Fields preview -->
+            <!-- Categories preview -->
             <div class="card mb-0 w-100 logbook-preview-card" style="box-shadow:none;border-radius:0;">
                 <div class="card-header bg-info text-white" style="border-radius:0;">
-                    <div class="card-title mb-0">Logbook Preview - How fields will appear to users</div>
+                    <div class="card-title mb-0">Logbook Preview - How categories will appear to users</div>
                 </div>
                 <div class="card-body p-0" style="padding:0 !important;">
                 <?php
@@ -683,7 +691,7 @@ $changename = htmlspecialchars($tab_name);
                   } else {
                     // No fields in this section
                     echo '<div class="col-12 text-center py-3 empty-section-placeholder m-0">';
-                    echo '<p class="text-muted mb-0">No fields assigned to this section. Add fields using the "Add New Field" button above.</p>';
+                    echo '<p class="text-muted mb-0">No categories assigned to this section. Add categories using the "Add New Category" button above.</p>';
                     echo '</div>';
                   }
                   
@@ -697,8 +705,8 @@ $changename = htmlspecialchars($tab_name);
                   echo '<div class="section-container m-0 p-0">';
                   echo '<div class="section-header d-flex justify-content-between align-items-center m-0 p-2" style="background:#f8f9fa;border-left:4px solid #09c;">';
                   echo '<div>';
-                  echo '<h5 class="mb-1">Available Fields</h5>';
-                  echo '<p class="text-muted mb-0"><small>Fields ready to be assigned to sections - use arrow buttons to organize or assign to a specific section</small></p>';
+                  echo '<h5 class="mb-1">Available Categories</h5>';
+                  echo '<p class="text-muted mb-0"><small>Categories ready to be assigned to sections - use arrow buttons to organize or assign to a specific section</small></p>';
                   echo '</div>';
                   echo '</div>';
                   
@@ -969,6 +977,12 @@ $changename = htmlspecialchars($tab_name);
                                              <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
                                                  <span class="option-text">${option}</span>
                                                  <div class="btn-group btn-group-sm">
+                                                     <button type="button" class="btn btn-outline-secondary move-up-btn" title="Move Up">
+                                                         <i class="fas fa-arrow-up"></i>
+                                                     </button>
+                                                     <button type="button" class="btn btn-outline-secondary move-down-btn" title="Move Down">
+                                                         <i class="fas fa-arrow-down"></i>
+                                                     </button>
                                                      <button type="button" class="btn btn-outline-info edit-option-btn">
                                                          <i class="fas fa-pencil-alt"></i>
                                                      </button>
@@ -1344,15 +1358,15 @@ $changename = htmlspecialchars($tab_name);
                              fieldsHtml += '</div>';
                              $currentFields.html(fieldsHtml);
                          } else {
-                             $currentFields.html('<small class="text-muted">No fields currently in this section</small>');
+                             $currentFields.html('<small class="text-muted">No categories currently in this section</small>');
                          }
                      } else {
-                         $currentFields.html('<small class="text-danger">Error loading fields: ' + (response.message || 'Unknown error') + '</small>');
+                         $currentFields.html('<small class="text-danger">Error loading categories: ' + (response.message || 'Unknown error') + '</small>');
                      }
                  },
                  error: function(xhr, status, error) {
                      console.error('Error loading section fields:', error);
-                     $currentFields.html('<small class="text-danger">Error loading fields: ' + error + '</small>');
+                     $currentFields.html('<small class="text-danger">Error loading categories: ' + error + '</small>');
                  }
              });
              
@@ -1378,7 +1392,7 @@ $changename = htmlspecialchars($tab_name);
                              $moveFieldsDropdown.append(`<option value="${field.stid}">${field.field_name}${sectionInfo}</option>`);
                          });
                      } else {
-                         $moveFieldsDropdown.append('<option value="" disabled>No fields available to move</option>');
+                         $moveFieldsDropdown.append('<option value="" disabled>No categories available to move</option>');
                      }
                  }
              });
@@ -1871,6 +1885,12 @@ $changename = htmlspecialchars($tab_name);
                                         <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
                                             <span class="option-text">${option}</span>
                                             <div class="btn-group btn-group-sm">
+                                                <button type="button" class="btn btn-outline-secondary move-up-btn" title="Move Up">
+                                                    <i class="fas fa-arrow-up"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary move-down-btn" title="Move Down">
+                                                    <i class="fas fa-arrow-down"></i>
+                                                </button>
                                                 <button type="button" class="btn btn-outline-info edit-option-btn">
                                                     <i class="fas fa-pencil-alt"></i>
                                                 </button>
@@ -1961,6 +1981,12 @@ $changename = htmlspecialchars($tab_name);
                 <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
                     <span class="option-text">${newOption}</span>
                     <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-secondary move-up-btn" title="Move Up">
+                            <i class="fas fa-arrow-up"></i>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary move-down-btn" title="Move Down">
+                            <i class="fas fa-arrow-down"></i>
+                        </button>
                         <button type="button" class="btn btn-outline-info edit-option-btn">
                             <i class="fas fa-pencil-alt"></i>
                         </button>
@@ -2110,6 +2136,40 @@ $changename = htmlspecialchars($tab_name);
             }
         });
         
+        // Handle moving options up
+        $(document).on('click', '.move-up-btn', function() {
+            const $item = $(this).closest('li');
+            const $prevItem = $item.prev('li');
+            
+            if ($prevItem.length > 0 && !$prevItem.hasClass('text-muted') && !$prevItem.hasClass('text-danger')) {
+                $item.insertBefore($prevItem);
+                updateOptionsCount();
+                
+                // Add visual feedback
+                $item.css('background-color', '#d4edda');
+                setTimeout(function() {
+                    $item.css('background-color', '');
+                }, 500);
+            }
+        });
+        
+        // Handle moving options down
+        $(document).on('click', '.move-down-btn', function() {
+            const $item = $(this).closest('li');
+            const $nextItem = $item.next('li');
+            
+            if ($nextItem.length > 0 && !$nextItem.hasClass('text-muted') && !$nextItem.hasClass('text-danger')) {
+                $item.insertAfter($nextItem);
+                updateOptionsCount();
+                
+                // Add visual feedback
+                $item.css('background-color', '#d4edda');
+                setTimeout(function() {
+                    $item.css('background-color', '');
+                }, 500);
+            }
+        });
+        
 
 
         // Handle input keypress for adding options
@@ -2189,7 +2249,7 @@ $changename = htmlspecialchars($tab_name);
                   <hr>
                   <h6>Field Management</h6>
                   <div class="form-group">
-                     <label>Current Fields in This Section</label>
+                     <label>Current Categories in This Section</label>
                      <div id="current_section_fields" class="border rounded p-2" style="min-height: 50px;">
                         <small class="text-muted">Loading fields...</small>
                      </div>
@@ -2211,7 +2271,7 @@ $changename = htmlspecialchars($tab_name);
          <div class="modal-content">
             <form id="assign_section_form" method="post" action="ajax/assign_section.php">
                <div class="modal-header bg-primary text-white">
-                  <h5 class="modal-title" id="assignSectionModalLabel">Assign Available Fields</h5>
+                  <h5 class="modal-title" id="assignSectionModalLabel">Assign Available Categories</h5>
                   <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                      <span aria-hidden="true">&times;</span>
                   </button>
@@ -2232,7 +2292,7 @@ $changename = htmlspecialchars($tab_name);
                </div>
                <div class="modal-footer">
                   <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-                  <button type="submit" class="btn btn-primary">Assign Fields</button>
+                  <button type="submit" class="btn btn-primary">Assign Categories</button>
                </div>
             </form>
          </div>
@@ -2244,7 +2304,7 @@ $changename = htmlspecialchars($tab_name);
       <div class="modal-dialog" role="document">
          <div class="modal-content">
             <div class="modal-header">
-               <h5 class="modal-title" id="addFieldModalLabel">Add New Field</h5>
+               <h5 class="modal-title" id="addFieldModalLabel">Add New Category</h5>
                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                   <span aria-hidden="true">&times;</span>
                </button>
@@ -2321,7 +2381,7 @@ $changename = htmlspecialchars($tab_name);
                   <div class="col-md-6">
                      <h6 class="mb-3">Current Selections <span id="optionsCount" class="badge badge-secondary ml-2">0</span></h6>
                      <div class="alert alert-info mb-2">
-                        <small>Click <i class="fas fa-pencil-alt"></i> to edit an option, or <i class="fas fa-trash"></i> to delete it</small>
+                        <small>Click <i class="fas fa-pencil-alt"></i> to edit, <i class="fas fa-trash"></i> to delete, or <i class="fas fa-arrow-up"></i>/<i class="fas fa-arrow-down"></i> to reorder options</small>
                      </div>
                      <ul class="list-group" id="currentSelectionsList">
                         <!-- Dynamically populated selections will go here -->
@@ -2458,7 +2518,7 @@ $changename = htmlspecialchars($tab_name);
             width: 100%;
         }
         
-        .edit-option-btn, .delete-option-btn {
+        .edit-option-btn, .delete-option-btn, .move-up-btn, .move-down-btn {
             margin-left: 5px;
         }
         
@@ -2469,6 +2529,11 @@ $changename = htmlspecialchars($tab_name);
         
         .edit-option-btn:hover {
             background-color: #17a2b8;
+            color: white;
+        }
+        
+        .move-up-btn:hover, .move-down-btn:hover {
+            background-color: #6c757d;
             color: white;
         }
         
@@ -2607,6 +2672,12 @@ $changename = htmlspecialchars($tab_name);
                                          <li class="list-group-item d-flex justify-content-between align-items-center" data-index="${index}">
                                              <span class="option-text">${option}</span>
                                              <div class="btn-group btn-group-sm">
+                                                 <button type="button" class="btn btn-outline-secondary move-up-btn" title="Move Up">
+                                                     <i class="fas fa-arrow-up"></i>
+                                                 </button>
+                                                 <button type="button" class="btn btn-outline-secondary move-down-btn" title="Move Down">
+                                                     <i class="fas fa-arrow-down"></i>
+                                                 </button>
                                                  <button type="button" class="btn btn-outline-info edit-option-btn">
                                                      <i class="fas fa-pencil-alt"></i>
                                                  </button>
@@ -2949,6 +3020,40 @@ $changename = htmlspecialchars($tab_name);
              if (confirm('Are you sure you want to delete this option?')) {
                  $item.remove();
                  updateOptionsCount();
+             }
+         });
+         
+         // Handle moving options up
+         $(document).on('click', '.move-up-btn', function() {
+             const $item = $(this).closest('li');
+             const $prevItem = $item.prev('li');
+             
+             if ($prevItem.length > 0 && !$prevItem.hasClass('text-muted') && !$prevItem.hasClass('text-danger')) {
+                 $item.insertBefore($prevItem);
+                 updateOptionsCount();
+                 
+                 // Add visual feedback
+                 $item.css('background-color', '#d4edda');
+                 setTimeout(function() {
+                     $item.css('background-color', '');
+                 }, 500);
+             }
+         });
+         
+         // Handle moving options down
+         $(document).on('click', '.move-down-btn', function() {
+             const $item = $(this).closest('li');
+             const $nextItem = $item.next('li');
+             
+             if ($nextItem.length > 0 && !$nextItem.hasClass('text-muted') && !$nextItem.hasClass('text-danger')) {
+                 $item.insertAfter($nextItem);
+                 updateOptionsCount();
+                 
+                 // Add visual feedback
+                 $item.css('background-color', '#d4edda');
+                 setTimeout(function() {
+                     $item.css('background-color', '');
+                 }, 500);
              }
          });
 

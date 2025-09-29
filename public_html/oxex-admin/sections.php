@@ -186,6 +186,50 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
         exit;
     }
     
+    // Fetch categories for a section (AJAX endpoint)
+    if (isset($_POST['fetch_section_categories']) && isset($_POST['section_id'])) {
+        $section_id = (int)$_POST['section_id'];
+        
+        $stmt = $mysqli->prepare("SELECT stid, str, single FROM select_types WHERE section_id = ? ORDER BY str ASC");
+        $stmt->bind_param("i", $section_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        $categories = [];
+        while ($row = $result->fetch_assoc()) {
+            $typeText = 'Unknown';
+            switch ((int)$row['single']) {
+                case 0: $typeText = 'Single Select'; break;
+                case 1: $typeText = 'Multi Select'; break;
+                case 2: $typeText = 'Text'; break;
+                case 3: $typeText = 'Date'; break;
+                case 4: $typeText = 'Numeric (0.1)'; break;
+                case 5: $typeText = 'Numeric (Integer)'; break;
+                case 6: $typeText = 'Time'; break;
+            }
+            $categories[] = [
+                'id' => (int)$row['stid'],
+                'name' => $row['str'],
+                'type' => $typeText
+            ];
+        }
+        $stmt->close();
+        
+        // Fetch sheet names this section is assigned to
+        $sheets = [];
+        $sheet_stmt = $mysqli->prepare("SELECT t.tbid, t.tab_name FROM section_table_link stl JOIN tabs_tbl t ON stl.tbid = t.tbid WHERE stl.section_id = ? ORDER BY t.sort_order ASC, t.tab_name ASC");
+        $sheet_stmt->bind_param("i", $section_id);
+        $sheet_stmt->execute();
+        $sheet_res = $sheet_stmt->get_result();
+        while ($s = $sheet_res->fetch_assoc()) {
+            $sheets[] = [ 'id' => (int)$s['tbid'], 'name' => $s['tab_name'] ];
+        }
+        $sheet_stmt->close();
+        
+        echo json_encode(['status' => 'success', 'categories' => $categories, 'sheets' => $sheets]);
+        exit;
+    }
+    
     // Remove field from section
     if (isset($_GET['remove_field']) && isset($_GET['field_id']) && isset($_GET['section_id'])) {
         $field_id = (int)$_GET['field_id'];
@@ -333,7 +377,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                                     <th width="50">#</th>
                                     <th>Section Name</th>
                                     <th>Description</th>
-                                    <th>Fields</th>
+                                    <th>Categories</th>
                                     <th>Sheets</th>
                                     <th>Actions</th>
                                  </tr>
@@ -379,7 +423,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                                     
                                     echo "<tr class='section-row' data-id='$section_id'>";
                                     echo "<td><span class='drag-handle'><i class='fas fa-grip-lines'></i></span> $section_order</td>";
-                                    echo "<td>$section_name</td>";
+                                    echo "<td><button type='button' class='btn btn-link p-0 view-categories' data-section-id='$section_id' data-section-name='" . htmlspecialchars($section_name, ENT_QUOTES) . "' title='View categories in this section'>$section_name</button></td>";
                                     echo "<td>" . (empty($section_description) ? "<em class='text-muted'>No description</em>" : $section_description) . "</td>";
                                     echo "<td><span class='section-count'>$field_count</span></td>";
                                     echo "<td><span class='section-count' title='" . htmlspecialchars($section['table_names'] ?? '') . "'>$table_count</span></td>";
@@ -504,7 +548,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
          <div class="modal-content">
             <form method="post" action="" id="addFieldsToSectionForm">
                <div class="modal-header bg-primary text-white">
-                  <h5 class="modal-title" id="addFieldsToSectionModalLabel">Add Fields to Section: <span id="section-name-display"></span></h5>
+                  <h5 class="modal-title" id="addFieldsToSectionModalLabel">Add Categories to Section: <span id="section-name-display"></span></h5>
                   <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                      <span aria-hidden="true">&times;</span>
                   </button>
@@ -550,16 +594,16 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                            }
                            $field_result->free();
                         } else {
-                           echo '<div class="list-group-item text-muted">No fields available</div>';
+                           echo '<div class="list-group-item text-muted">No categories available</div>';
                         }
                         ?>
                      </div>
                   </div>
                   
                   <div class="form-group mt-4">
-                     <label>Selected Fields</label>
+                     <label>Selected Categories</label>
                      <div id="selected_fields_list" class="list-group">
-                        <div class="list-group-item text-muted text-center" id="no-fields-selected">No fields selected</div>
+                        <div class="list-group-item text-muted text-center" id="no-fields-selected">No categories selected</div>
                      </div>
                   </div>
                </div>
@@ -568,6 +612,42 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                   <button type="submit" name="add_fields_to_section" class="btn btn-primary">Save Changes</button>
                </div>
             </form>
+         </div>
+      </div>
+   </div>
+   
+   <!-- View Section Categories Modal -->
+   <div class="modal fade" id="viewSectionCategoriesModal" tabindex="-1" role="dialog" aria-labelledby="viewSectionCategoriesModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg" role="document">
+         <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+               <h5 class="modal-title" id="viewSectionCategoriesModalLabel">Categories in Section: <span id="view-section-name"></span></h5>
+               <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+               </button>
+            </div>
+            <div class="modal-body">
+               <div id="section-categories-loading" class="text-center my-3" style="display:none;">
+                  <i class="fas fa-spinner fa-spin"></i> Loading...
+               </div>
+               <div id="section-categories-empty" class="alert alert-info" style="display:none;">No categories are assigned to this section.</div>
+               <div class="table-responsive">
+                  <table class="table table-sm table-striped" id="section-categories-table" style="display:none;">
+                     <thead>
+                        <tr>
+                           <th style="width: 80px;">ID</th>
+                           <th>Name</th>
+                           <th style="width: 180px;">Type</th>
+                           <th>Sheets</th>
+                        </tr>
+                     </thead>
+                     <tbody></tbody>
+                  </table>
+               </div>
+            </div>
+            <div class="modal-footer">
+               <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
          </div>
       </div>
    </div>
@@ -714,7 +794,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             
             $('#target_section_id').val(sectionId);
             $('#section-name-display').text(sectionName);
-            $('#selected_fields_list').html('<div class="list-group-item text-muted text-center" id="no-fields-selected">No fields selected</div>');
+            $('#selected_fields_list').html('<div class="list-group-item text-muted text-center" id="no-fields-selected">No categories selected</div>');
             $('#field_search').val('');
             $('#field_search_results').removeClass('show');
             
@@ -738,7 +818,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             const visibleItems = $('.field-item:visible').length;
             if (visibleItems === 0 && searchTerm.length >= 2) {
                if ($('#no-results-message').length === 0) {
-                  $('#field_search_results').append('<div id="no-results-message" class="list-group-item text-muted">No matching fields found</div>');
+                  $('#field_search_results').append('<div id="no-results-message" class="list-group-item text-muted">No matching categories found</div>');
                }
             } else {
                $('#no-results-message').remove();
@@ -780,7 +860,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             
             // Show "no fields selected" message if list is empty
             if ($('#selected_fields_list .list-group-item').length === 0) {
-               $('#selected_fields_list').html('<div class="list-group-item text-muted text-center" id="no-fields-selected">No fields selected</div>');
+               $('#selected_fields_list').html('<div class="list-group-item text-muted text-center" id="no-fields-selected">No categories selected</div>');
             }
          });
 
@@ -831,7 +911,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                      
                      Swal.fire({
                         icon: 'success',
-                        title: 'Fields Added',
+                        title: 'Categories Added',
                         text: response.message,
                         confirmButtonText: 'OK'
                      }).then((result) => {
@@ -844,7 +924,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                      Swal.fire({
                         icon: 'error',
                         title: 'Error',
-                        text: response.message || 'An error occurred while adding fields to the section.'
+                        text: response.message || 'An error occurred while adding categories to the section.'
                      });
                   }
                },
@@ -856,7 +936,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                   console.error("AJAX error:", status, error);
                   
                   // Try to parse any JSON in the response
-                  let errorMessage = 'Failed to add fields to the section.';
+                  let errorMessage = 'Failed to add categories to the section.';
                   let successMessage = '';
                   let isSuccess = false;
                   
@@ -884,7 +964,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                      
                      Swal.fire({
                         icon: 'success',
-                        title: 'Fields Added',
+                        title: 'Categories Added',
                         text: successMessage,
                         confirmButtonText: 'OK'
                      }).then(() => {
@@ -940,6 +1020,58 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                width: '100%'
             });
          }
+         
+         // View categories in a section
+         $(document).on('click', '.view-categories', function() {
+            const sectionId = $(this).data('section-id');
+            const sectionName = $(this).data('section-name');
+            
+            $('#view-section-name').text(sectionName);
+            $('#section-categories-table').hide();
+            $('#section-categories-empty').hide();
+            $('#section-categories-loading').show();
+            $('#section-categories-table tbody').empty();
+            
+            $('#viewSectionCategoriesModal').modal('show');
+            
+            $.ajax({
+               url: 'sections.php',
+               type: 'POST',
+               data: { fetch_section_categories: true, section_id: sectionId },
+               success: function(response) {
+                  let data;
+                  try {
+                     data = typeof response === 'string' ? JSON.parse(response) : response;
+                  } catch (e) {
+                     console.error('Invalid JSON', e, response);
+                     Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to load categories.' });
+                     return;
+                  }
+                  $('#section-categories-loading').hide();
+                  
+                  if (data.status === 'success' && Array.isArray(data.categories)) {
+                     if (data.categories.length === 0) {
+                        $('#section-categories-empty').show();
+                     } else {
+                        const tbody = $('#section-categories-table tbody');
+                        const sheets = Array.isArray(data.sheets) ? data.sheets : [];
+                        const sheetsText = sheets.length ? sheets.map(s => $('<div>').text(s.name).html()).join(', ') : '<span class="text-muted">None</span>';
+                        data.categories.forEach(item => {
+                           const row = `<tr><td>${item.id}</td><td>${$('<div>').text(item.name).html()}</td><td>${item.type}</td><td>${sheetsText}</td></tr>`;
+                           tbody.append(row);
+                        });
+                        $('#section-categories-table').show();
+                     }
+                  } else {
+                     $('#section-categories-empty').show();
+                  }
+               },
+               error: function(xhr, status, error) {
+                  $('#section-categories-loading').hide();
+                  Swal.fire({ icon: 'error', title: 'Error', text: 'Failed to load categories: ' + error });
+               }
+            });
+         });
       });
    </script>
 </body>

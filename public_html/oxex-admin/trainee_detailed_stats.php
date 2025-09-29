@@ -92,9 +92,6 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
         case 'competency_data':
             $filename = 'competency_analysis_' . date('Y-m-d') . '.csv';
             break;
-        case 'supervisor_report':
-            $filename = 'supervisor_performance_report_' . date('Y-m-d') . '.csv';
-            break;
         case 'full_report':
             $filename = 'complete_trainee_analysis_' . date('Y-m-d') . '.csv';
             break;
@@ -166,47 +163,6 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
                 $row['successful_attempts'],
                 $row['success_rate'],
                 $difficulty
-            ]);
-        }
-    } elseif ($export_type == 'supervisor_report') {
-        fputcsv($output, ['Supervisor Name', 'Trainee Count', 'Avg Entries per Trainee', 'Avg Completion Rate (%)', 'Performance Score']);
-        
-        // Use the same query as the supervisor performance analysis with all filters
-        $supervisor_query = "
-            SELECT /*+ USE_INDEX(w, idx_who_there_admintype) USE_INDEX(t, idx_trainee_supervisor) USE_INDEX(t, idx_trainee_supervisor2) USE_INDEX(t, idx_trainee_supervisor3) USE_INDEX(tl, idx_trainee_log_trainkey) */
-                w.realname as supervisor_name,
-                COUNT(DISTINCT t.tid) as trainee_count,
-                AVG(trainee_stats.avg_entries) as avg_entries_per_trainee,
-                AVG(trainee_stats.completion_rate) as avg_completion_rate
-            FROM who_there w
-            JOIN trainee_tbl t ON (w.usrkey = t.supervisor OR w.usrkey = t.supervisor2 OR w.usrkey = t.supervisor3)
-            LEFT JOIN (
-                SELECT 
-                    t2.trainkey,
-                    COUNT(tl.tlogid) as avg_entries,
-                    (COUNT(DISTINCT tl.tbid) * 100.0 / (SELECT COUNT(*) FROM tabs_tbl WHERE isvis = 1)) as completion_rate
-                FROM trainee_tbl t2
-                LEFT JOIN trainee_log tl ON t2.trainkey = tl.trainkey
-                WHERE 1=1
-                GROUP BY t2.trainkey
-            ) trainee_stats ON t.trainkey = trainee_stats.trainkey
-            WHERE w.admintype IN ('SO', 'SE') $course_condition $group_condition $babcp_condition_simple $additional_conditions
-            GROUP BY w.usrkey, w.realname ORDER BY avg_completion_rate DESC
-            LIMIT 10
-        ";
-        
-        $result = $mysqli->query($supervisor_query);
-        while ($row = $result->fetch_assoc()) {
-            $avg_completion_rate = $row['avg_completion_rate'] ?? 0;
-            $avg_entries_per_trainee = $row['avg_entries_per_trainee'] ?? 0;
-            $performance_score = round(($avg_completion_rate / 100) * 5, 1);
-            
-            fputcsv($output, [
-                $row['supervisor_name'],
-                $row['trainee_count'],
-                round($avg_entries_per_trainee, 1),
-                round($avg_completion_rate, 1),
-                $performance_score . '/5'
             ]);
         }
     } elseif ($export_type == 'full_report') {
@@ -1210,11 +1166,6 @@ if ($debug_sample_result) {
                      </a>
                   </div>
                   <div class="col-md-3">
-                     <a href="?export=supervisor_report&course=<?php echo $selected_course ?>&group=<?php echo urlencode($selected_group) ?>" class="btn btn-warning btn-sm">
-                        <i class="fa fa-download"></i> Export Supervisor Report
-                     </a>
-                  </div>
-                  <div class="col-md-3">
                      <a href="?export=full_report&course=<?php echo $selected_course ?>&group=<?php echo urlencode($selected_group) ?>" class="btn btn-primary btn-sm">
                         <i class="fa fa-download"></i> Export Full Report
                      </a>
@@ -1418,54 +1369,6 @@ if ($debug_sample_result) {
                
             </div>
 
-            <!-- Supervisor Performance -->
-            <div class="row mb-4">
-               <div class="col-12">
-                  <div class="card">
-                     <div class="card-header">
-                        <h5 class="card-title">Supervisor Performance Metrics</h5>
-                     </div>
-                     <div class="card-body">
-                        <div class="table-responsive">
-                           <table class="table table-striped" id="supervisorTable">
-                              <thead>
-                                 <tr>
-                                    <th>Supervisor</th>
-                                    <th>Trainee Count</th>
-                                    <th>Avg Entries per Trainee</th>
-                                    <th>Avg Completion Rate</th>
-                                    <th>Performance Score</th>
-                                 </tr>
-                              </thead>
-                              <tbody>
-                                 <?php foreach ($supervisor_performance as $supervisor): ?>
-                                    <tr>
-                                       <td><strong><?php echo htmlspecialchars($supervisor['name']) ?></strong></td>
-                                       <td><?php echo $supervisor['trainee_count'] ?></td>
-                                       <td><?php echo $supervisor['avg_entries'] ?></td>
-                                       <td>
-                                          <div class="progress progress-thin">
-                                             <div class="progress-bar" style="width: <?php echo $supervisor['avg_completion_rate'] ?? 0 ?>%">
-                                                <?php echo $supervisor['avg_completion_rate'] ?? 0 ?>%
-                                             </div>
-                                          </div>
-                                       </td>
-                                       <td>
-                                          <?php 
-                                          $avg_completion_rate = $supervisor['avg_completion_rate'] ?? 0;
-                                          $score = round(($avg_completion_rate / 100) * 5, 1);
-                                          echo $score . '/5';
-                                          ?>
-                                       </td>
-                                    </tr>
-                                 <?php endforeach; ?>
-                              </tbody>
-                           </table>
-                        </div>
-                     </div>
-                  </div>
-               </div>
-            </div>
 
             <!-- Detailed Competency Analysis -->
             <div class="row">

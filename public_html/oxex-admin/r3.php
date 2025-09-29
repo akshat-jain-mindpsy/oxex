@@ -23,31 +23,48 @@ $stmt->bind_result($usrkey, $timesent, $timeexp, $invalidated);
 $stmt->fetch();
 $numrows = $stmt->num_rows;
 $stmt->close();
+
+// Check if this is a trainee reset token by looking up the usrkey in trainee_tbl
+$is_trainee_token = false;
+if ($numrows == 1 && $usrkey) {
+  $trainee_check = $mysqli->prepare("SELECT tid FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+  $trainee_check->bind_param('s', $usrkey);
+  $trainee_check->execute();
+  $trainee_check->store_result();
+  $trainee_check->bind_result($tid);
+  $trainee_check->fetch();
+  $is_trainee_token = ($trainee_check->num_rows == 1);
+  $trainee_check->close();
+  
+  // If this is a trainee token, redirect to regular reset page
+  if ($is_trainee_token) {
+    header("Location: https://www.oxex.co.uk/r3.php?t=" . urlencode($_GET['t']));
+    exit();
+  }
+}
 $page_txt4 = "Reset links can only be used once. You will need to apply again to reset your password";
 $page_txt5 = "That reset link is invalid. You will need to apply again to reset your password. ";
 $page_txt6 = "That reset link has timed-out. You will need to apply again to reset your password.";
-if ($invalidated == 0) {
-  // token already invalidated
-  $valid_attampt = 0;
-  $err_msg = $err_msg.$page_txt4;
-}
 if ($numrows != 1) {
   // not found
   $valid_attampt = 0;
-  $err_msg = $err_msg.$page_txt5;
-}
-if ($timeexp > $expired) {
+  $err_msg = $page_txt5;
+} elseif ($invalidated == 1) {
+  // token already invalidated
+  $valid_attampt = 0;
+  $err_msg = $page_txt4;
+} elseif ($timestamp > $timeexp) {
   // too late
   $valid_attampt = 0;
-  $err_msg = $err_msg.$page_txt6;
+  $err_msg = $page_txt6;
 }
 if ($valid_attampt == 1) {
   // ok
-  $cancel = 0;
+  $used = 1;
   $err_msg = $err_msg.' ';
   // set record to say it's now been used
   $stmt = $mysqli->prepare("UPDATE reset_tbl SET invalidated = ? WHERE usrkey = ?"); 
-  $stmt->bind_param("is", $cancel, $usrkey);
+  $stmt->bind_param("is", $used, $usrkey);
   $stmt->execute();
   $stmt->close();
 }

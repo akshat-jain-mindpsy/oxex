@@ -41,21 +41,12 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
 </head>
 <?php 
 // page actions
-$thisyear = date("Y"); // Define this first before using it
-$graph = isset($_GET['graph']) ? $_GET['graph'] : 'bar';
-$start = isset($_GET['start']) ? $_GET['start'] : $thisyear;
-$end = isset($_GET['end']) ? $_GET['end'] : $thisyear;
 $done = isset($_POST['done']) ? $_POST['done'] : '';
 $newadmin = isset($_POST['newadmin']) ? $_POST['newadmin'] : '';
 $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delicon = isset($_GET['delicon']) ? $_GET['delicon'] : '';
 $which = isset($_GET['which']) ? $_GET['which'] : '';
 
-// set up dates for js array data
-$datestart = $start.'0101';
-$dateend = $end.'1231';
-$datestart = 20200101; #TEMP DATES
-$dateend = 20991231; #TEMP DATES
 $valueyearstart = 20200101;
 $valueyearend = 20991231;
 
@@ -213,7 +204,7 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small> </div>
-                <a href="#reports" class="btn btn-purple ml-5">Reports</a> <a href="#stats" class="btn btn-primary ml-5">Statistics</a> <a href="#passfail" class="btn btn-pink ml-5">Supervisor sign off</a> <a href="traineelogbook.php?which=<?php echo $which ?>" class="btn btn-secondary ml-5">Logbook</a> <a href="#password-reset" class="btn btn-warning ml-5">Password Reset</a>
+                <a href="#stats" class="btn btn-primary ml-5">Statistics</a> <a href="#passfail" class="btn btn-pink ml-5">Supervisor sign off</a> <a href="traineelogbook.php?which=<?php echo $which ?>" class="btn btn-secondary ml-5">Logbook</a> <a href="#password-reset" class="btn btn-warning ml-5">Password Reset</a>
             </div>
 
             <?php if (isset($password_alert)): ?>
@@ -509,29 +500,6 @@ $stmt->close();
                      </div>
                   </div>
                   
-                  <div class="card border-purple">
-                     <div class="card-header bg-purple">
-                        <div class="card-title">
-                           Report Sets (choose style &amp; date)
-                        </div>
-                        <div class="card-body">
-                           <?php
-                           // show bar/pie chart buttons for each year of tuition
-                           // $thisyear in sess.php. $year is their 'cohort' year
-                           /*
-                           for ($x = $year; $x <= $thisyear; $x++) {
-                              echo "<a class=\"btn btn-sm btn-dark ml-1\" href=\"traineedetail.php?which=$trainkey&graph=bar&start=$x&end=$x\">($x) Bar</a> <a class=\"btn btn-sm btn-dark ml-1\" href=\"traineedetail.php?which=$trainkey&graph=pie&start=$x&end=$x\">($x) Pie</a>";
-                           }
-                           */
-                           //if ($year != $thisyear) {
-                              // if not the first year, offer graph of entire stay
-                              echo "<br><a class=\"btn btn-sm btn-dark ml-1 mt-2\" href=\"traineedetail.php?which=$trainkey&graph=bar&start=year&end=x\">(Bar</a> <a class=\"btn btn-sm btn-dark ml-1 mt-2\" href=\"traineedetail.php?which=$trainkey&graph=pie&start=year&end=x\">Pie</a>";
-                           //}
-                           ?>
-                           
-                        </div>
-                     </div>
-                  </div>
                </div>
                <div class="col-xl-5">
                   <div class="card border-info">
@@ -575,399 +543,59 @@ $stmt->close();
                </div>
             </div>
 
+            <div class="row" id="stats">
+               <div class="col">
+                  <h2 class="bg-primary text-white p-2">Statistics </h2>
             <?php
-            // decide how to key graphs with dates
-            // could be a year or a year range
-            if ($start == $end) {
-               $dispyear = $start;
-            } else {
-               $dispyear = "$start to $end";
-            }
-            ?>
-<!-- reports -->
-
-            <div class="row" id="reports">
-
-               <?php
-               /*
-               Each session a trainee logs has a unique $logkey
-               Each data is recorded seperately and linked by the $logkey so all answers in a sesion will have the same $logkey
-               So we can filter a set of $logkey data against specifics, e.g. only use the data if the same $logkey records a Learning Disability ($stid == 2)
-
-               */
-               // these are for stats at end
-               $allpass = 0; # flag for how many passed in total
-               $allreports = 0; # flag for how many graphs in total
-               $namarr = array(); # array of table names
-               $pasarr = array(); # array of passes in each table
-               $resarr = array(); # array of results in each table
-               $prevtabname = '';
-               // Create divs for graphs from report manager
-               // All have IDs that align with equivalent javascript
-               // first loop through Tables (that are agreed for thsi Trainee)
+                  // Simple statistics - just show basic table info without heavy calculations
+                  $namarr = array();
+                  $resarr = array();
+                  $pasarr = array();
+                  
+                  // Get basic table information
                $tableset = $mysqli->prepare("SELECT tabs_tbl.tbid, tabs_tbl.tab_name FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid AND tabs_tbl.isvis = 1 ORDER BY tabs_tbl.sort_order");
                $tableset->bind_param("s", $which);
                $tableset->execute();
                $tableset->store_result();
                $tableset->bind_result($thistbid, $tab_name);
+                  
                while ($tableset->fetch()){
                   array_push($namarr, $tab_name);
-                  // put table name as heading if changed
-                  if ($prevtabname != $tab_name) {
-                     echo "\n\n<div class=\"col-xl-12 text-center text-white bg-dark mb-2 pt-3\"><h2>$tab_name <a href=\"#passfail\" class=\"btn btn-sm btn-pink ml-3\">Supervisor sign off</a></h2></div>\n\n";
-                  }
-
-
-                  $reportset = $mysqli->prepare("SELECT rmid, report_title, valtype, situation, stid, elldee, age, agefrom, ageto FROM report_manager WHERE tbid = ? ORDER BY sort_order");
-                  $reportset->bind_param("i", $thistbid);
-                  $reportset->execute();
-                  $reportset->store_result();
-                  $reportset->bind_result($rmid, $report_title, $valtype, $situation, $stid, $elldee, $age, $agefrom, $ageto);
-                  while ($reportset->fetch()){
-                     $allreports++; # count No. of reports
-                     $howmanyans = 0; # reset No of passed results
-                     $tothrs = 0; # accumulative No hrs
-// START data collect
-
-                     $ansarr = array();
-                     $valarr = array();
-                     $valBarr = array();
-                     // look at trainee's data
-                     if ($valtype == 0) { # Exact values
-                        // loop through this report's data requirements held in valuea
-                        // and get the matching field name (valuea = pid)
-                        $dataset = $mysqli->prepare("SELECT select_gen.select_val, report_data.valuea FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
-                        $dataset->bind_param("i", $rmid); 
-                        $dataset->execute();
-                        $dataset->store_result();
-                        $dataset->bind_result($select_val, $valuea);
-                        while ($dataset->fetch()){
-                           array_push($valarr,$valuea); # the id's to look for in Trainee's data
-                        }
-                        $dataset->close();
-                        
-                        // find how many of each type for this trainee and push value to array
-                        foreach ($valarr as $valueA) {
-                           $valueA = (int)$valueA;
-                           
-                           $numages = 0;
-                           // 20231115 removed date start & end from query
-                           $vids = $mysqli->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ?"); 
-                           $vids->bind_param("sii", $trainkey, $stid, $valueA);
-                           $vids->execute();
-                           $vids->store_result();
-                           $vids->bind_result($checklogkey);
-                           while ($vids->fetch()){
-// 20231116 - removed "//$numages = 0; # clear data if " lines
-                              if ($elldee == 1) {
-//echo "($stid $valueA $checklogkey) ";
-                                 // Any data must have Learning Disability selected, else data not used
-                                 // For this $logkey, check the LD 'Clinical Specialism' field data
-                                 // this is $stid = 2, $pid = 3
-                                 $ldstmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE stid = ? AND pid = ? AND logkey = ?");
-                                 $ldstmt->bind_param("iis", $value2, $value3, $checklogkey);
-                                 $ldstmt->execute();
-                                 $ldstmt->store_result();
-                                 $numld = $ldstmt->num_rows;
-                                 $ldstmt->fetch();
-                                 $ldstmt->close();
-
-                                 if ($numld == 0) { # no LD 'Placement Type'
-                                    //$numages = 0; # clear data if 'LD' not selected in Clinical Specialism question for the same data set specified by $checklogkey
-                                 } else {
-                                    //$numages++; # count the valid data
-                                    $numages = $numages + 1;
-                                 }
-                              }
-                              if ($elldee == 2) {
-                                 // Any data must have CYP selected, else data not used
-                                 // For this $logkey, check the CYP 'Clinical Specialism' field data
-                                 // this is $stid = 2, $pid = 4
-                                 $ldstmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE stid = ? AND pid = ? AND logkey = ?");
-                                 $ldstmt->bind_param("iis", $value2, $value4, $checklogkey);
-                                 $ldstmt->execute();
-                                 $ldstmt->store_result();
-                                 $numld = $ldstmt->num_rows;
-                                 $ldstmt->close();
-
-                                 if ($numld == 0) { # no CYP 'Clinical Specialism'
-                                    //$numages = 0; # clear data if 'CYP' not selected in Placement Type question for the same data set specified by $checklogkey
-                                 } else {
-                                    $numages++; # count the valid data
-                                 }
-                              }
-                              if ($elldee == 3) {
-                                 // Any data must have OA selected, else data not used
-                                 // For this $logkey, check the OA 'Clinical Specialism' field data
-                                 // this is $stid = 2, $pid = 2
-                                 $ldstmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE stid = ? AND pid = ? AND logkey = ?");
-                                 $ldstmt->bind_param("iis", $value2, $value2, $checklogkey);
-                                 $ldstmt->execute();
-                                 $ldstmt->store_result();
-                                 $numld = $ldstmt->num_rows;
-                                 $ldstmt->close();
-
-                                 if ($numld == 0) { # no OA 'Clinical Specialism'
-                                    //$numages = 0; # clear data if 'OA' not selected in Placement Type question for the same data set specified by $checklogkey
-                                 } else {
-                                    $numages++; # count the valid data
-                                 }
-                              }
-                              if ($elldee == 4) {
-                                 // Any data must have WAA selected, else data not used
-                                 // For this $logkey, check the WAA 'Clinical Specialism' field data
-                                 // this is $stid = 2, $pid = 1
-                                 $ldstmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE stid = ? AND pid = ? AND logkey = ?");
-                                 $ldstmt->bind_param("iis", $value2, $value1, $checklogkey);
-                                 $ldstmt->execute();
-                                 $ldstmt->store_result();
-                                 $numld = $ldstmt->num_rows;
-                                 $ldstmt->close();
-
-                                 if ($numld == 0) { # no WAA 'Clinical Specialism'
-                                    //$numages = 0; # clear data if 'WAA' not selected in Placement Type question for the same data set specified by $checklogkey
-                                 } else {
-                                    $numages++; # count the valid data
-                                 }
-                              }
-                              if ($age == 1 && $elldee == 0) {
-                                 // patient's age is in $stid = 59
-                                 if ($agefrom == 0) {
-                                    $agefrom = 0.1;# avoids patients where age isn't recorded
-                                 }
-                                 // need to check age is within range for this logkey
-                                 $agestmt = $mysqli->prepare("SELECT select_val FROM trainee_log WHERE stid = ? AND logkey = ?");
-                                 $agestmt->bind_param("is", $value59, $checklogkey);
-                                 $agestmt->execute();
-                                 $agestmt->store_result();
-                                 $agestmt->bind_result($patientage);
-                                 $agestmt->fetch();
-                                 $agestmt->close();
-                                 if ($patientage >= $agefrom && $patientage <= $ageto) {
-                                    $numages++;
-                                 }
-                              }
-                              if ($elldee == 0 && $age == 0) {
-                                 $numages++; # count all the data as LD/age N/A
-                              }
-//echo " *$numld $numages\n";
-                           }
-                           $vids->close();
-                           $numld = 0; # reset
-                           
-                           array_push($ansarr, $numages);
- 
-                        }
-                        
-                     }
-                     if ($valtype == 1) { #range of values
-                        $dataset = $mysqli->prepare("SELECT valuea, valueb FROM report_data WHERE rmid = ? ORDER BY rdid");
-                        $dataset->bind_param("i", $rmid); 
-                        $dataset->execute();
-                        $dataset->store_result();
-                        $dataset->bind_result($valuea, $valueb);
-                        while ($dataset->fetch()){
-                           $select_val = "$valuea - $valueb";
-                           array_push($valarr,$valuea); # the 'from' value to search data
-                           array_push($valBarr,$valueb); # the 'to' value to search data
-                        }
-                        $dataset->close();
-                        // find how many of each type for this trainee and push value to array
-                        $x = 0;
-                        foreach ($valarr as $valueA) {
-                           // find same key for valueB
-                           $valueB = $valBarr[$x];
-                           // removed dates
-                           // AND date_added >= ? AND date_added <= ?
-                           // , $datestart, $dateend
-                           $vids = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND stid = ? AND select_val >= ? AND select_val <= ?"); 
-                           $vids->bind_param("sisi", $trainkey, $stid, $valueA, $valueB);
-                           $vids->execute();
-                           $vids->store_result();
-                           $vids->bind_result($checklogkey);
-                           $numages = $vids->num_rows;
-                           $vids->close();
-                           array_push($ansarr, $numages);
-
-                           $x++;
-                        }
-                     }
-                     if ($valtype == 2) { # count of hours
-                        // find select_gen.pid from report_data.valuea
-                        // this gives select_types.stid (and select_types.select_val is the x-axis label)
-                        // 
-                        // loop through this report's data requirements held in valuea
-                        // and get the matching field name (valuea = pid)
-                        $value60 = 60;
-                        $dataset = $mysqli->prepare("SELECT select_gen.select_val, report_data.valuea, report_data.valueb FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
-                        $dataset->bind_param("i", $rmid); 
-                        $dataset->execute();
-                        $dataset->store_result();
-                        $dataset->bind_result($select_val, $valuea, $valueb);
-                        while ($dataset->fetch()){
-                           $valuea = intval($valuea);
-                           array_push($valarr,$valuea); # the stid's to look for in Trainee's data
-                           array_push($valBarr,$valueb); # the No hrs required in search data
-                        }
-                        $dataset->close();
-
-
-                        // loop through each stid in trainee's data matching array pid
-                        $tothrs = 0;
-                        // removed dates
-                           // AND date_added >= ? AND date_added <= ?
-                           // , $datestart, $dateend
-                        foreach ($valarr as $valueA) {
-                           $hrsset = $mysqli->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ?");
-                           $hrsset->bind_param("sii", $trainkey, $stid, $valueA);
-                           $hrsset->execute();
-                           $hrsset->store_result();
-                           $hrsset->bind_result($logkey);
-                           while ($hrsset->fetch()){
-                              $hours = '';
-                              // we'll use the logkey to find the hours for the same session
-                              //echo "logkey $logkey ($trainkey, $stid, $valueA, $datestart, $dateend)<br>";
-                              // for each, find number of hours for the same logkey
-                              // // looking for stid = 60
-                              $stmt = $mysqli->prepare("SELECT select_val FROM trainee_log WHERE logkey = ? AND stid = ?");
-                              $stmt->bind_param("si", $logkey, $value60);
-                              $stmt->execute();
-                              $stmt->store_result();
-                              $stmt->bind_result($hours);
-                              $stmt->fetch();
-                              $stmt->close();
-                              //echo "| $hours | ";
-                              // data is in HH:mm format
-                              if ($hours > 0) {
-                                 $time = explode(':', $hours);
-                                 if (isset($time[0]) && isset($time[1])) {
-                                    $minutes = (intval($time[0]) * 60.0 + intval($time[1]) * 1.0);
-                                    $hours = $minutes / 60;
-                                    $tothrs = $tothrs + $hours;
-                                 }
-                              }
-                              
-                           }
-                           $numrows = $hrsset->num_rows;
-                           $hrsset->close();
-                           //echo "valueA $valueA - numrows $numrows";
-/*
-                           $vids = $mysqli->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ? AND date_added >= ? AND date_added <= ?"); 
-                           $vids->bind_param("siiii", $trainkey, $stid, $valueA, $datestart, $dateend);
-                           $vids->execute();
-                           $vids->store_result();
-                           $vids->bind_result($logkey);
-                           $vids->fetch();
-                           $vids->close();
-                           */
-
-                           array_push($ansarr, $tothrs);
-                        }
-                     }
-
-                     $howmanyvals = count($valarr); # how many values expected
                      
-// END data collect
-
-
-
-// START pass/fail
-                  // $passtext shows pass/fail/no pass requirement
+                     // Count total questions for this table
+                     $questionset = $mysqli->prepare("SELECT COUNT(*) FROM report_manager WHERE tbid = ?");
+                     $questionset->bind_param("i", $thistbid);
+                     $questionset->execute();
+                     $questionset->store_result();
+                     $questionset->bind_result($total_questions);
+                     $questionset->fetch();
+                     $questionset->close();
                      
-                     // $situation shows requirements for 'pass'
-                     include 'incl/situations.php';
-// END pass/fail
-
-                     //if ($valtype == 0) { # Exact values
-                        echo "<div class=\"col-xl-4 mb-2\">";
-                        echo "<div class=\"card border-purple\">";
-                        echo "<div class=\"card-header bg-purple\">";
-                        $elldeebadge = '';
-                        if ($elldee == 1) {
-                           // show badge meaning this data must have Leadning Disability
-                           $elldeebadge = " <span class=\"badge badge-info\"> LD </span>";
-                        }
-                        if ($elldee == 2) {
-                           // show badge meaning this data must be CYP (young person)
-                           $elldeebadge = " <span class=\"badge badge-info\"> CYP </span>";
-                        }
-                        if ($age == 1) {
-                           // show badge meaning this data is age-limited
-                           $agebadge = " <span class=\"badge badge-info\"> Age $agefrom - $ageto </span>";
-                        } else {
-                           $agebadge = '';
-                        }
-                        echo "<div class=\"card-title\">".htmlentities($report_title)."  $elldeebadge $agebadge ($rmid)</div>";
-                        echo "</div>";
-                        echo "<div class=\"card-body\">";
-                        echo "<canvas id=\"Chart_$rmid\" width=\"400\" height=\"400\"></canvas>";
-                        echo "</div>";
-                        echo "<div class=\"card-footer\">";
-                        echo "$situationtxt $passtext";
-                        if ($valtype == 2) {
-                           
-                           //print_r($valarr);
-                           //print_r($ansarr);
-                        }
- //print_r($ansarr);
-                        echo "</div>";
-                        echo "</div>";
-                        echo "</div>";
-                     //}
-                     // we'll  use these arrays later in the js so empty
-                     unset($ansarr);
-                     unset($valarr);
-                     unset($valBarr);
-                     
-                  }
-                  $reportset->close();
-                  $prevtabname = $tab_name;
-                  
-                  array_push($resarr, $allreports); # how many for this table
-                  array_push($pasarr, $allpass); # how many for this table
-                  $allpass = 0;
-                  $allreports = 0;
+                     array_push($resarr, $total_questions);
+                     array_push($pasarr, 0); // Simplified - no pass/fail calculation
                }
                $tableset->close();
-               ?>
-               
-            </div>
-            <div class="row" id="stats">
-               <div class="col">
-                  <h2 class="bg-primary text-white p-2">Statistics </h2>
-                  <?php
-                  //$pcp = ($allpass/$allreports)*100;
-                  //echo "<p>Total of reports: $allreports. Total passed $allpass. Percentage passed ".ceil($pcp)."%</p>";
+                  
                   echo "<table class=\"table table-sm table-striped\">";
                   echo "<thead>";
-                  echo "<tr class=\"table-primary\"><th>Table</th><th>No. Questions</th><th>No. Passed</th><th>%age Pass</th></tr>";
+                  echo "<tr class=\"table-primary\"><th>Table</th><th>No. Questions</th><th>Status</th></tr>";
                   echo "</thead>";
                   echo "<tbody>";
+                  
+                  if (empty($namarr)) {
+                     echo "<tr><td colspan='3' class='text-center text-muted'>No tables assigned to this trainee</td></tr>";
+                  } else {
                   $qq = 0;
                   foreach ($namarr as $tname) {
                      echo "<tr>";
                      echo "<td>$tname</td>";
                      echo "<td>$resarr[$qq]</td>";
-                     echo "<td>$pasarr[$qq]</td>";
-                     if ($resarr[$qq] != 0) {
-                        $pcp = ($pasarr[$qq]/$resarr[$qq])*100;
-                     } else {
-                        $pcp = 0;
-                     }
-                     $celltxt = "<span class=\"badge badge-danger\">".ceil($pcp)."</span>";
-                     if ($pcp > 50) {
-                        $celltxt = "<span class=\"badge badge-warning\">".ceil($pcp)."</span>";
-                     }
-                     if ($pcp > 75) {
-                        $celltxt = "<span class=\"badge badge-info\">".ceil($pcp)."</span>";
-                     }
-                     if ($pcp > 99.9) {
-                        $celltxt = "<span class=\"badge badge-success\">".ceil($pcp)."</span>";
-                     }
-                     echo "<td>$celltxt</td>";
+                        echo "<td><span class=\"badge badge-info\">Active</span></td>";
                      echo "</tr>";
                      $qq++;
                   }
+                  }
+                  
                   echo "</tbody>";
                   echo "</table>";
 
@@ -980,7 +608,6 @@ $stmt->close();
 
    </div>
    <?php include 'incl/adminjslite.php' ?>
-   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.min.js" integrity="sha512-s+xg36jbIujB2S2VKfpGmlC3T5V2TF3lY48DX7u2r9XzGzgPsa6wTpOQA7J9iffvdeBN0q9tKzRxVxw1JviZPg==" crossorigin="anonymous"></script>
    <script>
    $(document).ready(function() {
       $('#maintable').dataTable( {
@@ -1076,310 +703,6 @@ $tableset->close();
 
 // Required field for reporting is select_types.stid
 ?>
-
-<?php
-// Create js for graphs from report manager, all use the common graph colours
-// All have IDs that align with equivalent div
-// first loop through Tables (that are agreed for this Trainee)
-// Two types of js, one for ranges and one for exact value
-// Exact value use $stid
-$labeltxt = '# of Settings';
-$tableset = $mysqli->prepare("SELECT tabs_tbl.tbid FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid AND tabs_tbl.isvis = 1 ORDER BY tabs_tbl.sort_order");
-$tableset->bind_param("s", $which);
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($thistbid);
-while ($tableset->fetch()){
-   $reportset = $mysqli->prepare("SELECT rmid, valtype, stid, elldee, age, agefrom, ageto FROM report_manager WHERE tbid = ? ORDER BY sort_order");
-   $reportset->bind_param("i", $thistbid);
-   $reportset->execute();
-   $reportset->store_result();
-   $reportset->bind_result($rmid, $valtype, $stid, $elldee, $age, $agefrom, $ageto);
-   while ($reportset->fetch()){
-      
-      // Chart_$rmid
-      $labelarr = array(); # will fill with x-axis labels
-      $valarr = array(); # will fill with the valuea (pid or valueA) data
-      $valBarr = array(); # will fill with the valueB data
-      $ansarr = array(); # will fill with trainee's data
-
-      echo "<script>\n";
-      if ($valtype == 0) { # Exact values
-         // loop through this report's data requirements held in valuea
-         // and get the matching field name (valuea = pid)
-         $dataset = $mysqli->prepare("SELECT select_gen.select_val, report_data.valuea FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
-         $dataset->bind_param("i", $rmid); 
-         $dataset->execute();
-         $dataset->store_result();
-         $dataset->bind_result($select_val, $valuea);
-         while ($dataset->fetch()){
-            $select_val = (strlen($select_val) > 25) ? substr($select_val,0,22).'...' : $select_val; # truncate label if required
-            array_push($labelarr,$select_val); #this creates the x-axis labels
-            array_push($valarr,$valuea); # the id's to look for in Trainee's data
-         }
-         $dataset->close();
-         //$labelarr = rtrim($labelarr,","); #remove trailing comma
-         //$valarr = rtrim($valarr,","); #remove trailing comma
-
-         // find how many of each type for this trainee and push value to array
-         foreach ($valarr as $valueA) {
-            $numages = 0;
-            // removed dates
-            // AND date_added >= ? AND date_added <= ?
-            // , $datestart, $dateend
-            $vids = $mysqli->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ?"); 
-            $vids->bind_param("sii", $trainkey, $stid, $valueA);
-            $vids->execute();
-            $vids->store_result();
-            $vids->bind_result($checklogkey);
-            while ($vids->fetch()){
-               if ($elldee == 1) {
-                  // Any data must have Learning Disability selected, else data not used
-                  // For this $logkey, check the LD 'Clinical Specialism' field data - this is $stid = 2, $pid = 3
-                  $ldstmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE stid = ? AND pid = ? AND logkey = ?");
-                  $ldstmt->bind_param("iis", $value2, $value3, $checklogkey);
-                  $ldstmt->execute();
-                  $ldstmt->store_result();
-                  $numld = $ldstmt->num_rows;
-                  $ldstmt->close();
-
-                  if ($numld == 0) { # no LD 'Clinical Specialism'
-                     //$numages = 0; # clear data if 'LD' not selected in Clinical Specialism question for the same data set specified by $checklogkey
-                  } else {
-                     $numages++; # count the valid data
-                  }
-               }
-               if ($elldee == 2) {
-                  // Any data must have CYP selected, else data not used
-                  // For this $logkey, check the CYP 'Clinical Specialism' field data
-                  // this is $stid = 2, $pid = 4
-                  $ldstmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE stid = ? AND pid = ? AND logkey = ?");
-                  $ldstmt->bind_param("iis", $value2, $value4, $checklogkey);
-                  $ldstmt->execute();
-                  $ldstmt->store_result();
-                  $numld = $ldstmt->num_rows;
-                  $ldstmt->close();
-
-                  if ($numld == 0) { # no CYP 'Clinical Specialism'
-                     //$numages = 0; # clear data if 'CYP' not selected in Placement Type question for the same data set specified by $checklogkey
-                  } else {
-                     $numages++; # count the valid data
-                  }
-               }
-               if ($elldee == 3) {
-                  // Any data must have OA selected, else data not used
-                  // For this $logkey, check the OA 'Clinical Specialism' field data
-                  // this is $stid = 2, $pid = 2
-                  $ldstmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE stid = ? AND pid = ? AND logkey = ?");
-                  $ldstmt->bind_param("iis", $value2, $value2, $checklogkey);
-                  $ldstmt->execute();
-                  $ldstmt->store_result();
-                  $numld = $ldstmt->num_rows;
-                  $ldstmt->close();
-
-                  if ($numld == 0) { # no OA 'Clinical Specialism'
-                     //$numages = 0; # clear data if 'OA' not selected in Placement Type question for the same data set specified by $checklogkey
-                  } else {
-                     $numages++; # count the valid data
-                  }
-               }
-               if ($elldee == 4) {
-                  // Any data must have WAA selected, else data not used
-                  // For this $logkey, check the WAA 'Clinical Specialism' field data
-                  // this is $stid = 2, $pid = 1
-                  $ldstmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE stid = ? AND pid = ? AND logkey = ?");
-                  $ldstmt->bind_param("iis", $value2, $value1, $checklogkey);
-                  $ldstmt->execute();
-                  $ldstmt->store_result();
-                  $numld = $ldstmt->num_rows;
-                  $ldstmt->close();
-
-                  if ($numld == 0) { # no WAA 'Clinical Specialism'
-                     //$numages = 0; # clear data if 'WAA' not selected in Placement Type question for the same data set specified by $checklogkey
-                  } else {
-                     $numages++; # count the valid data
-                  }
-               }
-               if ($age == 1) {
-                  // patient's age is in $stid = 59
-                  if ($agefrom == 0) {
-                     $agefrom = 0.1;# avoids patients where age isn't recorded
-                  }
-                  // need to check age is within range for this logkey
-                  $agestmt = $mysqli->prepare("SELECT select_val FROM trainee_log WHERE stid = ? AND logkey = ?");
-                  $agestmt->bind_param("is", $value59, $checklogkey);
-                  $agestmt->execute();
-                  $agestmt->store_result();
-                  $agestmt->bind_result($patientage);
-                  $agestmt->fetch();
-                  $agestmt->close();
-                  if ($patientage >= $agefrom && $patientage <= $ageto) {
-                     $numages++;
-                  }
-               }
-               if ($elldee == 0 && $age == 0) {
-                  $numages++; # count all the data as LD/age N/A
-               }
-            }
-            $vids->close();
-            $numld = 0; # reset
-            
-            array_push($ansarr, $numages);
-
-            
-         }
-         //$ansarr = rtrim($ansarr,","); #remove trailing comma
-      }
-      if ($valtype == 1) { #range of values 
-         $dataset = $mysqli->prepare("SELECT valuea, valueb FROM report_data WHERE rmid = ? ORDER BY rdid");
-         $dataset->bind_param("i", $rmid); 
-         $dataset->execute();
-         $dataset->store_result();
-         $dataset->bind_result($valuea, $valueb);
-         while ($dataset->fetch()){
-            $select_val = "$valuea - $valueb";
-            array_push($labelarr,$select_val); #this creates the x-axis labels
-            array_push($valarr,$valuea); # the 'from' value to search data
-            array_push($valBarr,$valueb); # the 'to' value to search data
-         }
-         $dataset->close();
-         // find how many of each type for this trainee and push value to array
-         $x = 0;
-         foreach ($valarr as $valueA) {
-            // find same key for vlueB
-            $valueB = $valBarr[$x];
-            // removed dates
-            // AND date_added >= ? AND date_added <= ?
-            // , $datestart, $dateend
-            $vids = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND stid = ? AND select_val >= ? AND select_val <= ? "); 
-            $vids->bind_param("sisi", $trainkey, $stid, $valueA, $valueB);
-            $vids->execute();
-            $vids->store_result();
-            $numages = $vids->num_rows;
-            $vids->close();
-            array_push($ansarr, $numages);
-            $x++;
-         }
-      }
-      if ($valtype == 2) { # count of hours
-         $value60 = 60;
-         // loop through this report's data requirements held in valuea
-         // and get the matching field name (valuea = pid)
-         $dataset = $mysqli->prepare("SELECT select_gen.select_val, report_data.valuea FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
-         $dataset->bind_param("i", $rmid); 
-         $dataset->execute();
-         $dataset->store_result();
-         $dataset->bind_result($select_val, $valuea);
-         while ($dataset->fetch()){
-            $valuea = intval($valuea);
-            array_push($labelarr,$select_val); #this creates the x-axis labels
-            array_push($valarr,$valuea); # the id's to look for in Trainee's data
-         }
-         $dataset->close();
-         //$labelarr = rtrim($labelarr,","); #remove trailing comma
-         //$valarr = rtrim($valarr,","); #remove trailing comma
-
-         foreach ($valarr as $valueA) {
-            $hours = '';
-            $tothours = 0;
-            // removed dates
-            // AND date_added >= ? AND date_added <= ?
-            // , $datestart, $dateend
-            $hrsset = $mysqli->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ?");
-            $hrsset->bind_param("sii", $trainkey, $stid, $valueA);
-            $hrsset->execute();
-            $hrsset->store_result();
-            $hrsset->bind_result($logkey);
-            while ($hrsset->fetch()){
-               $hours = 0;
-               // we'll use the logkey to find the hours for the same session
-               //echo "logkey $logkey ($trainkey, $stid, $valueA, $datestart, $dateend)<br>";
-               // for each, find number of hours for the same logkey
-               // // looking for stid = 60
-               $stmt = $mysqli->prepare("SELECT select_val FROM trainee_log WHERE logkey = ? AND stid = ?");
-               $stmt->bind_param("si", $logkey, $value60);
-               $stmt->execute();
-               $stmt->store_result();
-               $stmt->bind_result($hours);
-               $stmt->fetch();
-               $stmt->close();
-
-               // data is in HH:mm format
-               if ($hours != 0) {
-                  $time = explode(':', $hours);
-                  if (isset($time[0]) && isset($time[1])) {
-                     $minutes = (intval($time[0]) * 60.0 + intval($time[1]) * 1.0);
-                     $hours = $minutes / 60;
-                     $tothours = $tothours + $hours;
-                  }
-               }
-               
-               
-               
-            }
-            array_push($ansarr, $tothours);
-            $numrows = $hrsset->num_rows;
-            $hrsset->close();
-            
-         }
-      }
-
-
-         // That concludes setting up the data, now create the chart:
-         echo "const ctxx$rmid = document.getElementById('Chart_$rmid').getContext('2d');\n";
-         echo "const Chart_$rmid = new Chart(ctxx$rmid, {";#1
-            echo "type: '$graph',\n"; # bar or pie
-            echo "data: {\n";#2
-               echo "labels: [\n"; # print the x-axis labels
-                  foreach ($labelarr as $labelval) {
-                     echo "'$labelval',";
-                  }
-               echo "],\n";
-               echo "datasets: [{\n
-                  label: '$labeltxt',\n
-                  data: [\n";
-                  foreach ($ansarr as $ans) {
-                     echo "'$ans',";
-                  }
-                  echo "]\n,
-                  backgroundColor: [\n
-                  ";
-                  foreach ($dispcolorarr as $bgcol) {
-                     echo "'$bgcol',";
-                  }
-                  echo "\n],
-                  borderColor: [\n";
-                  foreach ($dispborderarr as $bdrcol) {
-                     echo "'$bdrcol',";
-                  }
-                  echo "\n],
-                  borderWidth: 1
-               }]";
-
-            echo "},\n";#2
-
-            echo "options: {
-                 scales: {
-                     yAxes: [{
-                           ticks: {
-                              stepSize: 1,
-                              beginAtZero: true
-                           }
-                     }]
-                 }
-             }";
-
-         echo "});\n";#1
-         
-      
-      echo "</script>\n";
-   }
-   $reportset->close();
-}
-$tableset->close();
-
-?>
-
 </body>
 </html>
 <?PHP
