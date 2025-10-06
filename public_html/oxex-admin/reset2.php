@@ -63,7 +63,14 @@ if ($valid_email != "no") {
   $stmt->bind_result($email_subject, $email_body, $email_body2, $email_body3);
   $stmt->fetch();
   $stmt->close();
-  $link = 'https://www.oxex.co.uk/oxex-admin/r3.php?t='.$token;
+  // Build admin reset link using ADMIN_BASE_URL from .env if provided, otherwise BASE_URL
+  $adminBase = getenv('ADMIN_BASE_URL');
+  if (!$adminBase) {
+    $adminBase = rtrim(getenv('BASE_URL') ?: 'https://www.oxex.co.uk', '/').'/oxex-admin';
+  } else {
+    $adminBase = rtrim($adminBase, '/');
+  }
+  $link = $adminBase . '/r3.php?t=' . $token;
   $email_body = str_replace("[LINK]", $link, $email_body);
   $email_body = str_replace("[TODAY]", $today, $email_body);
   $email_body2 = str_replace("[LINK]", $link, $email_body2);

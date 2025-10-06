@@ -27,6 +27,12 @@ fi\n\
 if [ ! -z "$MYSQL_DATABASE" ]; then\n\
     echo "MYSQL_DATABASE=$MYSQL_DATABASE" >> /var/www/html/.env\n\
 fi\n\
+if [ ! -z "$BASE_URL" ]; then\n\
+    echo "BASE_URL=$BASE_URL" >> /var/www/html/.env\n\
+fi\n\
+if [ ! -z "$ADMIN_BASE_URL" ]; then\n\
+    echo "ADMIN_BASE_URL=$ADMIN_BASE_URL" >> /var/www/html/.env\n\
+fi\n\
 \n\
 # Start Apache\n\
 apache2-foreground' > /usr/local/bin/start.sh

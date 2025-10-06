@@ -518,14 +518,16 @@ function validateAndConvertTime($timeValue) {
         overflow: hidden;
       }
       
-      /* Consistent spacing and alignment */
+      /* Consistent spacing and alignment - allow labels to wrap for readability */
       .form-group label {
         display: block;
         width: 100%;
         max-width: 100%;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow: visible;
+        text-overflow: initial;
+        white-space: normal;
+        word-break: break-word;
+        line-height: 1.3;
       }
       
       /* Ensure all form elements respect container boundaries */
@@ -814,8 +816,8 @@ function validateAndConvertTime($timeValue) {
                 <thead>
                   <tr>
                     <?php
-                    // Define the specific fields we want to show
-                    $wanted_fields = array('Placement', 'Patient ID', 'Clinical specialism', 'Date (latest session/contact)', 
+                    // Define the specific fields we want to show (ensure Placement Number is included and prioritised)
+                    $wanted_fields = array('Placement Number', 'Placement', 'Patient ID', 'Clinical specialism', 'Date (latest session/contact)', 
                     'Supervision type', 'Format', 'Leadership activity',	'Supervision model','Supervision methods used');
                     
                     $tableset = $mysqli->prepare("SELECT tab_fields.stid, select_types.str 
@@ -824,7 +826,7 @@ function validateAndConvertTime($timeValue) {
                       AND tab_fields.sort_order != ? 
                       AND tab_fields.stid = select_types.stid 
                       AND select_types.str IN ('" . implode("','", $wanted_fields) . "')
-                      ORDER BY tab_fields.sort_order ASC");
+                      ORDER BY FIELD(select_types.str, '" . implode("','", $wanted_fields) . "'), tab_fields.sort_order ASC");
                     $tableset->bind_param("ii", $tbid, $value0);
                     $tableset->execute();
                     $tableset->store_result();
@@ -875,7 +877,7 @@ function validateAndConvertTime($timeValue) {
                           AND tab_fields.sort_order != ? 
                           AND tab_fields.stid = select_types.stid 
                           AND select_types.str IN ('" . implode("','", $wanted_fields) . "')
-                          ORDER BY tab_fields.sort_order ASC");
+                          ORDER BY FIELD(select_types.str, '" . implode("','", $wanted_fields) . "'), tab_fields.sort_order ASC");
                         $tableset->bind_param("ii", $tbid, $value0);
                         $tableset->execute();
                         $tableset->store_result();

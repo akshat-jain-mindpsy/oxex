@@ -69,6 +69,92 @@ $listname = "Dashboard";
 
 // Check permissions - allow all admin types to view BABCP stats
 if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+    // CSV endpoint for per-trainee monthly timeline (honors basic filters)
+    if (isset($_GET['data_type']) && $_GET['data_type'] === 'trainee_timeline_csv') {
+        $timeline_trainkey = isset($_GET['trainkey']) ? (int)$_GET['trainkey'] : 0;
+        if ($timeline_trainkey <= 0) {
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'message' => 'Missing trainkey']);
+            exit;
+        }
+
+        $thisyear_tmp = date('Y');
+        $start_year_tmp = isset($_GET['start_year']) ? (int)$_GET['start_year'] : ($thisyear_tmp - 10);
+        $end_year_tmp = isset($_GET['end_year']) ? (int)$_GET['end_year'] : ($thisyear_tmp + 1);
+        $datestart_yyyymmdd_tmp = $start_year_tmp . '0101';
+        $dateend_yyyymmdd_tmp = $end_year_tmp . '1231';
+        $selected_course_tmp = isset($_GET['course']) ? (int)$_GET['course'] : 0;
+
+        $course_condition_tmp = '';
+        if ($selected_course_tmp > 0) {
+            $course_condition_tmp = " AND t.uid = " . (int)$selected_course_tmp;
+        }
+
+        // Lookup trainee name for filename
+        $trainee_name = 'trainee';
+        if ($timeline_trainkey > 0) {
+            $name_stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+            if ($name_stmt) {
+                $name_stmt->bind_param('i', $timeline_trainkey);
+                $name_stmt->execute();
+                $name_stmt->bind_result($fetched_name);
+                if ($name_stmt->fetch() && !empty($fetched_name)) {
+                    $trainee_name = $fetched_name;
+                }
+                $name_stmt->close();
+            }
+        }
+
+        $timeline_query = "
+            SELECT 
+                DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m') AS month,
+                COUNT(DISTINCT tl.logkey) AS total_cases,
+                COUNT(DISTINCT CASE WHEN st.str LIKE '%BABCP%' OR st.str LIKE '%Behavioural%' OR st.str LIKE '%Cognitive%' THEN tl.logkey END) AS babcp_training_cases,
+                COUNT(DISTINCT CASE WHEN st.str LIKE '%supervised%' OR st.str LIKE '%supervision%' OR st.str LIKE '%supervisor%' THEN tl.logkey END) AS supervised_cases,
+                COUNT(DISTINCT CASE WHEN st.str LIKE '%CBT%' THEN tl.logkey END) AS cbt_cases
+            FROM trainee_log tl
+            JOIN trainee_tbl t ON tl.trainkey = t.trainkey
+            LEFT JOIN select_types st ON tl.stid = st.stid
+            WHERE tl.date_added >= ? AND tl.date_added <= ?
+              AND t.trainkey = ?
+              $course_condition_tmp
+            GROUP BY CONCAT(SUBSTRING(tl.date_added, 1, 4), '-', SUBSTRING(tl.date_added, 5, 2))
+            ORDER BY month ASC
+        ";
+
+        $stmt = $mysqli->prepare($timeline_query);
+        $stmt->bind_param('iii', $datestart_yyyymmdd_tmp, $dateend_yyyymmdd_tmp, $timeline_trainkey);
+        $stmt->execute();
+        $stmt->bind_result($month, $total_cases, $babcp_training_cases, $supervised_cases, $cbt_cases);
+
+        // Output CSV headers
+        // Sanitize trainee name for filename
+        $safe_name = trim($trainee_name);
+        $safe_name = preg_replace('/\s+/', '_', $safe_name);
+        $safe_name = preg_replace('/[^A-Za-z0-9_\-]/', '', $safe_name);
+        if ($safe_name === '') { $safe_name = 'trainee'; }
+        $filename = 'timeline_' . $safe_name . '_' . $timeline_trainkey . '_' . date('Ymd_His') . '.csv';
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename=' . $filename);
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        $output = fopen('php://output', 'w');
+        // CSV header row
+        fputcsv($output, ['Month', 'Total Cases', 'BABCP Training', 'Supervised', 'CBT']);
+        while ($stmt->fetch()) {
+            fputcsv($output, [
+                $month,
+                (int)$total_cases,
+                (int)$babcp_training_cases,
+                (int)$supervised_cases,
+                (int)$cbt_cases
+            ]);
+        }
+        fclose($output);
+        $stmt->close();
+        exit;
+    }
     // Lightweight JSON endpoint for per-trainee monthly timeline (honors basic filters)
     if (isset($_GET['data_type']) && $_GET['data_type'] === 'trainee_timeline') {
         header('Content-Type: application/json');
@@ -79,8 +165,8 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
         }
 
         $thisyear_tmp = date('Y');
-        $start_year_tmp = isset($_GET['start_year']) ? (int)$_GET['start_year'] : $thisyear_tmp;
-        $end_year_tmp = isset($_GET['end_year']) ? (int)$_GET['end_year'] : $thisyear_tmp;
+        $start_year_tmp = isset($_GET['start_year']) ? (int)$_GET['start_year'] : ($thisyear_tmp - 10);
+        $end_year_tmp = isset($_GET['end_year']) ? (int)$_GET['end_year'] : ($thisyear_tmp + 1);
         $datestart_yyyymmdd_tmp = $start_year_tmp . '0101';
         $dateend_yyyymmdd_tmp = $end_year_tmp . '1231';
         $selected_course_tmp = isset($_GET['course']) ? (int)$_GET['course'] : 0;
@@ -792,25 +878,34 @@ if ($courses === null) {
                            <select id="timelineTraineeSelect" class="form-control form-control-sm" style="min-width: 240px;">
                               <option value="">-- Choose Trainee --</option>
                               <?php
-                              $trainee_list_query = "SELECT t.trainkey, t.name 
-                                FROM trainee_tbl t 
-                                WHERE t.trainkey IS NOT NULL 
-                                  AND t.trainkey > 0 
-                                  AND NOT EXISTS (
-                                      SELECT 1 FROM who_there w 
-                                      WHERE w.realname = t.name 
-                                        AND w.admintype IN ('AT','AO','AE','SO','SE','DV')
-                                  )
-                                  $course_condition $cohort_condition 
+                              // Build trainee list to match detailed stats: active filters and date range, require at least one log entry
+                              $trainee_list_query = "
+                                SELECT DISTINCT t.trainkey, t.name
+                                FROM trainee_tbl t
+                                JOIN trainee_log tl ON tl.trainkey = t.trainkey
+                                WHERE tl.date_added >= ? AND tl.date_added <= ?
+                                  $course_condition $cohort_condition $babcp_condition_simple $additional_conditions
                                 ORDER BY t.name";
-                              $trainee_list_res = $mysqli->query($trainee_list_query);
-                              if ($trainee_list_res) {
-                                 while ($trow = $trainee_list_res->fetch_assoc()) {
-                                    echo '<option value="' . (int)$trow['trainkey'] . '">' . htmlspecialchars($trow['name']) . '</option>';
+                              $trainee_list_stmt = $mysqli->prepare($trainee_list_query);
+                              if ($trainee_list_stmt) {
+                                 $bind_types = 'ii' . $course_param_types;
+                                 if (!empty($course_params)) {
+                                    $trainee_list_stmt->bind_param($bind_types, $datestart, $dateend, ...$course_params);
+                                 } else {
+                                    $trainee_list_stmt->bind_param('ii', $datestart, $dateend);
                                  }
+                                 $trainee_list_stmt->execute();
+                                 $result = $trainee_list_stmt->get_result();
+                                 if ($result) {
+                                    while ($trow = $result->fetch_assoc()) {
+                                       echo '<option value="' . (int)$trow['trainkey'] . '">' . htmlspecialchars($trow['name']) . '</option>';
+                                    }
+                                 }
+                                 $trainee_list_stmt->close();
                               }
                               ?>
                            </select>
+                           <button id="downloadTimelineCsv" class="btn btn-sm btn-outline-primary ml-2" type="button" disabled>Download CSV</button>
                         </div>
                      </div>
                      <div class="card-body">
@@ -1262,14 +1357,17 @@ if ($courses === null) {
 
        // Event listener for trainee timeline select
         const traineeSelect = document.getElementById('timelineTraineeSelect');
+       const downloadBtn = document.getElementById('downloadTimelineCsv');
         if (traineeSelect) {
             traineeSelect.addEventListener('change', function() {
                 const raw = this.value;
                 const trainkey = parseInt(raw, 10);
                 if (!trainkey || trainkey <= 0 || Number.isNaN(trainkey)) {
                     console.warn('[Timeline] Ignoring invalid trainkey:', raw);
+                   if (downloadBtn) downloadBtn.disabled = true;
                     return;
                 }
+               if (downloadBtn) downloadBtn.disabled = false;
                 const loader = document.getElementById('timelineLoading');
                 this.disabled = true;
                 if (loader) loader.classList.add('active');
@@ -1310,6 +1408,19 @@ if ($courses === null) {
                         if (loader) loader.classList.remove('active');
                     });
             });
+
+           if (downloadBtn) {
+               downloadBtn.addEventListener('click', function() {
+                   const raw = traineeSelect.value;
+                   const trainkey = parseInt(raw, 10);
+                   if (!trainkey || trainkey <= 0 || Number.isNaN(trainkey)) return;
+                   const params = new URLSearchParams(window.location.search);
+                   params.set('data_type', 'trainee_timeline_csv');
+                   params.set('trainkey', trainkey);
+                   const url = 'trainee_stats.php?' + params.toString();
+                   window.location.href = url;
+               });
+           }
         }
    });
    

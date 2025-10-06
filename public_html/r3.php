@@ -34,7 +34,14 @@ if ($numrows == 1 && $usrkey) {
   
   // If this is an admin token, redirect to admin reset page
   if ($is_admin_token) {
-    header("Location: https://www.oxex.co.uk/oxex-admin/r3.php?t=" . urlencode($_GET['t']));
+    // Redirect to admin reset using ADMIN_BASE_URL or BASE_URL fallback
+    $adminBase = getenv('ADMIN_BASE_URL');
+    if (!$adminBase) {
+      $adminBase = rtrim(getenv('BASE_URL') ?: 'https://www.oxex.co.uk', '/').'/oxex-admin';
+    } else {
+      $adminBase = rtrim($adminBase, '/');
+    }
+    header('Location: ' . $adminBase . '/r3.php?t=' . urlencode($_GET['t']));
     exit();
   }
 }

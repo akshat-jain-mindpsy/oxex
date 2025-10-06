@@ -365,6 +365,15 @@ $changename = htmlspecialchars($tab_name);
           color: white;
       }
       
+      .section-move-up-btn, .section-move-down-btn {
+          margin-right: 5px;
+      }
+      
+      .section-move-up-btn:hover, .section-move-down-btn:hover {
+          background-color: #007bff;
+          color: white;
+      }
+      
       .save-option-edit:hover {
           background-color: #28a745;
       }
@@ -665,11 +674,21 @@ $changename = htmlspecialchars($tab_name);
                   // Start the section container regardless of whether it has fields
                   echo '<div class="section-container m-0 p-0" style="border-bottom:1px solid #eaeaea;">';
                   echo '<div class="section-header d-flex justify-content-between align-items-center m-0 p-2" style="background:#f8f9fa;border-left:4px solid #09c;">';
+                  echo '<div class="d-flex align-items-center">';
+                  echo '<div class="me-3">';
+                  echo '<button type="button" class="btn btn-sm btn-outline-secondary section-move-up-btn" data-section-id="' . $section_id . '" title="Move Section Up">';
+                  echo '<i class="fas fa-arrow-up"></i>';
+                  echo '</button>';
+                  echo '<button type="button" class="btn btn-sm btn-outline-secondary section-move-down-btn" data-section-id="' . $section_id . '" title="Move Section Down">';
+                  echo '<i class="fas fa-arrow-down"></i>';
+                  echo '</button>';
+                  echo '</div>';
                   echo '<div>';
                   echo '<h5 class="mb-1">' . htmlspecialchars($section['section_name']) . '</h5>';
                   if (!empty($section['section_description'])) {
                     echo '<p class="text-muted mb-0"><small>' . htmlspecialchars($section['section_description']) . '</small></p>';
                   }
+                  echo '</div>';
                   echo '</div>';
                   echo '<div>';
                   echo '<button type="button" class="btn btn-sm btn-outline-secondary edit-section-btn" data-section-id="' . $section_id . '" data-toggle="modal" data-target="#edit_section_modal">';
@@ -898,10 +917,19 @@ $changename = htmlspecialchars($tab_name);
 
    <!-- JavaScript will be loaded after jQuery -->
    <script type="text/javascript">
-    $(document).ready(function() {
- 
-         
-         // Debug: Check if manage options buttons exist
+      $(document).ready(function() {
+   
+           // Debug: Check if section move buttons exist
+           console.log('Section move up buttons found:', $('.section-move-up-btn').length);
+           console.log('Section move down buttons found:', $('.section-move-down-btn').length);
+           console.log('Section containers found:', $('.section-container').length);
+           
+           // Debug: Check button elements
+           $('.section-move-up-btn').each(function(index) {
+               console.log('Button ' + index + ':', this, 'data-section-id:', $(this).data('section-id'));
+           });
+           
+           // Debug: Check if manage options buttons exist
          const manageButtons = $('.manage-options-btn');
          
          // Debug: Check if modal exists
@@ -1696,6 +1724,121 @@ $changename = htmlspecialchars($tab_name);
             
             removeFieldFromSection(fieldId, tableId);
          });
+         
+         // Handle section move up
+         $(document).on('click', '.section-move-up-btn', function(e) {
+             console.log('Section move up clicked');
+             e.preventDefault();
+             e.stopPropagation();
+             
+             const $button = $(this);
+             const $section = $button.closest('.section-container');
+             console.log('Button element:', $button);
+             console.log('Section found:', $section.length);
+             console.log('Section HTML:', $section[0]);
+             
+             // Skip if this is the "Available Categories" section
+             if ($section.find('.unsectioned-fields').length > 0) {
+                 console.log('Skipping Available Categories section');
+                 return;
+             }
+             
+             const $prevSection = $section.prev('.section-container');
+             console.log('Previous section found:', $prevSection.length);
+             
+             if ($prevSection.length > 0) {
+                 console.log('Moving section up');
+                 $section.insertBefore($prevSection);
+                 updateSectionOrder();
+                 
+                 // Add visual feedback
+                 $section.css('background-color', '#d4edda');
+                 setTimeout(function() {
+                     $section.css('background-color', '');
+                 }, 500);
+             } else {
+                 console.log('No previous section found');
+             }
+         });
+         
+         // Handle section move down
+         $(document).on('click', '.section-move-down-btn', function(e) {
+             console.log('Section move down clicked');
+             e.preventDefault();
+             e.stopPropagation();
+             
+             const $section = $(this).closest('.section-container');
+             console.log('Section found:', $section.length);
+             
+             // Skip if this is the "Available Categories" section
+             if ($section.find('.unsectioned-fields').length > 0) {
+                 console.log('Skipping Available Categories section');
+                 return;
+             }
+             
+             const $nextSection = $section.next('.section-container');
+             console.log('Next section found:', $nextSection.length);
+             
+             if ($nextSection.length > 0) {
+                 console.log('Moving section down');
+                 $section.insertAfter($nextSection);
+                 updateSectionOrder();
+                 
+                 // Add visual feedback
+                 $section.css('background-color', '#d4edda');
+                 setTimeout(function() {
+                     $section.css('background-color', '');
+                 }, 500);
+             } else {
+                 console.log('No next section found');
+             }
+         });
+         
+         // Function to update section order
+         function updateSectionOrder() {
+             console.log('updateSectionOrder called');
+             const sections = [];
+             $('.section-container').each(function() {
+                 // Skip the "Available Categories" section (which has unsectioned-fields)
+                 if ($(this).find('.unsectioned-fields').length > 0) {
+                     console.log('Skipping Available Categories section in updateSectionOrder');
+                     return;
+                 }
+                 
+                 const sectionId = $(this).find('.section-move-up-btn').data('section-id');
+                 console.log('Found section ID:', sectionId);
+                 if (sectionId) {
+                     sections.push(sectionId);
+                 }
+             });
+             
+             console.log('Sections to update:', sections);
+             
+             if (sections.length > 0) {
+                 $.ajax({
+                     url: 'ajax/update_section_order.php',
+                     type: 'POST',
+                     data: {
+                         sections: sections
+                     },
+                     dataType: 'json',
+                     success: function(response) {
+                         console.log('AJAX response:', response);
+                         if (response.status === 'success') {
+                             console.log('Section order updated successfully');
+                         } else {
+                             console.error('Failed to update section order:', response.message);
+                             // Optionally show user notification
+                         }
+                     },
+                     error: function(xhr, status, error) {
+                         console.error('Error updating section order:', error);
+                         console.error('XHR:', xhr);
+                         // Optionally show user notification
+                     }
+                 });
+             }
+         }
          
          // Function to update field order
          function updateFieldOrder(sectionId, tableId, fieldIds) {

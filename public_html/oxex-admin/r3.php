@@ -38,7 +38,9 @@ if ($numrows == 1 && $usrkey) {
   
   // If this is a trainee token, redirect to regular reset page
   if ($is_trainee_token) {
-    header("Location: https://www.oxex.co.uk/r3.php?t=" . urlencode($_GET['t']));
+    // Redirect to trainee reset using BASE_URL from .env
+    $baseUrl = rtrim(getenv('BASE_URL') ?: 'https://www.oxex.co.uk', '/');
+    header('Location: ' . $baseUrl . '/r3.php?t=' . urlencode($_GET['t']));
     exit();
   }
 }

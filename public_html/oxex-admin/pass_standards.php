@@ -58,36 +58,38 @@ function generateStandardExplanation($row) {
         $explanation .= " where the category value equals <strong>{$field_value}</strong>";
     }
     
-    // Add subfield rules explanation - be very detailed
+    // Add subfield rules explanation - robustly handle multiple SUBFIELD_RULES segments
     if (!empty($field_value) && strpos($field_value, 'SUBFIELD_RULES:') !== false) {
         try {
-            $subfield_rules = json_decode(str_replace('SUBFIELD_RULES:', '', $field_value), true);
-            if (is_array($subfield_rules) && !empty($subfield_rules)) {
-                $explanation .= "<br><br><strong>Within the main requirement, there are specific subfield rules:</strong>";
-                foreach ($subfield_rules as $index => $rule) {
-                    if (!empty($rule['subfield_value']) && !empty($rule['requirement_type']) && !empty($rule['specific_value'])) {
-                        $rule_num = $index + 1;
-                        $rule_type = str_replace('_', ' ', strtolower($rule['requirement_type']));
-                        
-                        // Get subfield name from database
-                        global $mysqli;
-                        $subfield_query = "SELECT select_val FROM select_gen WHERE pid = ?";
-                        $subfield_name = "Unknown Subfield";
-                        if ($subfield_stmt = $mysqli->prepare($subfield_query)) {
-                            $subfield_stmt->bind_param("i", $rule['subfield_value']);
-                            $subfield_stmt->execute();
-                            $subfield_result = $subfield_stmt->get_result();
-                            if ($subfield_row = $subfield_result->fetch_assoc()) {
-                                $subfield_name = $subfield_row['select_val'];
-                            }
-                            $subfield_stmt->close();
+            $explanation .= "<br><br><strong>Within the main requirement, there are specific subfield rules:</strong>";
+            $rule_sets = explode('|', $field_value);
+            $rule_index = 0;
+            foreach ($rule_sets as $rule_set) {
+                $pos = strpos($rule_set, 'SUBFIELD_RULES:');
+                if ($pos === false) { continue; }
+                $json_text = trim(substr($rule_set, $pos + strlen('SUBFIELD_RULES:')));
+                $parsed = json_decode($json_text, true);
+                if (!is_array($parsed) || empty($parsed)) { continue; }
+                foreach ($parsed as $rule) {
+                    if (empty($rule['subfield_value']) || empty($rule['requirement_type']) || !isset($rule['specific_value'])) { continue; }
+                    $rule_index++;
+                    $rule_type = str_replace('_', ' ', strtolower($rule['requirement_type']));
+                    // Resolve subfield name
+                    global $mysqli;
+                    $subfield_name = 'Unknown';
+                    if ($stmt_sf = $mysqli->prepare("SELECT select_val FROM select_gen WHERE pid = ?")) {
+                        $pid = (int)$rule['subfield_value'];
+                        $stmt_sf->bind_param("i", $pid);
+                        $stmt_sf->execute();
+                        $res_sf = $stmt_sf->get_result();
+                        if ($row_sf = $res_sf->fetch_assoc()) {
+                            $subfield_name = $row_sf['select_val'];
                         }
-                        
-                        $explanation .= "<br><strong>Rule {$rule_num}:</strong> For subcategory <strong>{$subfield_name}</strong>, require <strong>{$rule['specific_value']}</strong> " . $rule_type;
-                        
-                        if ($rule['requirement_type'] == 'PER_CASE_MINIMUM' && !empty($rule['minimum_threshold'])) {
-                            $explanation .= " where each case must meet a minimum of <strong>{$rule['minimum_threshold']}</strong>";
-                        }
+                        $stmt_sf->close();
+                    }
+                    $explanation .= "<br><strong>Rule {$rule_index}:</strong> For subcategory <strong>" . htmlspecialchars($subfield_name) . "</strong>, require <strong>" . htmlspecialchars($rule['specific_value']) . "</strong> " . $rule_type;
+                    if ($rule['requirement_type'] == 'PER_CASE_MINIMUM' && !empty($rule['minimum_threshold'])) {
+                        $explanation .= " where each case must meet a minimum of <strong>" . htmlspecialchars($rule['minimum_threshold']) . "</strong>";
                     }
                 }
             }
