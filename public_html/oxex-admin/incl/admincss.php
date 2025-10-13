@@ -76,4 +76,31 @@
         font-size: 0.85rem;
     }
 }
+
+/* Fix for Bootstrap collapse functionality - removed !important to allow JS control */
+.sidebar-subnav.collapse {
+    display: none;
+}
+
+.sidebar-subnav.collapse.show {
+    display: block;
+}
+
+/* Ensure nav-floating only applies to floating menus, not normal collapse */
+.sidebar-subnav:not(.nav-floating).collapse {
+    display: none;
+}
+
+.sidebar-subnav:not(.nav-floating).collapse.show {
+    display: block;
+}
+
+/* Fix for hidden sidebar subnav headers */
+.sidebar-subnav > .sidebar-subnav-header {
+    display: block !important;
+}
+
+.sidebar-subnav > .sidebar-subnav-header-sub {
+    display: block !important;
+}
 </style>

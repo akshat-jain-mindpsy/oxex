@@ -3,9 +3,10 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Check user permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     die("Unauthorized Access");
 }
 
@@ -14,14 +15,20 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 $template_id = isset($_GET['template_id']) ? intval($_GET['template_id']) : 0;
 
 // Check and create CSV templates table if not exists
-$check_templates_table_query = "SHOW TABLES LIKE 'csv_templates'";
-$templates_table_result = $mysqli->query($check_templates_table_query);
+try {
+    $check_templates_table_query = "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'csv_templates' LIMIT 1";
+    $templates_table_result = $supabase_pdo->query($check_templates_table_query);
+    $table_exists = $templates_table_result->rowCount() > 0;
+} catch (PDOException $e) {
+    // If query fails, assume table doesn't exist and try to create it
+    $table_exists = false;
+}
 
-if ($templates_table_result->num_rows == 0) {
-    // Table doesn't exist, attempt to create
+if (!$table_exists) {
+    // Table doesn't exist, attempt to create with IF NOT EXISTS
     $create_templates_table_sql = "
-    CREATE TABLE csv_templates (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS csv_templates (
+        id SERIAL PRIMARY KEY,
         template_name VARCHAR(255) NOT NULL,
         description TEXT,
         created_by VARCHAR(100),
@@ -29,85 +36,93 @@ if ($templates_table_result->num_rows == 0) {
         enclosure VARCHAR(10) DEFAULT '\"',
         header_row BOOLEAN DEFAULT TRUE,
         max_rows INT DEFAULT 1000,
-        export_type ENUM('download', 'save') DEFAULT 'download',
+        export_type VARCHAR(20) DEFAULT 'download',
         date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_active BOOLEAN DEFAULT TRUE
     )";
     
-    if (!$mysqli->query($create_templates_table_sql)) {
-        die("Error creating csv_templates table: " . $mysqli->error);
+    try {
+        $supabase_pdo->exec($create_templates_table_sql);
+    } catch (PDOException $e) {
+        // If table already exists, that's fine - continue
+        if (strpos($e->getMessage(), 'already exists') === false) {
+            die("Error creating csv_templates table: " . $e->getMessage());
+        }
     }
 }
 
 // Check and create CSV template columns table if not exists
-$check_columns_table_query = "SHOW TABLES LIKE 'csv_template_columns'";
-$columns_table_result = $mysqli->query($check_columns_table_query);
+try {
+    $check_columns_table_query = "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'csv_template_columns' LIMIT 1";
+    $columns_table_result = $supabase_pdo->query($check_columns_table_query);
+    $columns_table_exists = $columns_table_result->rowCount() > 0;
+} catch (PDOException $e) {
+    // If query fails, assume table doesn't exist and try to create it
+    $columns_table_exists = false;
+}
 
-if ($columns_table_result->num_rows == 0) {
-    // Table doesn't exist, attempt to create
+if (!$columns_table_exists) {
+    // Table doesn't exist, attempt to create with IF NOT EXISTS
     $create_columns_table_sql = "
-    CREATE TABLE csv_template_columns (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS csv_template_columns (
+        id SERIAL PRIMARY KEY,
         template_id INT NOT NULL,
         table_id INT NOT NULL,
         field_id INT NOT NULL,
         display_order INT DEFAULT 0
     )";
     
-    if (!$mysqli->query($create_columns_table_sql)) {
-        die("Error creating csv_template_columns table: " . $mysqli->error);
+    try {
+        $supabase_pdo->exec($create_columns_table_sql);
+    } catch (PDOException $e) {
+        // If table already exists, that's fine - continue
+        if (strpos($e->getMessage(), 'already exists') === false) {
+            die("Error creating csv_template_columns table: " . $e->getMessage());
+        }
     }
 }
 
 // Fetch existing CSV templates
 $templates = [];
 try {
-    $stmt = $mysqli->prepare("SELECT id, template_name, description, created_by, date_created FROM csv_templates ORDER BY date_created DESC");
+    $stmt = $supabase_pdo->prepare("SELECT id, template_name, description, created_by, date_created FROM csv_templates ORDER BY date_created DESC");
     $stmt->execute();
-    $result = $stmt->get_result();
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $templates[] = $row;
     }
-    $stmt->close();
-} catch (mysqli_sql_exception $e) {
+} catch (PDOException $e) {
     // Log the error and continue with an empty templates array
     error_log("CSV Templates Query Error: " . $e->getMessage());
 }
 
 $current_template = null;
 if ($template_id > 0) {
-    $stmt = $mysqli->prepare("SELECT * FROM csv_templates WHERE id = ?");
-    $stmt->bind_param("i", $template_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $current_template = $result->fetch_assoc();
-    $stmt->close();
+    $stmt = $supabase_pdo->prepare("SELECT * FROM csv_templates WHERE id = ?");
+    $stmt->execute([$template_id]);
+    $current_template = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
 // Fetch available tables
 $tables_query = "SELECT tbid, tab_name FROM tabs_tbl ORDER BY tab_name";
-$tables_result = $mysqli->query($tables_query);
+$tables_result = $supabase_pdo->query($tables_query);
 $tables = [];
-while ($row = $tables_result->fetch_assoc()) {
+while ($row = $tables_result->fetch(PDO::FETCH_ASSOC)) {
     $tables[] = $row;
 }
 
 // Fetch fields for a specific table (to be used in AJAX)
-function getFieldsForTable($mysqli, $tbid) {
-    $stmt = $mysqli->prepare("SELECT st.stid, st.str 
+function getFieldsForTable($supabase_pdo, $tbid) {
+    $stmt = $supabase_pdo->prepare("SELECT st.stid, st.str 
                              FROM tab_fields tf 
                              JOIN select_types st ON tf.stid = st.stid 
                              WHERE tf.tbid = ? 
                              ORDER BY tf.sort_order ASC");
-    $stmt->bind_param("i", $tbid);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt->execute([$tbid]);
     $fields = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $fields[] = $row;
     }
-    $stmt->close();
     return $fields;
 }
 
@@ -115,13 +130,13 @@ function getFieldsForTable($mysqli, $tbid) {
 $existing_columns = [];
 if ($current_template) {
     // First, let's check if the table has the expected columns
-    $check_columns_structure = $mysqli->query("DESCRIBE csv_template_columns");
+    $check_columns_structure = $supabase_pdo->query("SELECT column_name FROM information_schema.columns WHERE table_name = 'csv_template_columns' AND table_schema = 'public'");
     $columns_exist = false;
     $column_names = [];
     
     if ($check_columns_structure) {
-        while ($col = $check_columns_structure->fetch_assoc()) {
-            $column_names[] = $col['Field'];
+        while ($col = $check_columns_structure->fetch(PDO::FETCH_ASSOC)) {
+            $column_names[] = $col['column_name'];
         }
         
         // Check if all required columns exist
@@ -137,7 +152,7 @@ if ($current_template) {
     
     if ($columns_exist) {
         // Columns exist, proceed with the query
-    $columns_stmt = $mysqli->prepare("
+    $columns_stmt = $supabase_pdo->prepare("
         SELECT 
             ctc.id, 
             ctc.table_id, 
@@ -151,39 +166,39 @@ if ($current_template) {
         ORDER BY ctc.display_order
     ");
         
-        if ($columns_stmt) {
-    $columns_stmt->bind_param("i", $current_template['id']);
-    $columns_stmt->execute();
-    $columns_result = $columns_stmt->get_result();
+        try {
+    $columns_stmt->execute([$current_template['id']]);
     
-    while ($row = $columns_result->fetch_assoc()) {
+    while ($row = $columns_stmt->fetch(PDO::FETCH_ASSOC)) {
         $existing_columns[] = $row;
     }
-    $columns_stmt->close();
-        } else {
+        } catch (PDOException $e) {
             // Failed to prepare statement, log the error
-            error_log("CSV Editor - Error preparing columns query: " . $mysqli->error);
+            error_log("CSV Editor - Error preparing columns query: " . $e->getMessage());
         }
     } else {
         // Table doesn't have the expected structure, recreate it
-        $mysqli->query("DROP TABLE IF EXISTS csv_template_columns");
+        $supabase_pdo->exec("DROP TABLE IF EXISTS csv_template_columns");
         
         $create_columns_table_sql = "
         CREATE TABLE csv_template_columns (
-            id INT AUTO_INCREMENT PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             template_id INT NOT NULL,
             table_id INT NOT NULL,
             field_id INT NOT NULL,
             display_order INT DEFAULT 0
         )";
         
-        if (!$mysqli->query($create_columns_table_sql)) {
-            error_log("CSV Editor - Error recreating csv_template_columns table: " . $mysqli->error);
+        try {
+            $supabase_pdo->exec($create_columns_table_sql);
+        } catch (PDOException $e) {
+            error_log("CSV Editor - Error recreating csv_template_columns table: " . $e->getMessage());
         }
     }
 }
 
 $pagetitle = "CSV Editor";
+
 $subtitle = "Manage CSV Templates";
 
 // Fix for session timeout issue by providing the correct login path
@@ -242,6 +257,24 @@ $session_timeout_js = "";
         .field-type-select {
             width: 100%;
         }
+        /* Make Select Field Modal content scrollable */
+        #selectFieldModal .modal-dialog {
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #selectFieldModal .modal-content {
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #selectFieldModal .modal-body {
+            overflow-y: auto;
+        }
+        #field-selection-container {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body class="wrapper">
@@ -262,107 +295,69 @@ $session_timeout_js = "";
                     <small><?php echo $subtitle; ?></small>
                 </div>
             </div>
-
-            <!-- Database Tables and Fields Section -->
-            <div class="container mt-4">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h4>Database Tables and Categories</h4>
-                        <button type="button" class="btn btn-success" data-toggle="modal" data-target="#selectTableModal">
-                            <i class="fa fa-plus"></i> Add Existing Table to Template
-                        </button>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-bordered table-hover">
-                                <thead class="thead-dark">
-                                    <tr>
-                                        <th>Table Name</th>
-                                        <th>Categories</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php 
-                                    // Get all tables
-                                    $tables_query = "SELECT tbid, tab_name FROM tabs_tbl ORDER BY tab_name";
-                                    $tables_result = $mysqli->query($tables_query);
-                                    
-                                    while ($table = $tables_result->fetch_assoc()): 
-                                        // Get fields for each table
-                                        $fields_query = "SELECT st.stid, st.str 
-                                                      FROM tab_fields tf 
-                                                      JOIN select_types st ON tf.stid = st.stid 
-                                                      WHERE tf.tbid = ? 
-                                                      ORDER BY tf.sort_order ASC";
-                                        $fields_stmt = $mysqli->prepare($fields_query);
-                                        $fields_stmt->bind_param("i", $table['tbid']);
-                                        $fields_stmt->execute();
-                                        $fields_result = $fields_stmt->get_result();
-                                        $fields = [];
-                                        while ($field = $fields_result->fetch_assoc()) {
-                                            $fields[] = $field;
-                                        }
-                                        $fields_stmt->close();
-                                    ?>
-                                    <tr>
-                                        <td><?php echo htmlspecialchars($table['tab_name']); ?></td>
-                                        <td>
-                                            <ul class="list-group">
-                                                <?php foreach ($fields as $field): ?>
-                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                                                        <span><?php echo htmlspecialchars($field['str']); ?></span>
-                                                        <div class="btn-group">
-                                                            <button type="button" class="btn btn-sm btn-success add-field-to-template-btn" 
-                                                                   data-field-id="<?php echo $field['stid']; ?>" 
-                                                                   data-field-name="<?php echo htmlspecialchars($field['str']); ?>"
-                                                                   data-table-id="<?php echo $table['tbid']; ?>"
-                                                                   data-table-name="<?php echo htmlspecialchars($table['tab_name']); ?>">
-                                                                <i class="fa fa-plus"></i> Add to Template
-                                                            </button>
-                                                        </div>
-                                                    </li>
-                                                <?php endforeach; ?>
-                                            </ul>
-                                        </td>
-                                        <td>
-                                            <div class="btn-group">
-                                                <button type="button" class="btn btn-primary add-table-to-template-btn" 
-                                                       data-id="<?php echo $table['tbid']; ?>" 
-                                                       data-name="<?php echo htmlspecialchars($table['tab_name']); ?>">
-                                                    <i class="fa fa-plus"></i> Add to Template
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <?php endwhile; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <div class="row mt-4">
                 <div class="col-12">
                     <h4>Available Templates</h4>
                     <div id="csvEditorGrid">
-                        <?php foreach ($templates as $template): ?>
-                            <div class="card template-card" onclick="location.href='csv_editor.php?template_id=<?php echo $template['id']; ?>'">
-                                <div class="card-body">
-                                    <h5 class="card-title"><?php echo htmlspecialchars($template['template_name']); ?></h5>
-                                    <p class="card-text"><?php echo htmlspecialchars($template['description']); ?></p>
-                                    <small class="text-muted">
-                                        Created by <?php echo htmlspecialchars($template['created_by']); ?> 
-                                        on <?php echo date('d M Y', strtotime($template['date_created'])); ?>
-                                    </small>
+                        <?php if (!empty($templates)): ?>
+                            <?php foreach ($templates as $template): ?>
+                                <?php $tmplIdSafe = isset($template['id']) ? (int)$template['id'] : 0; ?>
+                                <div class="card template-card" <?php if ($tmplIdSafe > 0): ?>onclick="location.href='csv_editor.php?template_id=<?php echo $tmplIdSafe; ?>'"<?php endif; ?>>
+                                    <div class="card-body d-flex flex-column">
+                                        <div class="d-flex justify-content-between align-items-start mb-2">
+                                            <h5 class="card-title mb-0"><?php echo htmlspecialchars($template['template_name']); ?></h5>
+                                            <button type="button" class="btn btn-sm btn-outline-danger delete-template-card-btn" data-template-id="<?php echo $tmplIdSafe; ?>" title="Delete template">
+                                                <i class="fa fa-trash"></i>
+                                            </button>
+                                        </div>
+                                        <p class="card-text mb-2"><?php echo htmlspecialchars($template['description']); ?></p>
+                                        <?php
+                                        // Fetch selected fields for this template
+                                        $tmpl_id = (int)$template['id'];
+                                        $tmpl_fields_stmt = $supabase_pdo->prepare("SELECT tt.tab_name, st.str AS field_name
+                                                                                      FROM csv_template_columns ctc
+                                                                                      JOIN tabs_tbl tt ON ctc.table_id = tt.tbid
+                                                                                      JOIN select_types st ON ctc.field_id = st.stid
+                                                                                      WHERE ctc.template_id = ?
+                                                                                      ORDER BY tt.tab_name, st.str");
+                                        $tmpl_fields_stmt->execute([$tmpl_id]);
+                                        $grouped = [];
+                                        while ($r = $tmpl_fields_stmt->fetch(PDO::FETCH_ASSOC)) {
+                                            $tname = $r['tab_name'];
+                                            if (!isset($grouped[$tname])) { $grouped[$tname] = []; }
+                                            $grouped[$tname][] = $r['field_name'];
+                                        }
+                                        ?>
+                                        <?php if (!empty($grouped)): ?>
+                                            <div class="mb-2">
+                                                <?php foreach ($grouped as $tname => $fields): ?>
+                                                    <div class="mb-1">
+                                                        <strong><?php echo htmlspecialchars($tname); ?>:</strong>
+                                                        <span class="text-muted"><?php echo htmlspecialchars(implode(', ', $fields)); ?></span>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php else: ?>
+                                            <div class="text-muted mb-2">No categories selected yet.</div>
+                                        <?php endif; ?>
+                                        <?php 
+                                        $createdBy = isset($template['created_by']) ? trim($template['created_by']) : '';
+                                        $createdAtRaw = isset($template['date_created']) ? $template['date_created'] : null;
+                                        $createdAtTs = $createdAtRaw ? strtotime($createdAtRaw) : false;
+                                        if ($createdBy || $createdAtTs): ?>
+                                            <small class="text-muted">
+                                                <?php if ($createdBy): ?>Created by <?php echo htmlspecialchars($createdBy); ?><?php endif; ?>
+                                                <?php if ($createdBy && $createdAtTs): ?> on <?php echo date('d M Y', $createdAtTs); ?><?php elseif ($createdAtTs): ?><?php echo date('d M Y', $createdAtTs); ?><?php endif; ?>
+                                            </small>
+                                        <?php endif; ?>
+                                    </div>
                                 </div>
-                            </div>
-                        <?php endforeach; ?>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <div class="alert alert-info mb-0">No templates found. Click "Create New Template" to get started.</div>
+                        <?php endif; ?>
                     </div>
-                </div>
             </div>
-
             <div class="row mt-4">
                 <div class="col-12">
                     <div class="card">
@@ -380,7 +375,7 @@ $session_timeout_js = "";
                                         </tr>
                                     </thead>
                                     <tbody id="template-tables-body">
-                                        <?php if (!empty($existing_columns)): 
+                                        <?php if (!empty($existing_columns)):
                                             // Group columns by table
                                             $grouped_columns = [];
                                             foreach ($existing_columns as $column) {
@@ -428,16 +423,21 @@ $session_timeout_js = "";
                                         </tr>
                                         <?php 
                                             endforeach;
+                                        else: 
+                                            ?>
+                                            <tr>
+                                                <td colspan="3">
+                                                    <div class="text-muted">No categories selected for this template yet. Use "Add Existing Table to Template" to add some.</div>
+                                                </td>
+                                            </tr>
+                                            <?php
                                         endif; 
                                         ?>
                                     </tbody>
                                 </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+</div>
+</div>
             </div>
-
             <?php if ($current_template): ?>
             <div class="row mt-4">
                 <div class="col-12">
@@ -464,7 +464,12 @@ $session_timeout_js = "";
                                     </div>
 
                                     <div class="form-group">
-                                        <label>Columns Configuration</label>
+                                        <label class="d-flex align-items-center justify-content-between">
+                                            <span>Columns Configuration</span>
+                                            <button type="button" id="add-column-btn" class="btn btn-sm btn-outline-primary">
+                                                <i class="fa fa-plus"></i> Add Column
+                                            </button>
+                                        </label>
                                         <div id="columns-container">
                                             <?php if (!empty($existing_columns)): 
                                                 // Group columns by table
@@ -501,14 +506,17 @@ $session_timeout_js = "";
                                                                 </button>
                                                     </div>
                                                     <?php endforeach; ?>
-                                            </div>
-                                            </div>
-                                        <?php 
-                                            endforeach;
-                                        endif; 
-                                        ?>
+                                                </div>
+                                            <?php 
+                                                endforeach;
+                                            endif; 
+                                            ?>
+                                        </div>
+                                        <small class="form-text text-muted">Add one or more table/category pairs to include in this CSV template.</small>
                                     </div>
-                                    <button type="button" class="btn btn-success mt-2" data-toggle="modal" data-target="#selectTableModal">Add Categories to Template</button>
+                                    <button type="button" class="btn btn-success mt-2" data-toggle="modal" data-target="#selectTableModal">
+                                        <i class="fa fa-plus"></i> Add Categories to Template
+                                    </button>
                                 </div>
 
                                 <div class="form-group">
@@ -568,6 +576,93 @@ $session_timeout_js = "";
                 </div>
             </div>
             <?php endif; ?>
+            <!-- Database Tables and Fields Section -->
+            <div class="container mt-4">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">Database Tables and Categories</h4>
+                        <div class="btn-group">
+                            <button class="btn btn-outline-secondary" type="button" data-toggle="collapse" data-target="#dbTablesCollapse" aria-expanded="true" aria-controls="dbTablesCollapse">
+                                <i class="fa fa-chevron-down"></i> Toggle
+                            </button>
+                            <button type="button" class="btn btn-success" data-toggle="modal" data-target="#selectTableModal">
+                                <i class="fa fa-plus"></i> Add Existing Table to Template
+                            </button>
+                        </div>
+                    </div>
+                    <div id="dbTablesCollapse" class="collapse show">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover">
+                                <thead class="thead-dark">
+                                    <tr>
+                                        <th>Table Name</th>
+                                        <th>Categories</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php 
+                                    // Get all tables
+                                    $tables_query = "SELECT tbid, tab_name FROM tabs_tbl ORDER BY tab_name";
+                                    $tables_result = $supabase_pdo->query($tables_query);
+                                    
+                                    while ($table = $tables_result->fetch(PDO::FETCH_ASSOC)): 
+                                        // Get fields for each table
+                                        $fields_query = "SELECT st.stid, st.str 
+                                                      FROM tab_fields tf 
+                                                      JOIN select_types st ON tf.stid = st.stid 
+                                                      WHERE tf.tbid = ? 
+                                                      ORDER BY tf.sort_order ASC";
+                                        $fields_stmt = $supabase_pdo->prepare($fields_query);
+                                        $fields_stmt->execute([$table['tbid']]);
+                                        $fields = [];
+                                        while ($field = $fields_stmt->fetch(PDO::FETCH_ASSOC)) {
+                                            $fields[] = $field;
+                                        }
+                                    ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($table['tab_name']); ?></td>
+                                        <td>
+                                            <ul class="list-group">
+                                                <?php foreach ($fields as $field): ?>
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        <span><?php echo htmlspecialchars($field['str']); ?></span>
+                                                        <div class="btn-group">
+                                                            <button type="button" class="btn btn-sm btn-success add-field-to-template-btn" 
+                                                                   data-field-id="<?php echo $field['stid']; ?>" 
+                                                                   data-field-name="<?php echo htmlspecialchars($field['str']); ?>"
+                                                                   data-table-id="<?php echo $table['tbid']; ?>"
+                                                                   data-table-name="<?php echo htmlspecialchars($table['tab_name']); ?>">
+                                                                <i class="fa fa-plus"></i> Add to Template
+                                                            </button>
+                                                        </div>
+                                                    </li>
+                                                <?php endforeach; ?>
+                                            </ul>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group">
+                                                <button type="button" class="btn btn-primary add-table-to-template-btn" 
+                                                       data-id="<?php echo $table['tbid']; ?>" 
+                                                       data-name="<?php echo htmlspecialchars($table['tab_name']); ?>">
+                                                    <i class="fa fa-plus"></i> Add to Template
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <?php endwhile; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            
+
+            
+
+            
         </div>
     </section>
 
@@ -594,10 +689,8 @@ $session_timeout_js = "";
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="createTemplateBtn">Create Template</button>
-                </div>
-            </div>
-        </div>
-    </div>
+</div>
+</div>
 
     <!-- Select Table Modal -->
     <div class="modal fade" id="selectTableModal" tabindex="-1">
@@ -615,9 +708,9 @@ $session_timeout_js = "";
                             <?php
                             // Get all tables again for the dropdown
                             $tables_query = "SELECT tbid, tab_name FROM tabs_tbl ORDER BY tab_name";
-                            $tables_result = $mysqli->query($tables_query);
+                            $tables_result = $supabase_pdo->query($tables_query);
                             
-                            while ($table = $tables_result->fetch_assoc()): 
+                            while ($table = $tables_result->fetch(PDO::FETCH_ASSOC)): 
                             ?>
                                 <option value="<?php echo $table['tbid']; ?>" 
                                         data-name="<?php echo htmlspecialchars($table['tab_name']); ?>">
@@ -625,15 +718,12 @@ $session_timeout_js = "";
                                 </option>
                             <?php endwhile; ?>
                         </select>
-                    </div>
-                </div>
+</div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="add-selected-table-btn">Add Table to Template</button>
-                </div>
-            </div>
-        </div>
-    </div>
+</div>
+</div>
 
     <!-- Select Field Modal -->
     <div class="modal fade" id="selectFieldModal" tabindex="-1">
@@ -647,15 +737,12 @@ $session_timeout_js = "";
                     <input type="hidden" id="selected-table-id">
                     <div id="field-selection-container">
                         <!-- Fields will be loaded here -->
-                    </div>
-                </div>
+</div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-primary" id="add-selected-fields-btn">Add Selected Categories</button>
-                </div>
-            </div>
-        </div>
-    </div>
+</div>
+</div>
 
     <!-- Delete Confirmation Modal -->
     <div class="modal fade" id="deleteTemplateModal" tabindex="-1">
@@ -673,10 +760,8 @@ $session_timeout_js = "";
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-danger" id="confirmDeleteTemplateBtn">Delete Template</button>
-                </div>
-            </div>
-        </div>
-    </div>
+</div>
+</div>
 
     <!-- Delete Item Confirmation Modal -->
     <div class="modal fade" id="deleteConfirmModal" tabindex="-1">
@@ -696,14 +781,67 @@ $session_timeout_js = "";
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                     <button type="button" class="btn btn-warning" id="confirmDeleteItemBtn">Remove Item</button>
-                </div>
-            </div>
-        </div>
-    </div>
+</div>
+</div>
 
     <?php include 'incl/adminjs.php'; ?>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Delete from card list (hard delete) with detailed console logs
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('.delete-template-card-btn');
+            if (!btn) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const templateIdRaw = btn.getAttribute('data-template-id');
+            const templateId = parseInt(templateIdRaw, 10);
+            console.log('[Delete] Clicked delete for templateId (raw):', templateIdRaw, 'parsed:', templateId);
+            if (!templateId || !Number.isFinite(templateId) || templateId <= 0) {
+                console.warn('[Delete] No templateId found on button');
+                return;
+            }
+            if (!confirm('Delete this template permanently? This cannot be undone.')) {
+                console.log('[Delete] User cancelled deletion');
+                return;
+            }
+            const payload = { template_id: templateId };
+            console.log('[Delete] Sending request to ajax/delete_template.php with payload:', payload);
+            fetch('ajax/delete_template.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .then(async r => {
+                const clone = r.clone();
+                let text;
+                try {
+                    text = await clone.text();
+                } catch (e2) {
+                    console.warn('[Delete] Failed to read raw response text', e2);
+                }
+                console.log('[Delete] HTTP status:', r.status, r.statusText, '| Raw response:', text);
+                try {
+                    return await r.json();
+                } catch (e) {
+                    console.error('[Delete] Failed to parse JSON:', e);
+                    throw new Error('Invalid JSON response from server');
+                }
+            })
+            .then(data => {
+                console.log('[Delete] Parsed response JSON:', data);
+                if (data.status === 'success') {
+                    alert(data.message || 'Template deleted');
+                    window.location.href = 'csv_editor.php';
+                } else {
+                    console.error('[Delete] Server returned error status:', data);
+                    alert(`Error: ${data.message || 'Failed to delete template'}`);
+                }
+            })
+            .catch(err => {
+                console.error('[Delete] Network/Runtime error:', err);
+                alert('An error occurred while deleting the template. Check console for details.');
+            });
+        });
         // Safe element selection function
         function safeSelect(selector) {
             const element = document.querySelector(selector);

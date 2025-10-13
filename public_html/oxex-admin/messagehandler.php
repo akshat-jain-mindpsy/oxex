@@ -14,41 +14,37 @@ $msgEmailAll = isset($_POST['msgEmailAll']) ? $_POST['msgEmailAll'] : '';
 if ($msgEmailAll == 'all') {
 	$msglist = 'everyone';
 	// send to everyone excvept devs and the sender
-	$tableset = $mysqli->prepare("SELECT usrkey FROM who_there WHERE isdev = ? AND usrkey != ?");
-	$tableset->bind_param("is", $value0, $msgUsr);
-	$tableset->execute();
-	$tableset->store_result();
-	$tableset->bind_result($msgusrkey);
-	while ($tableset->fetch()){
+	$tableset = $pdo->prepare("SELECT usrkey FROM who_there WHERE isdev = ? AND usrkey != ?");
+	$tableset->execute([$value0, $msgUsr]);
+	while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+		$msgusrkey = $row['usrkey'];
 			// add the message
-			$insert_stmt = $mysqli->prepare("INSERT INTO admin_msg (usrkey_from, usrkey_to, date_sent, date_read, msg, isread) VALUES (?, ?, ?, ?, ?, ?)");
-			$insert_stmt->bind_param("ssiisi", $msgUsr, $msgusrkey, $today, $value0, $msgTxt, $value0);
-			$insert_stmt->execute();
-			//printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-			$insert_stmt->close();
+			$insert_stmt = $pdo->prepare("INSERT INTO admin_msg (usrkey_from, usrkey_to, date_sent, date_read, msg, isread) VALUES (?, ?, ?, ?, ?, ?)");
+			$insert_stmt->execute([$msgUsr, $msgusrkey, $today, $value0, $msgTxt, $value0]);
+			//printf("[%d] %s\n", $pdo->errorCode(), $pdo->errorInfo()[2]);
+			$insert_stmt->closeCursor();
 	}
-	$tableset->close();
+	$tableset->closeCursor();
 } else {
-	$tableset = $mysqli->prepare("SELECT whid, realname, usrkey FROM who_there WHERE isdev = ?");
-	$tableset->bind_param("i", $value0);
-	$tableset->execute();
-	$tableset->store_result();
-	$tableset->bind_result($msgrtnwhid, $msgrtnrealname, $msgusrkey);
-	while ($tableset->fetch()){
+	$tableset = $pdo->prepare("SELECT whid, realname, usrkey FROM who_there WHERE isdev = ?");
+	$tableset->execute([$value0]);
+	while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+		$msgrtnwhid = $row['whid'];
+		$msgrtnrealname = $row['realname'];
+		$msgusrkey = $row['usrkey'];
 		// get POST data
 		$posmarker = 'msgEmail'.$msgrtnwhid;
 		$clicked = $_POST[$posmarker];
 		if ($clicked == $msgrtnwhid) {
 			$msglist .= $msgrtnrealname. ' ';
 			// add the message
-			$insert_stmt = $mysqli->prepare("INSERT INTO admin_msg (usrkey_from, usrkey_to, date_sent, date_read, msg, isread) VALUES (?, ?, ?, ?, ?, ?)");
-			$insert_stmt->bind_param("ssiisi", $msgUsr, $msgusrkey, $today, $value0, $msgTxt, $value0);
-			$insert_stmt->execute();
-			//printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-			$insert_stmt->close();
+			$insert_stmt = $pdo->prepare("INSERT INTO admin_msg (usrkey_from, usrkey_to, date_sent, date_read, msg, isread) VALUES (?, ?, ?, ?, ?, ?)");
+			$insert_stmt->execute([$msgUsr, $msgusrkey, $today, $value0, $msgTxt, $value0]);
+			//printf("[%d] %s\n", $pdo->errorCode(), $pdo->errorInfo()[2]);
+			$insert_stmt->closeCursor();
 		}
 	}
-	$tableset->close();
+	$tableset->closeCursor();
 }
 // return a message to the sender
 echo "Your message $msgTxt  to $msglist was posted";

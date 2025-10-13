@@ -10,9 +10,13 @@ $id = isset($_POST['id']) ? $_POST['id'] : 0; # the task
 $trainee = isset($_POST['trainee']) ? $_POST['trainee'] : ''; # who
 	$trainee = preg_replace('/[^\p{Latin}\d\s\p{P}]/u', '', $trainee);
 
-$stmt = $mysqli->prepare("DELETE FROM timesheet WHERE trainkey = ? AND tsid = ? LIMIT 1");
-$stmt->bind_param("si", $trainee, $id); 
-$stmt->execute();
-$stmt->close();
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+if ($usingSupabase) {
+	$stmt = $supabase_pdo->prepare('delete from timesheet where trainkey = ? and tsid = ?');
+	$stmt->execute([$trainee, $id]);
+} else {
+	http_response_code(500);
+	echo json_encode(['status' => 'error', 'message' => 'Database connection unavailable']);
+}
 
 ?>

@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = 'Service Panels';
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Page content";
 $listurl = "services.php"; # where the delete script is found
 $listname = "Panel";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,10 +32,9 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($delicon == "delicon" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete image ref
-  $stmt = $mysqli->prepare("UPDATE panel_tbl SET image = ? WHERE paid = ?"); 
-  $stmt->bind_param("si", $valueblank, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("UPDATE panel_tbl SET image = ? WHERE paid = ?"); 
+  $stmt->execute([$valueblank, $which]);
+  $stmt->closeCursor();
 }
 
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  
@@ -43,26 +45,33 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $panel_txt = isset($_POST['panel_txt']) ? $_POST['panel_txt'] : '';
   $panel_btn_txt = isset($_POST['panel_btn_txt']) ? $_POST['panel_btn_txt'] : '';
   $panel_btn_link = isset($_POST['panel_btn_link']) ? $_POST['panel_btn_link'] : '';
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
 
   // Update record
-  $stmt = $mysqli->prepare("UPDATE panel_tbl SET panel_title = ?, panel_txt = ?, panel_btn_txt = ?, panel_btn_link = ?, sort_order = ? WHERE paid = ?"); 
-    $stmt->bind_param("ssssii", $panel_title, $panel_txt, $panel_btn_txt, $panel_btn_link, $sort_order, $which);
-    $stmt->execute();
-    $anyerror = $mysqli->errno." ".$mysqli->error;
-    $stmt->close();
+  $stmt = $pdo->prepare("UPDATE panel_tbl SET panel_title = ?, panel_txt = ?, panel_btn_txt = ?, panel_btn_link = ?, sort_order = ? WHERE paid = ?"); 
+    $stmt->execute([$panel_title, $panel_txt, $panel_btn_txt, $panel_btn_link, $$value0 = 0; // Default value for sort_order
+$subtitle = "which]);
+    $anyerror = $pdo->errorCode()." ".($pdo->errorInfo()[2] ?? '');
+    $stmt->closeCursor();
 
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT panel_title, panel_txt, panel_btn_txt, image, panel_btn_link, sort_order FROM panel_tbl WHERE paid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($panel_title, $panel_txt, $panel_btn_txt, $image, $panel_btn_link, $sort_order);
-$stmt->fetch();
-$stmt->close();
+$stmt = $pdo->prepare("SELECT panel_title, panel_txt, panel_btn_txt, image, panel_btn_link, sort_order FROM panel_tbl WHERE paid = ?");
+$stmt->execute([$which]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+if ($row) {
+  $panel_title = $row['panel_title'];
+  $panel_txt = $row['panel_txt'];
+  $panel_btn_txt = $row['panel_btn_txt'];
+  $image = $row['image'];
+  $panel_btn_link = $row['panel_btn_link'];
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "row['sort_order'];
+}
+$stmt->closeCursor();
 
 ?>
 <body>
@@ -78,7 +87,8 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -107,17 +117,15 @@ $stmt->close();
                            </div>
                            <div class="form-group">
                               <label class="col-form-label" for="sort_order">Sort order</label>
-                              <input class="form-control" type="number" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
-                           </div>
-                          
-                        </div>
+                              <input class="form-control" type="number" id="$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
+</div>
                         
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
                 
                </div>
@@ -152,11 +160,8 @@ $stmt->close();
                     <div id="err"></div>
                   </div>
                   <div class="card-footer">
-                  </div>
-                </div>
-
-               </div>
-            </div>
+</div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -168,11 +173,9 @@ $stmt->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

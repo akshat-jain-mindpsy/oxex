@@ -40,7 +40,8 @@ if ($thispage == 'contact.php') {
           <div class="justify-content-md-center" id="subnavbar">
             <ul class="navbar-nav">
 <?php
-if(login_check($mysqli) == true) {
+// Hide account nav on login page explicitly
+if($thispage !== 'login.php' && login_check($pdo) == true) {
 ?>
 <li class="nav-item <?php echo $accountA ?>">
   <a class="nav-link" href="account.php">Account Home <?php echo $accountSR ?></a>

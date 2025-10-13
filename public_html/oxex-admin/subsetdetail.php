@@ -3,7 +3,15 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Trainee Subsets";
+
+// Ensure $today is defined (fallback if not set by config)
+if (!isset($today) || empty($today)) {
+   $today = date('Ymd');
+}
+
+setAdminVars(3); // Tables section
 $subtitle = "Subsets";
 $listurl = "subsets.php";
 $listname = "Subsets";
@@ -12,7 +20,7 @@ $listname = "Subsets";
 // Oxford Admins can see any Oxford Trainee
 // Exeter Admins can see any Exeter Trainee
 // Super Admins & Devs can see all
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -33,16 +41,14 @@ $which = isset($_GET['which']) ? $_GET['which'] : '';
 $addset = isset($_GET['addset']) ? $_GET['addset'] : ''; # add trainee to set
 
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
-  // delete row
-  $stmt = $mysqli->prepare("DELETE FROM subset_tbl WHERE setkey = ? LIMIT 1");
-  $stmt->bind_param("s", $which); 
-  $stmt->execute();
-  $stmt->close();
+  // delete row (PostgreSQL: no LIMIT in DELETE)
+  $stmt = $pdo->prepare("DELETE FROM subset_tbl WHERE setkey = ?");
+  $stmt->execute([$which]); 
+  $stmt->closeCursor();
   // delete all trainee links for this subset
-  $stmt = $mysqli->prepare("DELETE FROM subset_link_tbl WHERE setkey = ?");
-  $stmt->bind_param("s", $which); 
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("DELETE FROM subset_link_tbl WHERE setkey = ?");
+  $stmt->execute([$which]); 
+  $stmt->closeCursor();
 }
 $subsetmsg = "";
 if ($addset == "addset") {
@@ -52,21 +58,16 @@ if ($addset == "addset") {
    $trainkey = isset($_GET['trainkey']) ? $_GET['trainkey'] : '';
    if ($setkey != '' && $trainkey != '') {
       // check if this trainee is alreday in the subset
-      $vids = $mysqli->prepare("SELECT slid FROM subset_link_tbl WHERE setkey = ? AND trainkey = ? ");
-      $vids->bind_param("ss", $setkey, $trainkey);
-      $vids->execute();
-      $vids->store_result();
-      $numlinks = $vids->num_rows;
-      $vids->close();
+      $vids = $pdo->prepare("SELECT slid FROM subset_link_tbl WHERE setkey = ? AND trainkey = ? ");
+      $vids->execute([$setkey, $trainkey]);
+      $numlinks = $vids->rowCount();
+      $vids->closeCursor();
       if ($numlinks == 0) {
          // ok to create
          $subsetmsg = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-success\" role=\"alert\">Trainee added to the selected Subset</div></div></div>";
-         $insert_stmt = $mysqli->prepare("INSERT INTO subset_link_tbl (setkey, trainkey, who_by, date_added) VALUES (?, ?, ?, ?)");
-         $insert_stmt->bind_param("sssi", $setkey, $trainkey, $usrkey, $today);
-         $insert_stmt->execute();
-            //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-         $newid = $insert_stmt->insert_id;
-         $insert_stmt->close();
+         $insert_stmt = $pdo->prepare("INSERT INTO subset_link_tbl (setkey, trainkey, who_by, date_added) VALUES (?, ?, ?, ?)");
+         $insert_stmt->execute([$setkey, $trainkey, $usrkey, $today]);
+         $insert_stmt->closeCursor();
       } else {
          $subsetmsg = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\">Not added - Trainee is already in the selected Subset</div></div></div>";
       }
@@ -77,10 +78,10 @@ if ($addset == "delete") {
    // delete trainee from subset
    $setkey = isset($_GET['setkey']) ? $_GET['setkey'] : '';
    $trainkey = isset($_GET['trainkey']) ? $_GET['trainkey'] : '';
-   $stmt = $mysqli->prepare("DELETE FROM subset_link_tbl WHERE setkey = ? AND trainkey = ? LIMIT 1");
-   $stmt->bind_param("ss", $setkey, $trainkey); 
-   $stmt->execute();
-   $stmt->close();
+  // PostgreSQL: no LIMIT in DELETE
+  $stmt = $pdo->prepare("DELETE FROM subset_link_tbl WHERE setkey = ? AND trainkey = ?");
+   $stmt->execute([$setkey, $trainkey]); 
+   $stmt->closeCursor();
    $subsetmsg = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\">Trainee deleted from Subset</div></div></div>";
    $which = $setkey; # to set up next view
 }
@@ -91,31 +92,31 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $description = isset($_POST['description']) ? $_POST['description'] : '';
   
   // Update record
-  $stmt = $mysqli->prepare("UPDATE subset_tbl SET subset = ?, description = ?, who_by = ?, date_modified = ? WHERE setkey = ? "); 
-  $stmt->bind_param("sssis", $subset, $description, $usrkey, $today, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("UPDATE subset_tbl SET subset = ?, description = ?, who_by = ?, date_modified = ? WHERE setkey = ? "); 
+  $stmt->execute([$subset, $description, $usrkey, $today, $which]);
+  $stmt->closeCursor();
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT subset, description, who_by, date_added, date_modified FROM subset_tbl WHERE setkey = ?");
-$stmt->bind_param("s", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($subset, $description, $who_by, $date_added, $date_modified);
-$stmt->fetch();
-$stmt->close();
+$stmt = $pdo->prepare("SELECT subset, description, who_by, date_added, date_modified FROM subset_tbl WHERE setkey = ?");
+$stmt->execute([$which]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+if ($row) {
+  $subset = $row['subset'];
+  $description = $row['description'];
+  $who_by = $row['who_by'];
+  $date_added = $row['date_added'];
+  $date_modified = $row['date_modified'];
+}
+$stmt->closeCursor();
    $date_added = strtotime($date_added);
    $date_modified = strtotime($date_modified);
    // who changed last?
-   $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $who_by);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($who_by);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+   $stmt->execute([$who_by]);
+   $who_by = $stmt->fetchColumn();
+   $stmt->closeCursor();
    
 // whatever the record name is
   $changename = "$subset";
@@ -154,7 +155,6 @@ $stmt->close();
                               <textarea class="form-control summernote" type="text" id="description" name="description"><?php echo $description ?></textarea>
                            </div>
                         </div>
-                        
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
@@ -168,73 +168,25 @@ $stmt->close();
                            <div class="card-title">Trainees Available: Add to this subset</div>
                         </div>
                         <div class="card-body">
-<?php
-// if Supervisor, only list trainees allocated
-if ($admintype == "SO" || $admintype == "SE") {
-   $tableset = $mysqli->prepare("SELECT trainkey, name, year FROM trainee_tbl WHERE supervisor = ? OR supervisor2 = ? OR supervisor3 = ? OR tutor = ?");
-   $tableset->bind_param("ssss", $usrkey, $usrkey, $usrkey, $usrkey);
-   $tableset->execute();
-   $tableset->store_result();
-   $tableset->bind_result($trainkey, $name, $year);
-   while ($tableset->fetch()){
-      echo "<p><a href=\"subsetdetail.php?addset=addset&amp;setkey=$which&amp;trainkey=$trainkey\" class=\"btn btn-purple\">$name ($year)</a></p>";
-   }
-   $numrows = $tableset->num_rows;
-   $tableset->close();
-}
-// For Admins, loop through Possible Unis
-$tableset = $mysqli->prepare("SELECT uid, ident FROM uni_tbl ");
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($uid, $ident);
-while ($tableset->fetch()){
-   if ($ident == 'OX' && $admintype == "AO") {
-      // loop through all this course trainees
-      $xtraset = $mysqli->prepare("SELECT trainkey, name, year FROM trainee_tbl WHERE uid = ? ");
-      $xtraset->bind_param("i", $uid);
-      $xtraset->execute();
-      $xtraset->store_result();
-      $xtraset->bind_result($trainkey, $name, $year);
-      while ($xtraset->fetch()){
-         echo "<p><a href=\"subsetdetail.php?addset=addset&amp;setkey=$which&amp;trainkey=$trainkey\" class=\"btn btn-purple\">$name ($year)</a></p>";
-      }
-      $numrows = $xtraset->num_rows;
-      $xtraset->close();
-   }
-}
-$tableset->close();
-// For Super-Admins or Devs, list all Trainees
-if ($admintype == "AT" || $admintype == "DV") {
-   // loop through all this course trainees
-   $xtraset = $mysqli->prepare("SELECT trainkey, name, year, uid FROM trainee_tbl ");
-   $xtraset->execute();
-   $xtraset->store_result();
-   $xtraset->bind_result($trainkey, $name, $year, $uid);
-   while ($xtraset->fetch()){
-      // find uni
-      $stmt = $mysqli->prepare("SELECT ident, university FROM uni_tbl");
-      $stmt->execute();
-      $stmt->store_result();
-      $stmt->bind_result($ident, $university);
-      $stmt->fetch();
-      $stmt->close();
-      echo "<p><a href=\"subsetdetail.php?addset=addset&amp;setkey=$which&amp;trainkey=$trainkey\" class=\"btn btn-purple\">$name ($ident - $year)</a></p>";
-   }
-   $numrows = $xtraset->num_rows;
-   $xtraset->close();
-}
-
-?>
+                           <button class="btn btn-purple" type="button" data-toggle="collapse" data-target="#addTraineeCollapse" aria-expanded="false" aria-controls="addTraineeCollapse">
+                              Add trainee...
+                           </button>
+                           <div class="collapse mt-3" id="addTraineeCollapse">
+                              <div class="form-group">
+                                 <input class="form-control" type="text" id="traineeSearch" placeholder="Search trainee by name...">
+                                 <small class="form-text text-muted">Start typing to search. Results are limited to 20.</small>
+                              </div>
+                              <div id="traineeResults">
+                                 <p class="text-muted"><small>Type a name to search.</small></p>
+                              </div>
+                           </div>
                         </div>
                         <div class="card-footer">
-                           <div class="float-right">
-                              <p><?php echo $numrows ?> Trainees</p>
-                          </div>
                           <div class="float-left">
                               <p><small>Available trainees depend on your Admin Status</small></p>
                           </div>
                         </div>
-                     </div>
+                  </div>
                </div>
                <div class="col-xl-4">
                   <div class="card border-purple">
@@ -243,21 +195,18 @@ if ($admintype == "AT" || $admintype == "DV") {
                      </div>
                      <div class="card-body">
 <?php
-$tableset = $mysqli->prepare("SELECT trainkey, who_by, date_added FROM subset_link_tbl WHERE setkey = ?");
-$tableset->bind_param("s", $which);
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($trainkey, $who_by, $date_added);
-while ($tableset->fetch()){
+$tableset = $pdo->prepare("SELECT trainkey, who_by, date_added FROM subset_link_tbl WHERE setkey = ?");
+$tableset->execute([$which]);
+while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+   $trainkey = $row['trainkey'];
+   $who_by = $row['who_by'];
+   $date_added = $row['date_added'];
    $date_modified = strtotime($date_modified);
    // who?
-   $stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ?");
-   $stmt->bind_param("s", $trainkey);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($name);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ?");
+   $stmt->execute([$trainkey]);
+   $name = $stmt->fetchColumn();
+   $stmt->closeCursor();
    echo "<div class=\"btn-group mb-1\">";
    echo "   <a class=\"btn btn-purple\" href=\"traineedetail.php?which=$trainkey\">$name</a>";
    echo "   <button type=\"button\" class=\"btn btn-purple dropdown-toggle dropdown-toggle-split\" data-toggle=\"dropdown\" aria-expanded=\"false\">";
@@ -270,8 +219,8 @@ while ($tableset->fetch()){
    echo "   </div>";
    echo "</div>";
 }
-$numrows = $tableset->num_rows;
-$tableset->close();
+$numrows = $tableset->rowCount();
+$tableset->closeCursor();
 ?>
                      </div>
                      <div class="card-footer">
@@ -280,7 +229,6 @@ $tableset->close();
                        </div>
                      </div>
                   </div>
-
                </div>
             </div>
 
@@ -294,20 +242,22 @@ $tableset->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button" onclick="return confirm('Are you sure you want to delete this record and all associated data?')"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>
    <?php include 'incl/adminjs.php' ?>
    <script>
    $(document).ready(function() {
-      $('#maintable').dataTable( {
-        "pageLength": 10
-      });
+      if ($('#maintable').length) {
+         if ($.fn.DataTable) {
+            $('#maintable').DataTable({ "pageLength": 10 });
+         } else if ($.fn.dataTable) {
+            $('#maintable').dataTable({ "pageLength": 10 });
+         }
+      }
      $('.summernote').summernote({
         tabsize: 2,
         height: 160,
@@ -336,6 +286,50 @@ $tableset->close();
            ['insert', ['link', 'picture', 'video']],
            ['view', ['codeview', 'help']],
          ]
+      });
+      // Lazy search - debounce input and fetch
+      var searchTimeout;
+      $('#addTraineeCollapse').on('shown.bs.collapse', function() {
+         $('#traineeSearch').trigger('focus');
+      });
+      $('#traineeSearch').on('input', function() {
+         var query = $(this).val().trim();
+         clearTimeout(searchTimeout);
+         if (query.length < 2) {
+            $('#traineeResults').html('<p class="text-muted"><small>Type at least 2 characters to search.</small></p>');
+            return;
+         }
+         $('#traineeResults').html('<p class="text-info"><small>Searching...</small></p>');
+         searchTimeout = setTimeout(function() {
+            $.ajax({
+               url: 'trainee_search.php',
+               type: 'GET',
+               dataType: 'json',
+               cache: false,
+               data: { q: query },
+               success: function(resp) {
+                  if (!resp || !resp.success) {
+                     $('#traineeResults').html('<p class="text-danger"><small>Error searching trainees.</small></p>');
+                     return;
+                  }
+                  var results = resp.results || [];
+                  if (results.length === 0) {
+                     $('#traineeResults').html('<p class="text-muted"><small>No trainees found.</small></p>');
+                     return;
+                  }
+                  var html = '<div class="list-group">';
+                  results.forEach(function(item){
+                     var addUrl = 'subsetdetail.php?addset=addset&setkey=<?php echo $which ?>' + '&trainkey=' + encodeURIComponent(item.trainkey);
+                     html += '<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="' + addUrl + '"><span>' + item.name + ' (' + item.year + ')</span><span class="badge badge-purple">Add</span></a>';
+                  });
+                  html += '</div>';
+                  $('#traineeResults').html(html);
+               },
+               error: function() {
+                  $('#traineeResults').html('<p class="text-danger"><small>Network error while searching.</small></p>');
+               }
+            });
+         }, 300);
       });
    });
    </script>

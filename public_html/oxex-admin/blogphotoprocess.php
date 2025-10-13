@@ -77,10 +77,8 @@ ini_set('max_execution_time', 300);
  if ( $result )
  {
 
-	$stmt = $mysqli->prepare("UPDATE semantic_blog SET banner = ? WHERE sbid = ?"); 
-	$stmt->bind_param("si", $actualname, $which);
-	$stmt->execute();
-	$stmt->close();
+	$stmt = $supabase_pdo->prepare("UPDATE semantic_blog SET banner = ? WHERE sbid = ?"); 
+	$stmt->execute([$actualname, $which]);
 	
 		echo "<p><a href=\"blogdetail.php?which=$which&amp;del=delphoto\"<span class=\"btn btn-danger\"> <i class=\"fa fa-times-circle\"></i> Delete Image</span></a></p>";
 		echo "<p><img src=\"../blogbanner/$actualname\" width=\"200px\"></p>";

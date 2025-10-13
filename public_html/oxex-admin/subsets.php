@@ -3,11 +3,15 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Trainee Subsets";
+
+// Set variables needed by adminjs.php
+setAdminVars(3); // Tables section
 $subtitle = "Subset";
 // This page allows the user to create a subset of trainees
 // Trinees are added in the detail page
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,19 +32,17 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
     // delete row
-  $stmt = $mysqli->prepare("DELETE FROM subset_tbl WHERE setkey = ? LIMIT 1");
-  $stmt->bind_param("s", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
+  $stmt = $pdo->prepare("DELETE FROM subset_tbl WHERE setkey = ? LIMIT 1");
+  $stmt->execute([$which]); 
+  if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
   }
-  $stmt->close();
+  $stmt->closeCursor();
   // delete all trainee links for this subset
-  $stmt = $mysqli->prepare("DELETE FROM subset_link_tbl WHERE setkey = ?");
-  $stmt->bind_param("s", $which); 
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("DELETE FROM subset_link_tbl WHERE setkey = ?");
+  $stmt->execute([$which]); 
+  $stmt->closeCursor();
 }
 
 if ($newadmin == 'newadmin') {
@@ -51,23 +53,18 @@ if ($newadmin == 'newadmin') {
     while (!$numids == 0) {
       // make 32 digit hex string
       $setkey = substr(md5(rand()), 0, 32);   
-      $stmt = $mysqli->prepare("SELECT sd FROM subset_tbl WHERE setkey = ? LIMIT 1");
-      $stmt->bind_param('s', $setkey);
-      $stmt->execute();
-      $stmt->store_result();
-      $stmt->bind_result($tid);
-      $stmt->fetch();
-      $numids = $stmt->num_rows;
-      $stmt->close();
+      $stmt = $pdo->prepare("SELECT sd FROM subset_tbl WHERE setkey = ? LIMIT 1");
+      $stmt->execute([$setkey]);
+      $numids = $stmt->rowCount();
+      $stmt->closeCursor();
     }
 
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO subset_tbl (subset, description, usrkey, setkey, date_added, date_modified, who_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("ssssiis", $subset, $description, $usrkey, $setkey, $today, $today, $usrkey);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  $insert_stmt = $pdo->prepare("INSERT INTO subset_tbl (subset, description, usrkey, setkey, date_added, date_modified, who_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
+  $insert_stmt->execute([$subset, $description, $usrkey, $setkey, $today, $today, $usrkey]);
+  //printf("[%d] %s\n", $pdo->errorCode(), $pdo->errorInfo()[2]);
+  $newid = $pdo->lastInsertId();
+  $insert_stmt->closeCursor();
 
   
 }
@@ -85,6 +82,7 @@ if ($newadmin == 'newadmin') {
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
+
             </div>
             <?php echo $delalert ?>
             <div class="row">
@@ -104,29 +102,27 @@ if ($newadmin == 'newadmin') {
                            <tbody>
 <?php
 // show all if AT or DV, or just show own
-$tableset = $mysqli->prepare("SELECT setkey, usrkey, subset, date_added, date_modified FROM subset_tbl");
+$tableset = $pdo->prepare("SELECT setkey, usrkey, subset, date_added, date_modified FROM subset_tbl");
 //$tableset->bind_param("s", $usrkey);
 $tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($setkey, $who_there, $subset, $date_added, $date_modified);
-while ($tableset->fetch()){
+while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+   $setkey = $row['setkey'];
+   $who_there = $row['usrkey'];
+   $subset = $row['subset'];
+   $date_added = $row['date_added'];
+   $date_modified = $row['date_modified'];
    $date_added = strtotime($date_added);
    $date_modified = strtotime($date_modified);
    // count trainees
-   $vids = $mysqli->prepare("SELECT slid FROM subset_link_tbl WHERE setkey = ? ");
-   $vids->bind_param("s", $setkey);
-   $vids->execute();
-   $vids->store_result();
-   $numlinks = $vids->num_rows;
-   $vids->close();
+   $vids = $pdo->prepare("SELECT slid FROM subset_link_tbl WHERE setkey = ? ");
+   $vids->execute([$setkey]);
+   $numlinks = $vids->rowCount();
+   $vids->closeCursor();
    // get tutor
-   $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("i", $who_there);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($realname);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+   $stmt->execute([$who_there]);
+   $realname = $stmt->fetchColumn();
+   $stmt->closeCursor();
    if ($usrkey == $who_there || ($admintype == 'AT' || $admintype == 'DV')) {
 ?>
 <tr>
@@ -140,12 +136,11 @@ while ($tableset->fetch()){
  <?php
    } # who allow to see?
  }
-$tableset->close();
+$tableset->closeCursor();
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -165,17 +160,13 @@ $tableset->close();
                            <div class="form-group">
                               <label class="col-form-label" for="description">Description</label>
                               <textarea class="form-control summernote" type="text" id="description" name="description"></textarea>
-                           </div>
-                           
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

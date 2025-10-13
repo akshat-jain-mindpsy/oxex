@@ -7,7 +7,7 @@ include '../incl/sess.php';
 header('Content-Type: application/json');
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
       $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
     echo json_encode(['status' => 'error', 'message' => 'Access denied']);
@@ -27,7 +27,7 @@ if ($table_id <= 0) {
 
 try {
     // Get sections not already linked to this table
-    $sections_stmt = $mysqli->prepare("
+    $sections_stmt = $supabase_pdo->prepare("
         SELECT 
             fs.section_id, 
             fs.section_name, 
@@ -41,15 +41,12 @@ try {
         ORDER BY 
             fs.section_name
     ");
-    $sections_stmt->bind_param("i", $table_id);
-    $sections_stmt->execute();
-    $sections_result = $sections_stmt->get_result();
+    $sections_stmt->execute([$table_id]);
     
     $sections = [];
-    while ($section = $sections_result->fetch_assoc()) {
+    while ($section = $sections_stmt->fetch(PDO::FETCH_ASSOC)) {
         $sections[] = $section;
     }
-    $sections_stmt->close();
     
     echo json_encode([
         'status' => 'success',
@@ -63,6 +60,5 @@ try {
     ]);
 }
 
-$mysqli->close();
 exit;
 ?> 

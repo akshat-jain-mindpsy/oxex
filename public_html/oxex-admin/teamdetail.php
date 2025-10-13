@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = 'Team/Staff';
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Page content";
 $listurl = "team.php"; # where the delete script is found
 $listname = "Team/Staff";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,10 +32,8 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($delicon == "delicon" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete image ref
-  $stmt = $mysqli->prepare("UPDATE stafflist SET photo = ? WHERE slil = ?"); 
-  $stmt->bind_param("si", $valueblank, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("UPDATE stafflist SET photo = ? WHERE slil = ?"); 
+  $stmt->execute([$valueblank, $which]);
 }
 
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  
@@ -48,26 +49,34 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $soc_fb = isset($_POST['soc_fb']) ? $_POST['soc_fb'] : '';
   $soc_tw = isset($_POST['soc_tw']) ? $_POST['soc_tw'] : '';
   $soc_lk = isset($_POST['soc_lk']) ? $_POST['soc_lk'] : '';
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
 
   // Update record
-  $stmt = $mysqli->prepare("UPDATE stafflist SET name = ?, position = ?, email = ?, maintext = ?, sort_order = ?, soc_fb = ?, soc_tw = ?, soc_lk = ? WHERE slil = ?"); 
-    $stmt->bind_param("ssssisssi", $name, $position, $email, $maintext, $sort_order, $soc_fb, $soc_tw, $soc_lk, $which);
-    $stmt->execute();
-    $anyerror = $mysqli->errno." ".$mysqli->error;
-    $stmt->close();
+  $stmt = $supabase_pdo->prepare("UPDATE stafflist SET name = ?, position = ?, email = ?, maintext = ?, sort_order = ?, soc_fb = ?, soc_tw = ?, soc_lk = ? WHERE slil = ?"); 
+  $stmt->execute([$name, $position, $email, $maintext, $$value0 = 0; // Default value for sort_order
+$subtitle = "which]);
 
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT name, position, title, email, phone, photo, photocaption, maintext, sort_order, soc_fb, soc_tw, soc_lk FROM stafflist WHERE slil = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($name, $position, $title, $email, $phone, $trusteephoto, $photocaption, $maintext, $sort_order, $soc_fb, $soc_tw, $soc_lk);
-$stmt->fetch();
-$stmt->close();
+$stmt = $supabase_pdo->prepare("SELECT name, position, title, email, phone, photo, photocaption, maintext, sort_order, soc_fb, soc_tw, soc_lk FROM stafflist WHERE slil = ?");
+$stmt->execute([$which]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+$name = $row ? $row['name'] : '';
+$position = $row ? $row['position'] : '';
+$title = $row ? $row['title'] : '';
+$email = $row ? $row['email'] : '';
+$phone = $row ? $row['phone'] : '';
+$trusteephoto = $row ? $row['photo'] : '';
+$photocaption = $row ? $row['photocaption'] : '';
+$maintext = $row ? $row['maintext'] : '';
+$$value0 = 0; // Default value for sort_order
+$subtitle = "row['sort_order'] : 0;
+$soc_fb = $row ? $row['soc_fb'] : '';
+$soc_tw = $row ? $row['soc_tw'] : '';
+$soc_lk = $row ? $row['soc_lk'] : '';
 // whatever the record name is
   $changename = " this person";
 ?>
@@ -84,7 +93,8 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -111,37 +121,32 @@ $stmt->close();
                               <label class="col-form-label" for="soc_fb">Facebook Link</label>
                               <div class="input-group">
                                  <div class="input-group-prepend"><span class="input-group-text" id="basic-addon1">https://</span></div><input class="form-control" type="text" id="soc_fb" value="<?php echo $soc_fb ?>" name="soc_fb">
-                              </div>
-                           </div>
+</div>
                            <div class="form-group">
                               <label class="col-form-label" for="soc_tw">Twitter Link</label>
                               <div class="input-group">
                                  <div class="input-group-prepend"><span class="input-group-text" id="basic-addon1">https://</span></div><input class="form-control" type="text" id="soc_tw" value="<?php echo $soc_tw ?>" name="soc_tw">
-                              </div>
-                           </div>
+</div>
                            <div class="form-group">
                               <label class="col-form-label" for="soc_lk">LinkedIn Link</label>
                               <div class="input-group">
                                  <div class="input-group-prepend"><span class="input-group-text" id="basic-addon1">https://</span></div><input class="form-control" type="text" id="soc_lk" value="<?php echo $soc_lk ?>" name="soc_lk">
-                              </div>
-                           </div>
+</div>
                            <div class="form-group">
                               <label class="col-form-label" for="maintext">Text</label>
                               <textarea class="form-control summernote" type="text" id="maintext" name="maintext"><?php echo $maintext ?></textarea>
                            </div>
                            <div class="form-group">
                               <label class="col-form-label" for="sort_order">Sort order</label>
-                              <input class="form-control" type="number" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
-                           </div>
-                          
-                        </div>
+                              <input class="form-control" type="number" id="$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
+</div>
                         
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
                 
                </div>
@@ -176,11 +181,8 @@ $stmt->close();
                     <div id="err"></div>
                   </div>
                   <div class="card-footer">
-                  </div>
-                </div>
-
-               </div>
-            </div>
+</div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -192,11 +194,9 @@ $stmt->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

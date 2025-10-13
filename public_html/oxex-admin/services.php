@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Services";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Page content";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,14 +32,12 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AD' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM stafflist WHERE slil = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
+  $stmt = $supabase_pdo->prepare("DELETE FROM stafflist WHERE slil = ? LIMIT 1");
+  $stmt->execute([$which]);
+  if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
   }
-  $stmt->close();
 }
 
 if ($newadmin == 'newadmin') {
@@ -44,14 +45,13 @@ if ($newadmin == 'newadmin') {
   $panel_txt = isset($_POST['panel_txt']) ? $_POST['panel_txt'] : '';
   $panel_btn_txt = isset($_POST['panel_btn_txt']) ? $_POST['panel_btn_txt'] : '';
   $panel_btn_link = isset($_POST['panel_btn_link']) ? $_POST['panel_btn_link'] : '';
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
   $lastsort = $sort_order + 1;
 
-  $insert_stmt = $mysqli->prepare("INSERT INTO panel_tbl (panel_title, panel_txt, panel_btn_txt, panel_btn_link, image, sort_order) VALUES (?, ?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("sssssi", $panel_title, $panel_txt, $panel_btn_txt, $panel_btn_link, $valueblank, $sort_order);
-  $insert_stmt->execute();
-  $newid =  $insert_stmt->insert_id;
-  $insert_stmt->close();
+  $insert_stmt = $supabase_pdo->prepare("INSERT INTO panel_tbl (panel_title, panel_txt, panel_btn_txt, panel_btn_link, image, sort_order) VALUES (?, ?, ?, ?, ?, ?)");
+  $insert_stmt->execute([$panel_title, $panel_txt, $panel_btn_txt, $panel_btn_link, $valueblank, $sort_order]);
+  $newid = (int)$supabase_pdo->lastInsertId();
 
   if (is_uploaded_file($_FILES['Image1']['tmp_name'])) {
       // create images and add filename
@@ -118,10 +118,8 @@ if ($newadmin == 'newadmin') {
      $result = resize_save_jpeg( $temp_image_path, $large_image_path, 1000, 1000 );
      if ( $result )
      {
-      $stmt = $mysqli->prepare("UPDATE panel_tbl SET image = ? WHERE paid = ?"); 
-      $stmt->bind_param("si", $actualname, $newid);
-      $stmt->execute();
-      $stmt->close();
+      $stmt = $supabase_pdo->prepare("UPDATE panel_tbl SET image = ? WHERE paid = ?"); 
+      $stmt->execute([$actualname, $newid]);
      }
   }
 
@@ -143,7 +141,8 @@ $todaydisp = strtotime($today); # default 'to' date for datepicker
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
             <?php echo $delalert ?>
             <div class="row">
                <div class="col-xl-12">
@@ -160,11 +159,18 @@ $todaydisp = strtotime($today); # default 'to' date for datepicker
                          </thead>
                          <tbody>
 <?PHP
-$stmt = $mysqli->prepare("SELECT paid, panel_title, panel_btn_txt, panel_btn_link, image, sort_order FROM panel_tbl");
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($paid, $panel_title, $panel_btn_txt, $panel_btn_link, $image, $sort_order);
-while ($stmt->fetch()){
+$stmt = $supabase_pdo->prepare("SELECT paid, panel_title, panel_btn_txt, panel_btn_link, image, sort_order FROM panel_tbl");
+$stmt->execute();
+$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+foreach ($rows as $row) {
+  $paid = $row['paid'];
+  $panel_title = $row['panel_title'];
+  $panel_btn_txt = $row['panel_btn_txt'];
+  $panel_btn_link = $row['panel_btn_link'];
+  $image = $row['image'];
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "row['sort_order'];
+  
   if ($image == '' || $image == '0') {
     $vidqty = '<span class="btn btn-danger">No</span>';
   } else {
@@ -184,13 +190,11 @@ while ($stmt->fetch()){
 </tr>
 <?php
 }
-$numrows = $stmt->num_rows;
-$stmt->close();
+$numrows = count($rows);
 ?>
                          </tbody>
                       </table>
-                   </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -229,19 +233,13 @@ $stmt->close();
                            <div class="form-group">
                               <label class="col-form-label">Background Image</label>
                               <input type="file" class="form-control" name="Image1" id="Image1">
-                          </div>
-                           
-                          
-
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

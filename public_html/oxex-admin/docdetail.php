@@ -3,11 +3,13 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Documentataion";
+
 $subtitle = "Docs";
 $listurl = "docs.php";
 $listname = "Docs";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -38,36 +40,46 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
    $sect_title = isset($_POST['sect_title']) ? $_POST['sect_title'] : '';
    $sect_txt = isset($_POST['sect_txt']) ? $_POST['sect_txt'] : '';
    $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
+   $who_by = isset($_POST['who_by']) ? $_POST['who_by'] : '';
+   $date_modified = date('Y-m-d H:i:s');
   
   // Update record
-  $stmt = $mysqli->prepare("UPDATE docs_tbl SET doc_section = ?, sect_title = ?, sect_txt = ?,  sort_order = ?, date_modified = ?, who_by = ? WHERE did = ? "); 
-  $stmt->bind_param("sssiisi", $doc_section, $sect_title, $sect_txt, $sort_order, $today, $usrkey, $which);
-  $stmt->execute();
-  $stmt->close();
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("UPDATE docs_tbl SET doc_section = ?, sect_title = ?, sect_txt = ?, sort_order = ?, date_modified = ?, who_by = ? WHERE did = ?"); 
+    $stmt->execute([$doc_section, $sect_title, $sect_txt, $sort_order, $date_modified, $who_by, $which]);
+  }
 }
 // doc_section, sect_title, sect_txt, sort_order, who_by, date_added, date_modified
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT doc_section, sect_title, sect_txt, sort_order, who_by, date_added, date_modified FROM docs_tbl WHERE did = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($doc_section, $sect_title, $sect_txt, $sort_order, $who_by, $date_added, $date_modified);
-$stmt->fetch();
-$stmt->close();
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $stmt = $pdo->prepare("SELECT doc_section, sect_title, sect_txt, sort_order, who_by, date_added, date_modified FROM docs_tbl WHERE did = ?");
+  $stmt->execute([$which]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($row) {
+    $doc_section = $row['doc_section'];
+    $sect_title = $row['sect_title'];
+    $sect_txt = $row['sect_txt'];
+    $sort_order = isset($row['sort_order']) ? $row['sort_order'] : 0;
+    $who_by = $row['who_by'];
+    $date_added = $row['date_added'];
+    $date_modified = $row['date_modified'];
+  }
+}
 // whatever the record name is
   $changename = "$sect_title";
    $date_added = strtotime($date_added);
   $date_modified = strtotime($date_modified);
   // who changed last?
-  $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $who_by);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($who_by);
-   $stmt->fetch();
-   $stmt->close();
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+    $stmt->execute([$who_by]);
+    $who_by = $stmt->fetchColumn();
+  }
 ?>
 <body>
    <div class="wrapper">
@@ -82,10 +94,11 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
+
             </div>
 
             <div class="row my-5">
-               <div class="col-xl-7">
+               <div class="col-12 col-xl-7">
                   <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>" data-parsley-validate="" novalidate="">
                      <!-- START card-->
                      <div class="card border-info">
@@ -110,8 +123,7 @@ $stmt->close();
                                           <option <?php if ($doc_section == '4') echo "selected" ?> value="4">Blog</option>
                                           <option <?php if ($doc_section == '5') echo "selected" ?> value="5">Admin</option>
                                         </select>
-                                    </div>
-                                </div>
+</div>
                             </div>
                            <div class="form-group">
                             <label class="col-form-label" for="sect_txt">Text</label>
@@ -128,7 +140,7 @@ $stmt->close();
                               <div class="col-lg-12">
                                 <p><small>(Enter 0 if post is not to be immediately displayed)</small></p>
                               </div>
-                            </div>
+                           </div>
                         </div>
                         
                         <div class="card-footer">
@@ -142,20 +154,11 @@ $stmt->close();
 
 
 
-               <div class="col-xl-5">
-
-
-
-
-
-               </div>
-
-
-
-            </div>
+               <div class="col-12 col-xl-5">
+</div>
 
             <div class="row my-5">
-               <div class="col-xl-8">
+               <div class="col-12 col-xl-8">
                      <!-- START card-->
                      <div class="card border-danger">
                         <div class="card-header bg-danger text-white">
@@ -164,11 +167,10 @@ $stmt->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
+                           </div>
                         </div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

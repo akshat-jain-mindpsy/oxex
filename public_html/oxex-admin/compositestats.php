@@ -3,6 +3,7 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Trainee Group Stats";
 $subtitle = "Stats";
 $listurl = "subsets.php";
@@ -15,7 +16,8 @@ $value60 = 60;
 $dispcolorarr = array();
 $dispborderarr = array();
 
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -38,13 +40,20 @@ $which = isset($_GET['which']) ? $_GET['which'] : '';
 
 
 //Which group?
-$stmt = $mysqli->prepare("SELECT subset, description, date_added, date_modified FROM subset_tbl WHERE setkey = ?");
-$stmt->bind_param("s", $group);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($subset, $description, $date_added, $date_modified);
-$stmt->fetch();
-$stmt->close();
+if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("SELECT subset, description, date_added, date_modified FROM subset_tbl WHERE setkey = ?");
+    $stmt->execute([$group]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $subset = $row ? $row['subset'] : '';
+    $description = $row ? $row['description'] : '';
+    $date_added = $row ? $row['date_added'] : '';
+    $date_modified = $row ? $row['date_modified'] : '';
+} else {
+    $subset = '';
+    $description = '';
+    $date_added = '';
+    $date_modified = '';
+}
 $date_added = strtotime($date_added);
 $date_modified = strtotime($date_modified);
 
@@ -85,12 +94,25 @@ $dateend = $end.'1231';
                   <div class="col">
 <?php
 // run through composite searches
-$tableset = $mysqli->prepare("SELECT csname, stid1, pid1, stid2, pid2, stid3, pid3, sort_order, target FROM compositesearch WHERE sort_order != ? ORDER BY sort_order");
-$tableset->bind_param("i", $value0);
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($csname, $stid1, $pid1, $stid2, $pid2, $stid3, $pid3, $sort_order, $target);
-while ($tableset->fetch()){
+$value0 = 0; // value used to exclude zero sort_order
+if ($usingSupabase) {
+    $tableset = $supabase_pdo->prepare("SELECT csname, stid1, pid1, stid2, pid2, stid3, pid3, sort_order, target FROM compositesearch WHERE sort_order != ? ORDER BY sort_order");
+    $tableset->execute([$value0]);
+    $composite_searches = $tableset->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $composite_searches = [];
+}
+
+foreach ($composite_searches as $search) {
+    $csname = $search['csname'];
+    $stid1 = (int)$search['stid1'];
+    $pid1 = (int)$search['pid1'];
+    $stid2 = (int)$search['stid2'];
+    $pid2 = (int)$search['pid2'];
+    $stid3 = (int)$search['stid3'];
+    $pid3 = (int)$search['pid3'];
+    $sort_order = (int)$search['sort_order'];
+    $target = (int)$search['target'];
    $target = $target * 60; # convert target to minutes
    echo "<h3 class=\"bg-primary text-white mt-2 p-2\">Composite Search: <small>$csname</small></h3>";
    echo "<table class=\"table table-striped\">";
@@ -99,39 +121,49 @@ while ($tableset->fetch()){
    echo "</thead>";
    echo "<tbody>";
    // for each trainee in group
-   $groupset = $mysqli->prepare("SELECT trainkey FROM subset_link_tbl WHERE setkey = ?");
-   $groupset->bind_param("s", $group);
-   $groupset->execute();
-   $groupset->store_result();
-   $groupset->bind_result($trainkey);
-   while ($groupset->fetch()){
-      $troopstmt = $mysqli->prepare("SELECT name, year FROM trainee_tbl WHERE trainkey = ?");
-      $troopstmt->bind_param("s", $trainkey);
-      $troopstmt->execute();
-      $troopstmt->store_result();
-      $troopstmt->bind_result($name, $cohort);
-      $troopstmt->fetch();
-      $troopstmt->close();
+   if ($usingSupabase) {
+       $groupset = $supabase_pdo->prepare("SELECT trainkey FROM subset_link_tbl WHERE setkey = ?");
+       $groupset->execute([$group]);
+       $trainees = $groupset->fetchAll(PDO::FETCH_ASSOC);
+   } else {
+       $trainees = [];
+   }
+   
+   foreach ($trainees as $trainee) {
+       $trainkey = $trainee['trainkey'];
+      if ($usingSupabase) {
+          $troopstmt = $supabase_pdo->prepare("SELECT name, year FROM trainee_tbl WHERE trainkey = ?");
+          $troopstmt->execute([$trainkey]);
+          $trainee_row = $troopstmt->fetch(PDO::FETCH_ASSOC);
+          $name = $trainee_row ? $trainee_row['name'] : '';
+          $cohort = $trainee_row ? $trainee_row['year'] : '';
+      } else {
+          $name = '';
+          $cohort = '';
+      }
       $sessctr = 0;
       $sesshrs = 0;
       //$temparr = array();
       // loop through all sessions in logbook for each trainee
-      $hrsset = $mysqli->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ?");
-      $hrsset->bind_param("sii", $trainkey, $stid1, $pid1);
-      $hrsset->execute();
-      $hrsset->store_result();
-      $hrsset->bind_result($logkey);
-      while ($hrsset->fetch()){
+      if ($usingSupabase) {
+          $hrsset = $supabase_pdo->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ?");
+          $hrsset->execute([$trainkey, $stid1, $pid1]);
+          $sessions = $hrsset->fetchAll(PDO::FETCH_ASSOC);
+      } else {
+          $sessions = [];
+      }
+      
+      foreach ($sessions as $session) {
+          $logkey = $session['logkey'];
 
          // now find time for this same logkey session ($stid = 60)
          $hours = "00:00";
-         $stmt = $mysqli->prepare("SELECT select_val FROM trainee_log WHERE logkey = ? AND stid = ?");
-         $stmt->bind_param("si", $logkey, $value60);
-         $stmt->execute();
-         $stmt->store_result();
-         $stmt->bind_result($hours);
-         $stmt->fetch();
-         $stmt->close();
+         if ($usingSupabase) {
+             $stmt = $supabase_pdo->prepare("SELECT select_val FROM trainee_log WHERE logkey = ? AND stid = ?");
+             $stmt->execute([$logkey, $value60]);
+             $time_row = $stmt->fetch(PDO::FETCH_ASSOC);
+             $hours = $time_row ? $time_row['select_val'] : "00:00";
+         }
          if (!empty($hours)) {
             // Note, $hours<0 omits anything less than one hour
             //array_push($temparr,$hours);
@@ -150,26 +182,26 @@ while ($tableset->fetch()){
          $comply = 1;
 
          if ($stid2 != 0) {
-            $stmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE logkey = ? AND stid = ? AND pid = ?");
-            $stmt->bind_param("sii", $logkey, $stid2, $pid2);
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($tlogid2);
-            $stmt->fetch();
-            $stmt->close();
+            if ($usingSupabase) {
+                $stmt = $supabase_pdo->prepare("SELECT tlogid FROM trainee_log WHERE logkey = ? AND stid = ? AND pid = ?");
+                $stmt->execute([$logkey, $stid2, $pid2]);
+                $tlogid2 = $stmt->fetchColumn() ?: 0;
+            } else {
+                $tlogid2 = 0;
+            }
             if ($tlogid2 == 0) {
                // if there's no matching data, trainee does not comply
                $comply = 0;
             }
          }
          if ($stid3 != 0) {
-            $stmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE logkey = ? AND stid = ? AND pid = ?");
-            $stmt->bind_param("sii", $logkey, $stid3, $pid3);
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($tlogid3);
-            $stmt->fetch();
-            $stmt->close();
+            if ($usingSupabase) {
+                $stmt = $supabase_pdo->prepare("SELECT tlogid FROM trainee_log WHERE logkey = ? AND stid = ? AND pid = ?");
+                $stmt->execute([$logkey, $stid3, $pid3]);
+                $tlogid3 = $stmt->fetchColumn() ?: 0;
+            } else {
+                $tlogid3 = 0;
+            }
             if ($tlogid3 == 0) {
                // if there's no matching data, trainee does not comply
                $comply = 0;
@@ -185,7 +217,6 @@ while ($tableset->fetch()){
          
 
       }
-      $hrsset->close();
       echo "<tr>";
       echo "<td>$name</td>";
       echo "<td>";
@@ -221,11 +252,9 @@ while ($tableset->fetch()){
       echo "</td>";
       echo "</tr>";
    }
-   $groupset->close();
    echo "</tbody>";
    echo "</table>";
 }
-$tableset->close();
 ?>
 <?php
 // now do two manual OR searches - OR search 1:
@@ -251,36 +280,48 @@ echo "<tr><th>Trainee</th><th>Sessions</th><th>Hours</th></tr>";
 echo "</thead>";
 echo "<tbody>";
 // for each trainee in group
-   $groupset = $mysqli->prepare("SELECT trainkey FROM subset_link_tbl WHERE setkey = ?");
-   $groupset->bind_param("s", $group);
-   $groupset->execute();
-   $groupset->store_result();
-   $groupset->bind_result($trainkey);
-   while ($groupset->fetch()){
-      $troopstmt = $mysqli->prepare("SELECT name, year FROM trainee_tbl WHERE trainkey = ?");
-      $troopstmt->bind_param("s", $trainkey);
-      $troopstmt->execute();
-      $troopstmt->store_result();
-      $troopstmt->bind_result($name, $cohort);
-      $troopstmt->fetch();
-      $troopstmt->close();
+   if ($usingSupabase) {
+       $groupset = $supabase_pdo->prepare("SELECT trainkey FROM subset_link_tbl WHERE setkey = ?");
+       $groupset->execute([$group]);
+       $trainees = $groupset->fetchAll(PDO::FETCH_ASSOC);
+   } else {
+       $trainees = [];
+   }
+   
+   foreach ($trainees as $trainee) {
+       $trainkey = $trainee['trainkey'];
+      if ($usingSupabase) {
+          $troopstmt = $supabase_pdo->prepare("SELECT name, year FROM trainee_tbl WHERE trainkey = ?");
+          $troopstmt->execute([$trainkey]);
+          $trainee_row = $troopstmt->fetch(PDO::FETCH_ASSOC);
+          $name = $trainee_row ? $trainee_row['name'] : '';
+          $cohort = $trainee_row ? $trainee_row['year'] : '';
+      } else {
+          $name = '';
+          $cohort = '';
+      }
       $sessctr = 0;
       $sesshrs = 0;
       // loop through all sessions in logbook for each trainee
-      $hrsset = $mysqli->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND (pid = ? OR pid = ? OR pid = ? OR pid = ? OR pid = ?)");
-      $hrsset->bind_param("siiiiii", $trainkey, $stid1, $pid1, $pid2, $pid3, $pid4, $pid5);
-      $hrsset->execute();
-      $hrsset->store_result();
-      $hrsset->bind_result($logkey);
-      while ($hrsset->fetch()){
+      if ($usingSupabase) {
+          $hrsset = $supabase_pdo->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND (pid = ? OR pid = ? OR pid = ? OR pid = ? OR pid = ?)");
+          $hrsset->execute([$trainkey, $stid1, $pid1, $pid2, $pid3, $pid4, $pid5]);
+          $sessions = $hrsset->fetchAll(PDO::FETCH_ASSOC);
+      } else {
+          $sessions = [];
+      }
+      
+      foreach ($sessions as $session) {
+          $logkey = $session['logkey'];
          // now find time for this same logkey session ($stid = 60)
-         $stmt = $mysqli->prepare("SELECT select_val FROM trainee_log WHERE logkey = ? AND stid = ?");
-         $stmt->bind_param("si", $logkey, $value60);
-         $stmt->execute();
-         $stmt->store_result();
-         $stmt->bind_result($hours);
-         $stmt->fetch();
-         $stmt->close();
+         if ($usingSupabase) {
+             $stmt = $supabase_pdo->prepare("SELECT select_val FROM trainee_log WHERE logkey = ? AND stid = ?");
+             $stmt->execute([$logkey, $value60]);
+             $time_row = $stmt->fetch(PDO::FETCH_ASSOC);
+             $hours = $time_row ? $time_row['select_val'] : "00:00";
+         } else {
+             $hours = "00:00";
+         }
          if (!empty($hours)) {
             // Note, $hours<0 omits anything less than one hour
             //array_push($temparr,$hours);
@@ -294,13 +335,13 @@ echo "<tbody>";
          }
          // we only want 'Lead' times so check if this logkey includes this
          $tlogid = 0;
-         $stmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE logkey = ? AND stid = ? AND pid = ?");
-         $stmt->bind_param("sii", $logkey, $rolestid, $rolepid);
-         $stmt->execute();
-         $stmt->store_result();
-         $stmt->bind_result($tlogid);
-         $stmt->fetch();
-         $stmt->close();
+         if ($usingSupabase) {
+             $stmt = $supabase_pdo->prepare("SELECT tlogid FROM trainee_log WHERE logkey = ? AND stid = ? AND pid = ?");
+             $stmt->execute([$logkey, $rolestid, $rolepid]);
+             $tlogid = $stmt->fetchColumn() ?: 0;
+         } else {
+             $tlogid = 0;
+         }
          if ($tlogid > 0) { #so, trainee is a 'Lead'
             $sessctr ++;
             $sesshrs = $sesshrs + $minutes;
@@ -308,7 +349,6 @@ echo "<tbody>";
          
 
       }
-      $hrsset->close();
       echo "<tr>";
       echo "<td>$name</td>";
       echo "<td>";
@@ -340,7 +380,6 @@ echo "<tbody>";
       echo "</td>";
       echo "</tr>";
    }
-   $groupset->close();
 echo "</tbody>";
 echo "</table>";
 
@@ -367,36 +406,48 @@ echo "<tr><th>Trainee</th><th>Sessions</th><th>Hours</th></tr>";
 echo "</thead>";
 echo "<tbody>";
 // for each trainee in group
-   $groupset = $mysqli->prepare("SELECT trainkey FROM subset_link_tbl WHERE setkey = ?");
-   $groupset->bind_param("s", $group);
-   $groupset->execute();
-   $groupset->store_result();
-   $groupset->bind_result($trainkey);
-   while ($groupset->fetch()){
-      $troopstmt = $mysqli->prepare("SELECT name, year FROM trainee_tbl WHERE trainkey = ?");
-      $troopstmt->bind_param("s", $trainkey);
-      $troopstmt->execute();
-      $troopstmt->store_result();
-      $troopstmt->bind_result($name, $cohort);
-      $troopstmt->fetch();
-      $troopstmt->close();
+   if ($usingSupabase) {
+       $groupset = $supabase_pdo->prepare("SELECT trainkey FROM subset_link_tbl WHERE setkey = ?");
+       $groupset->execute([$group]);
+       $trainees = $groupset->fetchAll(PDO::FETCH_ASSOC);
+   } else {
+       $trainees = [];
+   }
+   
+   foreach ($trainees as $trainee) {
+       $trainkey = $trainee['trainkey'];
+      if ($usingSupabase) {
+          $troopstmt = $supabase_pdo->prepare("SELECT name, year FROM trainee_tbl WHERE trainkey = ?");
+          $troopstmt->execute([$trainkey]);
+          $trainee_row = $troopstmt->fetch(PDO::FETCH_ASSOC);
+          $name = $trainee_row ? $trainee_row['name'] : '';
+          $cohort = $trainee_row ? $trainee_row['year'] : '';
+      } else {
+          $name = '';
+          $cohort = '';
+      }
       $sessctr = 0;
       $sesshrs = 0;
       // loop through all sessions in logbook for each trainee
-      $hrsset = $mysqli->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND (pid = ? OR pid = ? OR pid = ? OR pid = ? OR pid = ? OR pid = ? OR pid = ?)");
-      $hrsset->bind_param("siiiiiiii", $trainkey, $stid1, $pid1, $pid2, $pid3, $pid4, $pid5, $pid6, $pid7);
-      $hrsset->execute();
-      $hrsset->store_result();
-      $hrsset->bind_result($logkey);
-      while ($hrsset->fetch()){
+      if ($usingSupabase) {
+          $hrsset = $supabase_pdo->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND (pid = ? OR pid = ? OR pid = ? OR pid = ? OR pid = ? OR pid = ? OR pid = ?)");
+          $hrsset->execute([$trainkey, $stid1, $pid1, $pid2, $pid3, $pid4, $pid5, $pid6, $pid7]);
+          $sessions = $hrsset->fetchAll(PDO::FETCH_ASSOC);
+      } else {
+          $sessions = [];
+      }
+      
+      foreach ($sessions as $session) {
+          $logkey = $session['logkey'];
          // now find time for this same logkey session ($stid = 60)
-         $stmt = $mysqli->prepare("SELECT select_val FROM trainee_log WHERE logkey = ? AND stid = ?");
-         $stmt->bind_param("si", $logkey, $value60);
-         $stmt->execute();
-         $stmt->store_result();
-         $stmt->bind_result($hours);
-         $stmt->fetch();
-         $stmt->close();
+         if ($usingSupabase) {
+             $stmt = $supabase_pdo->prepare("SELECT select_val FROM trainee_log WHERE logkey = ? AND stid = ?");
+             $stmt->execute([$logkey, $value60]);
+             $time_row = $stmt->fetch(PDO::FETCH_ASSOC);
+             $hours = $time_row ? $time_row['select_val'] : "00:00";
+         } else {
+             $hours = "00:00";
+         }
          if (!empty($hours)) {
             // Note, $hours<0 omits anything less than one hour
             //array_push($temparr,$hours);
@@ -410,20 +461,19 @@ echo "<tbody>";
          }
          // we only want 'Lead' times so check if this logkey includes this
          $tlogid = 0;
-         $stmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE logkey = ? AND stid = ? AND pid = ?");
-         $stmt->bind_param("sii", $logkey, $rolestid, $rolepid);
-         $stmt->execute();
-         $stmt->store_result();
-         $stmt->bind_result($tlogid);
-         $stmt->fetch();
-         $stmt->close();
+         if ($usingSupabase) {
+             $stmt = $supabase_pdo->prepare("SELECT tlogid FROM trainee_log WHERE logkey = ? AND stid = ? AND pid = ?");
+             $stmt->execute([$logkey, $rolestid, $rolepid]);
+             $tlogid = $stmt->fetchColumn() ?: 0;
+         } else {
+             $tlogid = 0;
+         }
          if ($tlogid > 0) { #so, trainee is a 'Lead'
             $sessctr ++;
             $sesshrs = $sesshrs + $minutes;
          }
 
       }
-      $hrsset->close();
       echo "<tr>";
       echo "<td>$name</td>";
       echo "<td>";
@@ -455,14 +505,11 @@ echo "<tbody>";
       echo "</td>";
       echo "</tr>";
    }
-   $groupset->close();
 echo "</tbody>";
 echo "</table>";
 
 ?>
-
-                  </div>
-               </div>
+</div>
 
 
 
@@ -471,7 +518,7 @@ echo "</table>";
       </section>
 
    </div>
-   <?php include 'incl/adminjslite.php' ?>
+   <?php include 'incl/adminjs.php' ?>
    <script>
    $(document).ready(function() {
       $('#maintable').dataTable( {

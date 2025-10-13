@@ -8,12 +8,10 @@ $value2 = 2;
 $which = isset($_POST['which']) ? $_POST['which'] : 0;
 // is there already an image?
 $eventlogo = '';
-$stmt = $mysqli->prepare("SELECT eventlogo FROM events_tbl WHERE ID =  ? ");
-$stmt->bind_param("i", $which); 
-$stmt->bind_result($eventlogo);
-$stmt->execute();
-$stmt->fetch();
-$stmt->close();
+$stmt = $pdo->prepare("SELECT eventlogo FROM events_tbl WHERE ID =  ? ");
+$stmt->execute([$which]); 
+$eventlogo = $stmt->fetchColumn();
+$stmt->closeCursor();
 echo '<p class="main">Starting upload procedure...</p>';
 $generateID = substr(md5(rand()), 0, 16); 
 define ("FILEREPOSITORY","../perfpdfs/");
@@ -28,14 +26,10 @@ define ("FILEREPOSITORY","../perfpdfs/");
         while (!$numids == 0) {
           // make 16 digit hex string plus suffix
           $generateID = substr(md5(rand()), 0, 16).'.pdf';
-          $stmt = $mysqli->prepare("SELECT ID FROM events_tbl WHERE eventpdf = ? LIMIT 1");
-          $stmt->bind_param('s', $generateID);
-          $stmt->execute();
-          $stmt->store_result();
-          $stmt->bind_result($fid);
-          $stmt->fetch();
-          $numids = $stmt->num_rows;
-          $stmt->close();
+          $stmt = $pdo->prepare("SELECT ID FROM events_tbl WHERE eventpdf = ? LIMIT 1");
+          $stmt->execute([$generateID]);
+          $numids = $stmt->rowCount();
+          $stmt->closeCursor();
         }
 
         $resultpdf = move_uploaded_file($_FILES['ufile']['tmp_name'], FILEREPOSITORY."$generateID");
@@ -43,10 +37,9 @@ define ("FILEREPOSITORY","../perfpdfs/");
         if ($resultpdf == 1) { 
              $errmsg = "<p>File successfully uploaded.</p>";
              
-            $stmt = $mysqli->prepare("UPDATE events_tbl SET eventpdf = ? WHERE ID = ?"); 
-            $stmt->bind_param("si", $generateID, $newid);
-            $stmt->execute();
-            $stmt->close();
+            $stmt = $pdo->prepare("UPDATE events_tbl SET eventpdf = ? WHERE ID = ?"); 
+            $stmt->execute([$generateID, $newid]);
+            $stmt->closeCursor();
             // create thumbnail if pdf and no image
             if ($eventlogo != '') {
               $startpdf = "../perfpdfs/".$generateID;
@@ -55,10 +48,9 @@ define ("FILEREPOSITORY","../perfpdfs/");
               // create jpg image and thumb from pdf first page
               $result1 = exec("/usr/bin/convert  \"$startpdf\" -quality 70 -colorspace rgb -background white -flatten -thumbnail 180x270 \"$largepng\"");
               
-              $stmt = $mysqli->prepare("UPDATE events_tbl SET eventlogo = ? WHERE ID = ?"); 
-              $stmt->bind_param("si", $pngname, $newid);
-              $stmt->execute();
-              $stmt->close();
+              $stmt = $pdo->prepare("UPDATE events_tbl SET eventlogo = ? WHERE ID = ?"); 
+              $stmt->execute([$pngname, $newid]);
+              $stmt->closeCursor();
             }
         }
          else { $errmsg = "<p>There was a problem uploading the file.  $name ($uploadtype)</p>";
@@ -72,10 +64,9 @@ define ("FILEREPOSITORY","../perfpdfs/");
  }
  if ($result == true)
  {
-	$stmt = $mysqli->prepare("UPDATE events_tbl SET eventlogo = ? WHERE ID = ?"); 
-	$stmt->bind_param("si", $actualname, $which);
-	$stmt->execute();
-	$stmt->close();
+	$stmt = $pdo->prepare("UPDATE events_tbl SET eventlogo = ? WHERE ID = ?"); 
+	$stmt->execute([$actualname, $which]);
+	$stmt->closeCursor();
 		echo "<p><a href=\"performancedetail.php?which=$which&amp;delicon=delicon&amp;photo=$whevattid\"<span class=\"btn btn-danger\"> <i class=\"fa fa-times-circle\"></i> Delete Image</span></a></p>";
 		echo "<p><a href=\"../perfpdfs/$actualname\" class=\"btn btn-green\">download</a></p>";
 		echo '<p>&nbsp;</p><hr>';

@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Glossery";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Admin";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,14 +30,13 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM glossary WHERE gid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
+  $stmt = $pdo->prepare("DELETE FROM glossary WHERE gid = ? LIMIT 1");
+  $stmt->execute([$which]); 
+  if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
   }
-  $stmt->close();
+  $stmt->closeCursor();
 
 }
 
@@ -42,12 +44,11 @@ if ($newadmin == 'newadmin') {
   $term = isset($_POST['term']) ? $_POST['term'] : '';
   $description = isset($_POST['description']) ? $_POST['description'] : '';
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO glossary (term, description, who_by, date_added, date_modified) VALUES (?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("sssii", $term, $description, $usrkey, $today, $today);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  $insert_stmt = $pdo->prepare("INSERT INTO glossary (term, description, who_by, date_added, date_modified) VALUES (?, ?, ?, ?, ?)");
+  $insert_stmt->execute([$term, $description, $usrkey, $today, $today]);
+  //printf("[%d] %s\n", $pdo->errorCode(), $pdo->errorInfo()[2]);
+  $newid = $insert_stmt->lastInsertId();
+  $insert_stmt->closeCursor();
 }
 ?>
 <body>
@@ -63,7 +64,8 @@ if ($newadmin == 'newadmin') {
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
             <?php echo $delalert ?>
             <div class="row">
                <div class="col-xl-12">
@@ -78,11 +80,13 @@ if ($newadmin == 'newadmin') {
                            </thead>
                            <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT gid, term, description, date_modified FROM glossary ");
+$tableset = $pdo->prepare("SELECT gid, term, description, date_modified FROM glossary ");
 $tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($gid, $term, $description, $date_modified);
-while ($tableset->fetch()){
+while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+   $gid = $row['gid'];
+   $term = $row['term'];
+   $description = $row['description'];
+   $date_modified = $row['date_modified'];
    $date_modified = strtotime($date_modified);
    if ($description == '') {
       $description = '<div class="badge badge-warning">No</div>';
@@ -97,13 +101,12 @@ while ($tableset->fetch()){
 </tr>
  <?php
  }
-$numrows = $tableset->num_rows;
-$tableset->close();
+$numrows = $tableset->rowCount();
+$tableset->closeCursor();
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -123,16 +126,13 @@ $tableset->close();
                            <div class="form-group">
                             <label class="col-form-label" for="description">Glossary Text</label>
                               <textarea name="description" id="description" class="form-control summernote"></textarea>
-                          </div>
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

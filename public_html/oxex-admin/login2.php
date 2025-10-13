@@ -25,22 +25,28 @@ if(isset($_POST['email'], $_POST['p'])) {
    }
 
    // Prepare statement to check if email exists
-   $stmt = $mysqli->prepare("SELECT whid, usrkey, email, password, salt, admintype, photo, isdev, realname FROM who_there WHERE email = ? LIMIT 1");
-   $stmt->bind_param('s', $email);
-   $stmt->execute();
-   $stmt->store_result();
+   $stmt = $pdo->prepare("SELECT whid, usrkey, email, password, salt, admintype, photo, isdev, realname FROM who_there WHERE email = ? LIMIT 1");
+   $stmt->execute([$email]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-   custom_log("Number of rows found: " . $stmt->num_rows);
+   custom_log("Number of rows found: " . $stmt->rowCount());
 
-   if ($stmt->num_rows == 0) {
+   if (!$row) {
       custom_log("No user found with email: $email");
       header('Location: login.html?error=email_not_found');
       exit();
    }
 
-   $stmt->bind_result($user_id, $usrkey, $db_email, $db_password, $salt, $admintype, $adminphoto, $adminisdev, $realname);
-   $stmt->fetch();
-   $stmt->close();
+   $user_id = $row['whid'];
+   $usrkey = $row['usrkey'];
+   $db_email = $row['email'];
+   $db_password = $row['password'];
+   $salt = $row['salt'];
+   $admintype = $row['admintype'];
+   $adminphoto = $row['photo'];
+   $adminisdev = $row['isdev'];
+   $realname = $row['realname'];
+   $stmt->closeCursor();
 
    // Verify password
    $hashed_password = hash('sha512', $password.$salt);
@@ -64,20 +70,16 @@ if(isset($_POST['email'], $_POST['p'])) {
       }
 
       try {
-          // Prepare the statement with error handling
-          $login_stmt = $mysqli->prepare("INSERT INTO logins (pid, date_attempt, ip_attempt) VALUES (?, ?, ?)");
-          
-          if ($login_stmt === false) {
-              throw new Exception("Failed to prepare statement: " . $mysqli->error);
+          // Check if logins table exists before attempting to insert
+          $table_check = $pdo->query("SELECT 1 FROM logins LIMIT 1");
+          if ($table_check !== false) {
+              // Prepare the statement with error handling
+              $login_stmt = $pdo->prepare("INSERT INTO logins (pid, date_attempt, ip_attempt) VALUES (?, ?, ?)");
+              $login_stmt->execute([$user_id, $now, $sanitized_ip]);
+              $login_stmt->closeCursor();
+          } else {
+              custom_log("Logins table does not exist, skipping login attempt recording");
           }
-
-          $login_stmt->bind_param("iis", $user_id, $now, $sanitized_ip);
-          
-          if (!$login_stmt->execute()) {
-              throw new Exception("Failed to execute statement: " . $login_stmt->error);
-          }
-          
-          $login_stmt->close();
       } catch (Exception $e) {
           custom_log("Login attempt recording error: " . $e->getMessage());
       }
@@ -87,7 +89,7 @@ if(isset($_POST['email'], $_POST['p'])) {
    }
 
    // Check for brute force attempts
-   if(checkbrute($user_id, $mysqli) == true) { 
+   if(checkbrute($user_id, $pdo) == true) { 
       custom_log("Brute force detected for user: $user_id");
       header('Location: login.html?error=account_locked');
       exit();
@@ -109,10 +111,9 @@ if(isset($_POST['email'], $_POST['p'])) {
    // Update login status
    $now = time();
    $value2 = 2;
-   $stmt = $mysqli->prepare("UPDATE who_there SET isonline = ?, lastlogin = ? WHERE usrkey = ?"); 
-   $stmt->bind_param("iss", $value2, $now, $usrkey);
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("UPDATE who_there SET isonline = ?, lastlogin = ? WHERE usrkey = ?"); 
+   $stmt->execute([$value2, $now, $usrkey]);
+   $stmt->closeCursor();
 
    // Redirect based on admin type
    $allowed_admin_types = ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'];

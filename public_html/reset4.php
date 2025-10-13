@@ -12,14 +12,17 @@ $valid_confirm_password  = $_POST['confirm_password'];
 $trainkey = $_POST['who'];
 
 // just check there is such a user
-$stmt = $mysqli->prepare("SELECT tid FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
-$stmt->bind_param('s', $trainkey);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($tid);
-$stmt->fetch();
-$numrows = $stmt->num_rows;
-$stmt->close();
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("SELECT tid FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+    $stmt->execute([$trainkey]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $tid = $row ? (int)$row['tid'] : 0;
+    $numrows = $row ? 1 : 0;
+} else {
+    $tid = 0;
+    $numrows = 0;
+}
 
 // error message texts, remove html
 $page_txt4 = str_replace("<p>", " ", $page_txt4);
@@ -45,10 +48,10 @@ if ($valid_attampt == 1) {
   $user_password = hash('sha512', $valid_password.$random_salt);
   
   // set record to say it's now been used, remove old text pw
-  $stmt = $mysqli->prepare("UPDATE trainee_tbl SET password = ?, salt = ?, txtpw = ? WHERE trainkey = ?"); 
-  $stmt->bind_param("ssss", $user_password, $random_salt, $valueblank, $trainkey);
-  $stmt->execute();
-  $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("UPDATE trainee_tbl SET password = ?, salt = ?, txtpw = ? WHERE trainkey = ?"); 
+    $stmt->execute([$user_password, $random_salt, $valueblank, $trainkey]);
+  }
 }
 ?><!doctype html>
 <html lang="en">

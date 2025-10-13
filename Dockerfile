@@ -1,7 +1,11 @@
 FROM php:8.1-apache
 
-# Install mysqli extension
-RUN docker-php-ext-install mysqli
+# Install PostgreSQL extension and required packages
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    && docker-php-ext-install pdo pdo_pgsql \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy project files to Apache document root
 COPY public_html/ /var/www/html/
@@ -12,20 +16,38 @@ RUN chown -R www-data:www-data /var/www/html
 # Create a startup script to handle environment variables
 RUN echo '#!/bin/bash\n\
 # Set environment variables for PHP\n\
-if [ ! -z "$MYSQL_HOST" ]; then\n\
-    echo "MYSQL_HOST=$MYSQL_HOST" >> /var/www/html/.env\n\
+if [ ! -z "$SUPABASE_HOST" ]; then\n\
+    echo "SUPABASE_HOST=$SUPABASE_HOST" >> /var/www/html/.env\n\
 fi\n\
-if [ ! -z "$MYSQL_PORT" ]; then\n\
-    echo "MYSQL_PORT=$MYSQL_PORT" >> /var/www/html/.env\n\
+if [ ! -z "$SUPABASE_PORT" ]; then\n\
+    echo "SUPABASE_PORT=$SUPABASE_PORT" >> /var/www/html/.env\n\
 fi\n\
-if [ ! -z "$MYSQL_USER" ]; then\n\
-    echo "MYSQL_USER=$MYSQL_USER" >> /var/www/html/.env\n\
+if [ ! -z "$SUPABASE_USER" ]; then\n\
+    echo "SUPABASE_USER=$SUPABASE_USER" >> /var/www/html/.env\n\
 fi\n\
-if [ ! -z "$MYSQL_PASSWORD" ]; then\n\
-    echo "MYSQL_PASSWORD=$MYSQL_PASSWORD" >> /var/www/html/.env\n\
+if [ ! -z "$SUPABASE_PASSWORD" ]; then\n\
+    echo "SUPABASE_PASSWORD=$SUPABASE_PASSWORD" >> /var/www/html/.env\n\
 fi\n\
-if [ ! -z "$MYSQL_DATABASE" ]; then\n\
-    echo "MYSQL_DATABASE=$MYSQL_DATABASE" >> /var/www/html/.env\n\
+if [ ! -z "$SUPABASE_DATABASE" ]; then\n\
+    echo "SUPABASE_DATABASE=$SUPABASE_DATABASE" >> /var/www/html/.env\n\
+fi\n\
+if [ ! -z "$SUPABASE_DB_HOST" ]; then\n\
+    echo "SUPABASE_DB_HOST=$SUPABASE_DB_HOST" >> /var/www/html/.env\n\
+fi\n\
+if [ ! -z "$SUPABASE_DB_PORT" ]; then\n\
+    echo "SUPABASE_DB_PORT=$SUPABASE_DB_PORT" >> /var/www/html/.env\n\
+fi\n\
+if [ ! -z "$SUPABASE_DB_NAME" ]; then\n\
+    echo "SUPABASE_DB_NAME=$SUPABASE_DB_NAME" >> /var/www/html/.env\n\
+fi\n\
+if [ ! -z "$SUPABASE_DB_USER" ]; then\n\
+    echo "SUPABASE_DB_USER=$SUPABASE_DB_USER" >> /var/www/html/.env\n\
+fi\n\
+if [ ! -z "$SUPABASE_DB_PASSWORD" ]; then\n\
+    echo "SUPABASE_DB_PASSWORD=$SUPABASE_DB_PASSWORD" >> /var/www/html/.env\n\
+fi\n\
+if [ ! -z "$SUPABASE_DB_SSLMODE" ]; then\n\
+    echo "SUPABASE_DB_SSLMODE=$SUPABASE_DB_SSLMODE" >> /var/www/html/.env\n\
 fi\n\
 if [ ! -z "$BASE_URL" ]; then\n\
     echo "BASE_URL=$BASE_URL" >> /var/www/html/.env\n\

@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "News";
+
+setAdminVars(4); // Blog section
 $subtitle = "News/Blog";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,24 +31,22 @@ $delalert = '';
 
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete tags
-  $stmt = $mysqli->prepare("DELETE FROM blog_link_tbl WHERE kbid = ?");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("DELETE FROM blog_link_tbl WHERE kbid = ?");
+  $stmt->execute([$which]);
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM semantic_blog WHERE sbid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
+  $stmt = $supabase_pdo->prepare("DELETE FROM semantic_blog WHERE sbid = ? LIMIT 1");
+  $stmt->execute([$which]);
+  if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
   }
-  $stmt->close();
 }
 
 if ($newadmin == 'newadmin') {
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
-    $sort_order = (int)$sort_order;
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
+    $$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order;
     $lastsort = $sort_order + 1;
 
   $author = isset($_POST['author']) ? $_POST['author'] : '';
@@ -83,14 +84,10 @@ if ($newadmin == 'newadmin') {
   $semantic_url = rtrim($semantic_url, '-');# remove trailing dash
   // look for any blog titles with the same url in semantic_url
   $semantic_title = $semantic_url; # not used
-  $stmt = $mysqli->prepare("SELECT sbid FROM semantic_blog WHERE semantic_url = ?");
-  $stmt->bind_param("s", $semantic_url);
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($sbid);
-  $stmt->fetch();
-  $numrows = $stmt->num_rows;
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("SELECT sbid FROM semantic_blog WHERE semantic_url = ?");
+  $stmt->execute([$semantic_url]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  $numrows = $row ? 1 : 0;
 
   $urllen = strlen($semantic_url);
   if ($urllen > 255 && $numrows == 0) {
@@ -121,31 +118,25 @@ if ($newadmin == 'newadmin') {
   // write new user record
   $ptid = 0;
   $schematype = 0;
-  $insert_stmt = $mysqli->prepare("INSERT INTO semantic_blog (sort_order, date_published, date_modified, author, ptid, gid, blog_title, semantic_title, semantic_url, blog_abstract, page_txt1, page_txt2, page_txt3, bannerTitle, bannerTxt, justification, banner, actioncall1, buttonlink1, buttonname1, actioncall2, buttonlink2, buttonname2, metatext, googleTitle, googleDesc, googleKeywords, schematype) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("iiisiisssssssssssssssssssssi", $sort_order, $today, $today, $author, $ptid, $gid, $blog_title, $semantic_title, $semantic_url, $blog_abstract, $page_txt1, $page_txt2, $page_txt3, $bannerTitle, $bannerTxt, $value0, $valueblank, $actioncall1, $buttonlink1, $buttonname1, $actioncall2, $buttonlink2, $buttonname2, $metatext, $googleTitle, $googleDesc, $googleKeywords, $schematype);
-  $insert_stmt->execute();
-  printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  $insert_stmt = $supabase_pdo->prepare("INSERT INTO semantic_blog (sort_order, date_published, date_modified, author, ptid, gid, blog_title, semantic_title, semantic_url, blog_abstract, page_txt1, page_txt2, page_txt3, bannerTitle, bannerTxt, justification, banner, actioncall1, buttonlink1, buttonname1, actioncall2, buttonlink2, buttonname2, metatext, googleTitle, googleDesc, googleKeywords, schematype) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  $insert_stmt->execute([$$value0 = 0; // Default value for sort_order
+$subtitle = "schematype]);
+  $newid = $supabase_pdo->lastInsertId();
 
   // create subject links
-  $tagstmt = $mysqli->prepare("SELECT btagid FROM blog_subject_tags");
+  $tagstmt = $supabase_pdo->prepare("SELECT btagid FROM blog_subject_tags");
   $tagstmt->execute();
-  $tagstmt->store_result();
-  $tagstmt->bind_result($btagid);
-  while ($tagstmt->fetch()){
+  while ($row = $tagstmt->fetch(PDO::FETCH_ASSOC)){
+    $btagid = (int)$row['btagid'];
     $posmarker = 'q'.$btagid;
     $clicked = isset($_POST[$posmarker]) ? $_POST[$posmarker] : '';
     if ($clicked == $btagid)  {
       // if checkbox has same value add to db
-      $insert_stmt = $mysqli->prepare("INSERT INTO blog_link_tbl (kbid, btagid) VALUES (?, ?)");
-      $insert_stmt->bind_param("ii", $newid, $btagid);
-      $insert_stmt->execute();
-      $insert_stmt->close();
+      $insert_stmt = $supabase_pdo->prepare("INSERT INTO blog_link_tbl (kbid, btagid) VALUES (?, ?)");
+      $insert_stmt->execute([$newid, $btagid]);
       // kbid now sbid
     }
   }
-  $tagstmt->close();
   if (is_uploaded_file($_FILES['Image1']['tmp_name'])) {
       // create images and add filename
       $generateID = substr(md5(rand()), 0, 16); 
@@ -211,10 +202,8 @@ if ($newadmin == 'newadmin') {
      $result = resize_save_jpeg( $temp_image_path, $large_image_path, 1900, 500 );
      if ( $result )
      {
-      $stmt = $mysqli->prepare("UPDATE semantic_blog SET banner = ? WHERE sbid = ?"); 
-      $stmt->bind_param("si", $actualname, $newid);
-      $stmt->execute();
-      $stmt->close();
+      $stmt = $supabase_pdo->prepare("UPDATE semantic_blog SET banner = ? WHERE sbid = ?"); 
+      $stmt->execute([$actualname, $newid]);
      }
   }
 }
@@ -232,7 +221,8 @@ if ($newadmin == 'newadmin') {
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
-            </div>
+
+setAdminVars(4); // Blog section            </div>
             <?php echo $delalert ?>
             <div class="row">
                <div class="col-xl-12">
@@ -250,21 +240,19 @@ if ($newadmin == 'newadmin') {
                           <tbody>
                           <?PHP
                             // list resources
-                        $stmt = $mysqli->prepare("SELECT sbid, blog_title, date_published, banner, sort_order FROM semantic_blog");
-                        //$stmt->bind_param("i", $value1);
+                        $stmt = $supabase_pdo->prepare("SELECT sbid, blog_title, date_published, banner, sort_order FROM semantic_blog");
                         $stmt->execute();
-                        $stmt->store_result();
-                        $stmt->bind_result($sbid, $blog_title, $date_published, $banner, $sort_order);
-                        while ($stmt->fetch()){
-                          $date_published = strtotime($date_published);
+                        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                          $sbid = (int)$row['sbid'];
+                          $blog_title = $row['blog_title'];
+                          $date_published = strtotime($row['date_published']);
+                          $banner = $row['banner'];
+                          $$value0 = 0; // Default value for sort_order
+$subtitle = "row['sort_order'];
                           // get how many tags
-                          $vids = $mysqli->prepare("SELECT blid FROM blog_link_tbl WHERE kbid = ? ");
-                          $vids->bind_param("i", $sbid);
-                          $vids->execute();
-                          $vids->store_result();
-                          $vids->bind_result($blid);
-                          $vidrows = $vids->num_rows;
-                          $vids->close();
+                          $vids = $supabase_pdo->prepare("SELECT blid FROM blog_link_tbl WHERE kbid = ? ");
+                          $vids->execute([$sbid]);
+                          $vidrows = $vids->rowCount();
                           $imgqty = $vidrows;
                           ?>
                             <tr>
@@ -299,13 +287,10 @@ if ($newadmin == 'newadmin') {
                         </tr>     
                           <?php
                           }
-                        $numrows = $stmt->num_rows;
-                          $stmt->close();
                           ?>
                           </tbody>
                       </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -378,8 +363,7 @@ if ($newadmin == 'newadmin') {
                             <div class="col form-group">
                               <label class="col-form-label" for="buttonname1">Button Label for #1</label>
                               <input type="text" class="form-control" id="buttonname1" name="buttonname1">
-                            </div>
-                          </div>
+</div>
                           <div class="form-group">
                               <label class="col-form-label" for="actioncall2">Action text #2</label>
                               <input type="text" class="form-control" id="actioncall2" name="actioncall2">
@@ -393,8 +377,7 @@ if ($newadmin == 'newadmin') {
                             <div class="col form-group">
                             <label class="col-form-label" for="buttonname2">Button Label for #2</label>
                               <input type="text" class="form-control" id="buttonname2" name="buttonname2">
-                          </div>
-                          </div>
+</div>
                           
                           <h6>Search &amp; Filter Tags</h6>
                           <div class="form-group">
@@ -402,17 +385,15 @@ if ($newadmin == 'newadmin') {
                             <div class="col-lg-12">
                               <?PHP
                               // Loop through tags 
-                              $loopstmt = $mysqli->prepare("SELECT btagid, btag FROM blog_subject_tags");
+                              $loopstmt = $supabase_pdo->prepare("SELECT btagid, btag FROM blog_subject_tags");
                               $loopstmt->execute();
-                              $loopstmt->store_result();
-                              $loopstmt->bind_result($btagid, $btag);
-                              while ($loopstmt->fetch()) {  
+                              while ($row = $loopstmt->fetch(PDO::FETCH_ASSOC)) {  
+                                $btagid = (int)$row['btagid'];
+                                $btag = $row['btag'];
                                 echo "<label class=\"checkbox-inline\"><input name=\"q$btagid\" type=\"checkbox\" id=\"$btagid\" value=\"$btagid\"/>$btag</label><br>\r";
                               }
-                              $loopstmt->close();
                               ?>
-                            </div>
-                          </div>
+</div>
                           <div class="form-group">
                             <label class="col-form-label">Banner Image</label>
                               <input type="file" class="form-control" name="Image1" id="Image1">
@@ -438,19 +419,13 @@ if ($newadmin == 'newadmin') {
                           <div class="form-group">
                             <label class="col-form-label" for="bannerTxt" >Banner Subtitle</label>
                               <textarea name="bannerTxt" id="bannerTxt" rows="2" class="form-control" ></textarea>
-                          </div>
-
-
-                           
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

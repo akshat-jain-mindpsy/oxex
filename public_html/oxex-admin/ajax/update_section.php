@@ -13,7 +13,7 @@ header('Content-Type: application/json');
 
 try {
     // Check if user is logged in and has proper permissions
-    if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+    if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
         echo json_encode([
             'status' => 'error',
             'message' => 'Unauthorized access'
@@ -60,32 +60,30 @@ if (empty($section_id) || empty($section_name)) {
 }
 
 // Start transaction
-$mysqli->begin_transaction();
+$pdo->beginTransaction();
 
 try {
     // Update section details
-    $update_stmt = $mysqli->prepare("
+    $update_stmt = $pdo->prepare("
         UPDATE field_sections 
         SET section_name = ?, section_description = ? 
         WHERE section_id = ?
     ");
-    $update_stmt->bind_param("ssi", $section_name, $section_description, $section_id);
-    $update_stmt->execute();
+    $update_stmt->execute([$section_name, $section_description, $section_id]);
     
-    if ($update_stmt->affected_rows === 0) {
+    if ($update_stmt->rowCount() === 0) {
         throw new Exception("No section found with ID: $section_id");
     }
-    $update_stmt->close();
+    $update_stmt->closeCursor();
     
     // Remove all existing table associations for this section
-    $delete_stmt = $mysqli->prepare("DELETE FROM section_table_link WHERE section_id = ?");
-    $delete_stmt->bind_param("i", $section_id);
-    $delete_stmt->execute();
-    $delete_stmt->close();
+    $delete_stmt = $pdo->prepare("DELETE FROM section_table_link WHERE section_id = ?");
+    $delete_stmt->execute([$section_id]);
+    $delete_stmt->closeCursor();
     
     // Add new table associations if provided
     if (!empty($table_ids) && is_array($table_ids)) {
-        $insert_stmt = $mysqli->prepare("
+        $insert_stmt = $pdo->prepare("
             INSERT INTO section_table_link (section_id, tbid, display_order) 
             VALUES (?, ?, ?)
         ");
@@ -94,15 +92,14 @@ try {
             $tbid = (int)$tbid;
             if ($tbid > 0) {
                 $display_order = $index + 1;
-                $insert_stmt->bind_param("iii", $section_id, $tbid, $display_order);
-                $insert_stmt->execute();
+                $insert_stmt->execute([$section_id, $tbid, $display_order]);
             }
         }
-        $insert_stmt->close();
+        $insert_stmt->closeCursor();
     }
     
     // Commit transaction
-    $mysqli->commit();
+    $pdo->commit();
     
     echo json_encode([
         'status' => 'success',
@@ -113,7 +110,7 @@ try {
     
 } catch (Exception $e) {
     // Rollback transaction on error
-    $mysqli->rollback();
+    $pdo->rollBack();
     
     error_log("Error updating section: " . $e->getMessage());
     
@@ -123,7 +120,7 @@ try {
     ]);
 }
 
-$mysqli->close();
+$pdo = null;
 
 } catch (Exception $e) {
     // Catch any fatal errors

@@ -7,7 +7,7 @@ include '../incl/sess.php';
 header('Content-Type: application/json');
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
       $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
     echo json_encode(['status' => 'error', 'message' => 'Access denied']);
@@ -27,11 +27,11 @@ if ($section_id <= 0 || $table_id <= 0) {
 }
 
 // Start transaction
-$mysqli->begin_transaction();
+$supabase_pdo->beginTransaction();
 
 try {
     // Find unsectioned fields for this table
-    $unsectioned_stmt = $mysqli->prepare("
+    $unsectioned_stmt = $supabase_pdo->prepare("
         SELECT 
             st.stid
         FROM 
@@ -43,12 +43,11 @@ try {
         WHERE 
             tf.tbid = ? AND stl.section_id IS NULL
     ");
-    $unsectioned_stmt->bind_param("i", $table_id);
-    $unsectioned_stmt->execute();
-    $unsectioned_result = $unsectioned_stmt->get_result();
+    $unsectioned_stmt->execute([$table_id]);
+    $unsectioned_fields = $unsectioned_stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Prepare insert statement
-    $insert_stmt = $mysqli->prepare("
+    $insert_stmt = $supabase_pdo->prepare("
         INSERT INTO section_table_link (section_id, tbid, stid, display_order) 
         VALUES (?, ?, ?, ?)
     ");
@@ -57,19 +56,15 @@ try {
     $display_order = 1;
     
     // Assign each unsectioned field to the selected section
-    while ($field = $unsectioned_result->fetch_assoc()) {
+    foreach ($unsectioned_fields as $field) {
         $field_id = $field['stid'];
-        $insert_stmt->bind_param("iiii", $section_id, $table_id, $field_id, $display_order);
-        $insert_stmt->execute();
+        $insert_stmt->execute([$section_id, $table_id, $field_id, $display_order]);
         $field_count++;
         $display_order++;
     }
     
-    $unsectioned_stmt->close();
-    $insert_stmt->close();
-    
     // Commit transaction
-    $mysqli->commit();
+    $supabase_pdo->commit();
     
     echo json_encode([
         'status' => 'success', 
@@ -77,7 +72,7 @@ try {
     ]);
 } catch (Exception $e) {
     // Rollback on error
-    $mysqli->rollback();
+    $supabase_pdo->rollBack();
     
     error_log("Error assigning fields to section: " . $e->getMessage());
     echo json_encode([
@@ -85,7 +80,5 @@ try {
         'message' => 'Failed to assign fields to section: ' . $e->getMessage()
     ]);
 }
-
-$mysqli->close();
 exit;
 ?> 

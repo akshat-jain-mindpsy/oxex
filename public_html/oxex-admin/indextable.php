@@ -2,6 +2,7 @@
 include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 include 'incl/sess.php';
+include __DIR__ . '/incl/admin_vars.php';
 // new PHP mailer
 //use PHPMailer\PHPMailer\PHPMailer;
 //use PHPMailer\PHPMailer\SMTP;
@@ -15,7 +16,11 @@ $mailfromname = 'xx';
 
 $pagetitle = "Dashboard";
 $subtitle = "";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+
+// Set variables needed by adminjs.php
+setAdminVars(0); // Dashboard section
+
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
    /*
    This is the home page but also processes updates to the recording date
    */
@@ -110,11 +115,8 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                         <p>New documentation is added in the Admin section <a href="docs.php">'Admin Documentation'</a> page</p>
                      </div>
                      <div class="card-footer">
-                        
-                     </div>
-                  </div><!-- END card-->
-               </div>
-            </div>
+</div><!-- END card-->
+</div>
             
             <!-- Global Search Section -->
             <div class="row mt-4">
@@ -173,21 +175,16 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                               <span class="sr-only">Loading...</span>
                            </div>
                            <p class="mt-2">Searching...</p>
-                        </div>
-                     </div>
+</div>
                   </div><!-- END card-->
-               </div>
-            </div>
+</div>
             
             <div class="row">
                <div class="col-xl-12">
                   <h3>&nbsp;</h3>
                   <div class="table-responsive">
-                     
-                  </div>
-               </div>
-            </div>
-         </div>
+</div>
+</div>
       </section>
    </div>
    <?php include 'incl/adminjs.php' ?>
@@ -214,6 +211,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
    }
    </style>
   <script>
+  
   jQuery(document).ready(function($) {
     $( function() {
       $( "#datepicker" ).datepicker({
@@ -291,7 +289,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             $('#noResultsMessage').show();
           }
         },
-        error: function() {
+        error: function(xhr, status, error) {
           // Hide loading indicator
           $('#searchLoadingIndicator').hide();
           
@@ -406,6 +404,78 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
         }
       });
     }
+  });
+  </script>
+  
+  <!-- DEBUGGING SCRIPT FOR SIDEBAR -->
+  <script>
+  console.log('=== SIDEBAR DEBUGGING ===');
+  console.log('jQuery version:', typeof $ !== 'undefined' ? $.fn.jquery : 'jQuery not loaded');
+  console.log('Bootstrap version:', typeof $.fn.collapse !== 'undefined' ? 'Bootstrap loaded' : 'Bootstrap collapse not available');
+
+  // Check if collapse elements exist
+  $(document).ready(function() {
+      console.log('Document ready - checking sidebar elements');
+      
+      // Check for collapse elements
+      var collapseElements = $('[data-toggle="collapse"]');
+      console.log('Found collapse elements:', collapseElements.length);
+      
+      collapseElements.each(function(index) {
+          var $this = $(this);
+          var target = $this.attr('data-target');
+          var targetElement = $(target);
+          console.log('Element ' + index + ':', {
+              text: $this.text().trim(),
+              target: target,
+              targetExists: targetElement.length > 0,
+              targetClasses: targetElement.attr('class')
+          });
+      });
+      
+      // Test manual collapse
+      console.log('Testing manual collapse...');
+      console.log('Data element before show:', $('#data').attr('class'));
+      console.log('Data element visibility:', $('#data').is(':visible'));
+      console.log('Data element display:', $('#data').css('display'));
+      $('#data').collapse('show');
+      console.log('Data element after show:', $('#data').attr('class'));
+      console.log('Data element visibility after:', $('#data').is(':visible'));
+      console.log('Data element display after:', $('#data').css('display'));
+      
+      // Test users element
+      console.log('Users element classes:', $('#users').attr('class'));
+      console.log('Users element visibility:', $('#users').is(':visible'));
+      console.log('Users element display:', $('#users').css('display'));
+      
+      // Test all collapse elements
+      $('.collapse').each(function() {
+          console.log('Collapse element:', this.id, 'Classes:', this.className);
+      });
+      
+      // Add click handlers for debugging
+      $('[data-toggle="collapse"]').on('click', function(e) {
+          console.log('Collapse clicked:', $(this).text().trim());
+          console.log('Event:', e);
+          console.log('Target:', $(this).attr('data-target'));
+      });
+      
+      // Listen for collapse events
+      $('.collapse').on('show.bs.collapse', function() {
+          console.log('Collapse showing:', this.id);
+      });
+      
+      $('.collapse').on('shown.bs.collapse', function() {
+          console.log('Collapse shown:', this.id);
+      });
+      
+      $('.collapse').on('hide.bs.collapse', function() {
+          console.log('Collapse hiding:', this.id);
+      });
+      
+      $('.collapse').on('hidden.bs.collapse', function() {
+          console.log('Collapse hidden:', this.id);
+      });
   });
   </script>
 </body>

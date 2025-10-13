@@ -3,6 +3,7 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Get session variables
 $usrkey = isset($_SESSION['usrkey']) ? $_SESSION['usrkey'] : '';
@@ -13,7 +14,7 @@ if (!isset($today)) {
 }
 
 // Ensure database connection is available
-if (!isset($mysqli) || !$mysqli) {
+if (!isset($pdo) || !$pdo) {
     die("Database connection not available");
 }
 
@@ -31,15 +32,17 @@ if (!isset($value1)) {
 }
 
 // Get total trainee count for display (before pagination)
-$total_count_stmt = $mysqli->prepare("SELECT COUNT(*) as total FROM trainee_tbl");
+$total_count_stmt = $pdo->prepare("SELECT COUNT(*) as total FROM trainee_tbl");
 $total_count_stmt->execute();
-$total_count_stmt->bind_result($total_trainees);
-$total_count_stmt->fetch();
-$total_count_stmt->close();
+$total_trainees = $total_count_stmt->fetchColumn();
+$total_count_stmt->closeCursor();
 
 $pagetitle = "Trainee Clinical Psychologists";
+
+// Set variables needed by adminjs.php
+setAdminVars(2); // Trainees section
 $subtitle = "Trainees";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -62,40 +65,34 @@ if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // wipe data and delete trainee
 
    // which tables they see
-   $stmt = $mysqli->prepare("DELETE FROM trainee_tab_link WHERE trainkey = ?");
-   $stmt->bind_param("s", $which); 
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("DELETE FROM trainee_tab_link WHERE trainkey = ?");
+   $stmt->execute([$which]); 
+   $stmt->closeCursor();
 
    // their recorded data
-   $stmt = $mysqli->prepare("DELETE FROM trainee_log WHERE trainkey = ?");
-   $stmt->bind_param("s", $which); 
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("DELETE FROM trainee_log WHERE trainkey = ?");
+   $stmt->execute([$which]); 
+   $stmt->closeCursor();
 
    // their attendance log
-   $stmt = $mysqli->prepare("DELETE FROM timesheet WHERE trainkey = ?");
-   $stmt->bind_param("s", $which); 
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("DELETE FROM timesheet WHERE trainkey = ?");
+   $stmt->execute([$which]); 
+   $stmt->closeCursor();
 
    // any subset
-   $stmt = $mysqli->prepare("DELETE FROM subset_link_tbl WHERE trainkey = ?");
-   $stmt->bind_param("s", $which); 
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("DELETE FROM subset_link_tbl WHERE trainkey = ?");
+   $stmt->execute([$which]); 
+   $stmt->closeCursor();
 
    // any report certificate
-   $stmt = $mysqli->prepare("DELETE FROM trainee_report_ok WHERE trainkey = ?");
-   $stmt->bind_param("s", $which); 
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("DELETE FROM trainee_report_ok WHERE trainkey = ?");
+   $stmt->execute([$which]); 
+   $stmt->closeCursor();
 
    // delete the trainee
-   $stmt = $mysqli->prepare("DELETE FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
-   $stmt->bind_param("s", $which); 
-   $stmt->execute();
-   if ($mysqli->affected_rows > 0) {
+   $stmt = $pdo->prepare("DELETE FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+   $stmt->execute([$which]); 
+   if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Trainee's Records Deleted</strong></div></div></div>";
    }
@@ -106,26 +103,23 @@ if ($del == "wipe" && ($admintype == 'AT' || $admintype == 'DV')) {
    // we're just wiping their data
 
    // their recorded data
-   $stmt = $mysqli->prepare("DELETE FROM trainee_log WHERE trainkey = ?");
-   $stmt->bind_param("s", $which); 
-   $stmt->execute();
-   if ($mysqli->affected_rows > 0) {
+   $stmt = $pdo->prepare("DELETE FROM trainee_log WHERE trainkey = ?");
+   $stmt->execute([$which]); 
+   if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Trainee Data Wiped</strong></div></div></div>";
    }
    $stmt->close();
 
    // their attendance log
-   $stmt = $mysqli->prepare("DELETE FROM timesheet WHERE trainkey = ?");
-   $stmt->bind_param("s", $which); 
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("DELETE FROM timesheet WHERE trainkey = ?");
+   $stmt->execute([$which]); 
+   $stmt->closeCursor();
 
    // any report certificate
-   $stmt = $mysqli->prepare("DELETE FROM trainee_report_ok WHERE trainkey = ?");
-   $stmt->bind_param("s", $which); 
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("DELETE FROM trainee_report_ok WHERE trainkey = ?");
+   $stmt->execute([$which]); 
+   $stmt->closeCursor();
 }
 
 if ($newadmin == 'newadmin') {
@@ -154,14 +148,11 @@ if ($newadmin == 'newadmin') {
     while (!$numids == 0) {
       // make 32 digit hex string
       $trainkey = substr(md5(rand()), 0, 32);   
-      $stmt = $mysqli->prepare("SELECT tid FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
-      $stmt->bind_param('s', $trainkey);
-      $stmt->execute();
-      $stmt->store_result();
-      $stmt->bind_result($tid);
-      $stmt->fetch();
-      $numids = $stmt->num_rows;
-      $stmt->close();
+      $stmt = $pdo->prepare("SELECT tid FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+      $stmt->execute([$trainkey]);
+      $tid = $stmt->fetchColumn();
+      $numids = $stmt->rowCount();
+      $stmt->closeCursor();
     }
 
   // Set meaningful values for all required columns
@@ -187,39 +178,35 @@ if ($newadmin == 'newadmin') {
   error_log("Trainee insert values - name: '$name', email: '$email', uid: $uid, supervisor: '$supervisor', usrkey: '$usrkey', today: '$today', tandc: $tandc, last_used: $last_used");
 
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO trainee_tbl (name, email, uid, supervisor, supervisor2, supervisor3, syslink, year, trainkey, txtpw, password, salt, who_by, date_added, date_modified, last_used, tandc, tutor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  $insert_stmt = $pdo->prepare("INSERT INTO trainee_tbl (name, email, uid, supervisor, supervisor2, supervisor3, syslink, year, trainkey, txtpw, password, salt, who_by, date_added, date_modified, last_used, tandc, tutor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
   
   if (!$insert_stmt) {
-    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to prepare statement: " . $mysqli->error . "</strong></div></div></div>";
+    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to prepare statement: " . $pdo->errorInfo()[2] . "</strong></div></div></div>";
   } else {
-    $insert_stmt->bind_param("ssissssisssssiiiis", $name, $email, $uid, $supervisor, $supervisor2, $supervisor3, $syslink, $year, $trainkey, $txtpw, $password, $salt, $usrkey, $date_added, $date_modified, $last_used, $tandc, $tutor);
-    
-    if (!$insert_stmt->execute()) {
-      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to insert trainee: " . $insert_stmt->error . "</strong></div></div></div>";
+    if (!$insert_stmt->execute([$name, $email, $uid, $supervisor, $supervisor2, $supervisor3, $syslink, $year, $trainkey, $txtpw, $password, $salt, $usrkey, $date_added, $date_modified, $last_used, $tandc, $tutor])) {
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to insert trainee: " . $insert_stmt->errorInfo()[2] . "</strong></div></div></div>";
     } else {
-      $newid = $insert_stmt->insert_id;
+      $newid = $pdo->lastInsertId();
       $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-success\" role=\"alert\"><strong>Trainee added successfully!</strong></div></div></div>";
     }
-    $insert_stmt->close();
+    $insert_stmt->closeCursor();
   }
 
   // create table links
-  $tagstmt = $mysqli->prepare("SELECT tbid FROM tabs_tbl");
+  $tagstmt = $pdo->prepare("SELECT tbid FROM tabs_tbl");
   $tagstmt->execute();
-  $tagstmt->store_result();
-  $tagstmt->bind_result($tbid);
-  while ($tagstmt->fetch()){
+  while ($row = $tagstmt->fetch(PDO::FETCH_ASSOC)){
+    $tbid = $row['tbid'];
     $posmarker = 'q'.$tbid;
     $clicked = isset($_POST[$posmarker]) ? $_POST[$posmarker] : '';
     if ($clicked == $tbid)  {
       // if checkbox has same value add to db
-      $insert_stmt = $mysqli->prepare("INSERT INTO trainee_tab_link (trainkey, tbid) VALUES (?, ?)");
-      $insert_stmt->bind_param("si", $trainkey, $tbid);
-      $insert_stmt->execute();
-      $insert_stmt->close();
+      $insert_stmt = $pdo->prepare("INSERT INTO trainee_tab_link (trainkey, tbid) VALUES (?, ?)");
+      $insert_stmt->execute([$trainkey, $tbid]);
+      $insert_stmt->closeCursor();
     }
   }
-  $tagstmt->close();
+  $tagstmt->closeCursor();
   
   } // Close the validation if statement
   
@@ -242,27 +229,25 @@ if ($newadmin == 'newadmin') {
             <?php echo $delalert ?>
             <!-- Search and Filter Controls -->
             <div class="row mb-3">
-               <div class="col-md-6">
+               <div class="col-12 mb-2">
                   <form method="GET" action="" class="form-inline">
                      <div class="input-group">
                         <input type="text" class="form-control" name="search" placeholder="Search trainees..." value="<?php echo htmlspecialchars($_GET['search'] ?? ''); ?>">
                         <div class="input-group-append">
                            <button class="btn btn-outline-secondary" type="submit">Search</button>
-                        </div>
-                     </div>
+</div>
                      <?php if (isset($_GET['search']) && !empty($_GET['search'])): ?>
                         <a href="?page=1#report" class="btn btn-sm btn-outline-danger ml-2">Clear</a>
                      <?php endif; ?>
                   </form>
                </div>
-               <div class="col-md-6 text-right">
+               <div class="col-12 text-right">
                   <small class="text-muted">
                      <?php echo $total_trainees; ?> total trainees
                   </small>
-               </div>
-            </div>
-            
-            <div class="row">
+                           </div>
+ 
+                             <div class="row">
                <div class="col-xl-12">
                   <div class="table-responsive">
                         <table class="table table-striped my-4 w-100" id="maintable">
@@ -298,15 +283,15 @@ if (!empty($search_term)) {
 
 // Get filtered count for pagination with search
 $count_query = "SELECT COUNT(*) as total FROM trainee_tbl $search_condition";
-$count_stmt = $mysqli->prepare($count_query);
+$count_stmt = $pdo->prepare($count_query);
 
 if (!empty($search_params)) {
-    $count_stmt->bind_param($search_types, ...$search_params);
+    $count_stmt->execute($search_params);
+} else {
+    $count_stmt->execute();
 }
-$count_stmt->execute();
-$count_stmt->bind_result($filtered_trainees);
-$count_stmt->fetch();
-$count_stmt->close();
+$filtered_trainees = $count_stmt->fetchColumn();
+$count_stmt->closeCursor();
 
 $total_pages = ceil($filtered_trainees / $items_per_page);
 $offset = ($current_page - 1) * $items_per_page;
@@ -316,64 +301,54 @@ $valueyearend = date('Y').'1231';
 
 // Modified query with pagination and search
 $query = "SELECT trainkey, name, uid, year, supervisor, supervisor2, supervisor3, tutor, txtpw, email FROM trainee_tbl $search_condition ORDER BY name LIMIT ? OFFSET ?";
-$tableset = $mysqli->prepare($query);
+$tableset = $pdo->prepare($query);
 
 if (!empty($search_params)) {
     $all_params = array_merge($search_params, [$items_per_page, $offset]);
-    $tableset->bind_param($search_types . "ii", ...$all_params);
+    $tableset->execute($all_params);
 } else {
-    $tableset->bind_param("ii", $items_per_page, $offset);
+    $tableset->execute([$items_per_page, $offset]);
 }
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($trainkey, $name, $uid, $year, $supervisor, $supervisor2, $supervisor3, $tutor, $txtpw, $email);
-while ($tableset->fetch()){
+while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+    $trainkey = $row['trainkey'];
+    $name = $row['name'];
+    $uid = $row['uid'];
+    $year = $row['year'];
+    $supervisor = $row['supervisor'];
+    $supervisor2 = $row['supervisor2'];
+    $supervisor3 = $row['supervisor3'];
+    $tutor = $row['tutor'];
+    $txtpw = $row['txtpw'];
+    $email = $row['email'];
    // get course
 
-   $stmt = $mysqli->prepare("SELECT university FROM uni_tbl WHERE uid = ?");
-   $stmt->bind_param("i", $uid);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($university);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT university FROM uni_tbl WHERE uid = ?");
+   $stmt->execute([$uid]);
+   $university = $stmt->fetchColumn();
+   $stmt->closeCursor();
    // get supervisors
-   $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $supervisor);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($supername);
-   $stmt->fetch();
-   $stmt->close();
-   $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $supervisor2);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($supername2);
-   $stmt->fetch();
-   $stmt->close();
-   $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $supervisor3);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($supername3);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+   $stmt->execute([$supervisor]);
+   $supername = $stmt->fetchColumn();
+   $stmt->closeCursor();
+   $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+   $stmt->execute([$supervisor2]);
+   $supername2 = $stmt->fetchColumn();
+   $stmt->closeCursor();
+   $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+   $stmt->execute([$supervisor3]);
+   $supername3 = $stmt->fetchColumn();
+   $stmt->closeCursor();
    // get tutor
-   $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $tutor);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($tutorname);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+   $stmt->execute([$tutor]);
+   $tutorname = $stmt->fetchColumn();
+   $stmt->closeCursor();
    // how many attendance days this year
-   $vids = $mysqli->prepare("SELECT tsid FROM timesheet WHERE trainkey = ? AND taskdate >= ? AND taskdate <= ?");
-   $vids->bind_param("sii", $trainkey, $valueyearstart, $valueyearend);
-   $vids->execute();
-   $vids->store_result();
-   $numtasks = $vids->num_rows;
-   $vids->close();
+   $vids = $pdo->prepare("SELECT tsid FROM timesheet WHERE trainkey = ? AND taskdate >= ? AND taskdate <= ?");
+   $vids->execute([$trainkey, $valueyearstart, $valueyearend]);
+   $numtasks = $vids->rowCount();
+   $vids->closeCursor();
 
    // is this admin allowed to see it
    $canIview = 0;
@@ -408,8 +383,7 @@ while ($tableset->fetch()){
             <a class="btn btn-warning m-2" href="trainee.php?del=wipe&amp;which=<?php echo $trainkey ?>" onclick="return confirm('Are you sure you want to wipe this trainee\'s data?')">Wipe Trainee's data only</a>
             <div class="dropdown-divider"></div>
             <a class="btn btn-danger m-2" href="trainee.php?del=del&amp;which=<?php echo $trainkey ?>" onclick="return confirm('Are you sure you want to delete this trainee\'s entire data?')">Delete Trainee &amp; all data</a>
-         </div>
-      </div>
+</div>
       <?php
       } else {
          echo "N/A";
@@ -424,8 +398,8 @@ while ($tableset->fetch()){
  $supername3 = '';
  $tutorname = '';
  }
-$numrows = $tableset->num_rows;
-$tableset->close();
+$numrows = $tableset->rowCount();
+$tableset->closeCursor();
 ?>
                            </tbody>
                         </table>
@@ -441,8 +415,8 @@ $tableset->close();
                               </p>
                            </div>
                         <?php endif; ?>
-                     </div>
-               </div>
+</div>
+            </div><!-- end table col -->
             </div><!-- end table row -->
             
             <!-- Pagination Controls -->
@@ -518,57 +492,77 @@ $tableset->close();
                            Showing <?php echo ($offset + 1); ?> to <?php echo min($offset + $items_per_page, $filtered_trainees); ?> of <?php echo $filtered_trainees; ?> trainees
                         <?php endif; ?>
                      </small>
-                  </div>
-               </div>
+</div>
             </div>
             <?php endif; ?>
             <?php
-            if ($admintype == 'AT' || $admintype == 'DV') {
-            ?>
-            <div class="row my-5" id="newform">
-               <div class="col-xl-8">
+           if ($admintype == 'AT' || $admintype == 'DV') {
+           ?>
+           <div class="row my-5" id="newform">
+              <div class="col-12">
                   <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>" data-parsley-validate="" novalidate="">
-                     <!-- START card-->
-                     <div class="card border-info">
-                        <div class="card-header bg-info">
-                           <div class="card-title">Add new Trainee</div>
+                    <!-- START card-->
+                    <div class="card border-info shadow-sm">
+                        <div class="card-header bg-info text-white">
+                           <div class="card-title mb-0">Add new Trainee</div>
                         </div>
 
-                        <div class="card-body">
-                           <div class="alert alert-info">
-                              <small><strong>Note:</strong> Fields marked with <span class="text-danger">*</span> are required.</small>
-                           </div>
-                           <div class="form-group">
-                              <label class="col-form-label" for="name">Trainee Name <span class="text-danger">*</span></label>
-                              <input class="form-control" type="text" id="name" name="name" required>
-                           </div>
-                           <div class="form-group">
-                              <label class="col-form-label" for="email">Trainee Email <span class="text-danger">*</span></label>
-                              <input class="form-control" type="email" id="email" name="email" required>
+                        <div class="card-body p-4">
+                           <div class="alert alert-info mb-4">
+                              <strong>Note:</strong> Fields marked with <span class="text-danger">*</span> are required.
                            </div>
                            
+                           <!-- Basic Information Section -->
+                           <div class="form-section mb-4">
+                              <h5 class="text-primary mb-3">Basic Information</h5>
+                              <div class="row">
+                                 <div class="col-12 col-md-6">
                                     <div class="form-group">
-                                       <label class="col-form-label" for="uid">University Course <span class="text-danger">*</span></label>
-                                       <select class="custom-select custom-select-lg mb-3" id="uid" name="uid" required>
-                                         <option selected="selected" value="0">Select...</option>
-                                         <?php
-                                         // list the groups, grouping as there are repeats
-                                         $cat_ref = '';
-                                         $tableset = $mysqli->prepare("SELECT uid, university FROM uni_tbl");
-                                         $tableset->execute();
-                                         $tableset->store_result();
-                                         $tableset->bind_result($uid, $university);
-                                         while ($tableset->fetch()){
-                                           echo "<option value=\"$uid\"";
-                                           if ($uid == $cat_ref) {
-                                             echo "selected='selected'";
-                                           }
-                                           echo ">$university</option>";
-                                         }
-                                         $tableset->close();
-                                         ?>
-                                       </select>
+                                       <label class="form-label font-weight-bold" for="name">Trainee Name <span class="text-danger">*</span></label>
+                                       <input class="form-control" type="text" id="name" name="name" required 
+                                              placeholder="Enter trainee's full name">
                                     </div>
+                                 </div>
+                                 <div class="col-12 col-md-6">
+                                    <div class="form-group">
+                                       <label class="form-label font-weight-bold" for="email">Trainee Email <span class="text-danger">*</span></label>
+                                       <input class="form-control" type="email" id="email" name="email" required 
+                                              placeholder="Enter trainee's email address">
+                                    </div>
+                                 </div>
+                              </div>
+                           </div>
+
+                           <hr class="my-4">
+                           
+                           <!-- Course Information Section -->
+                           <div class="form-section mb-4">
+                              <h5 class="text-success mb-3">Course Information</h5>
+                              <div class="form-group">
+                                 <label class="form-label font-weight-bold" for="uid">University Course <span class="text-danger">*</span></label>
+                                 <select class="form-control" id="uid" name="uid" required>
+                                    <option selected="selected" value="0">Select a university course...</option>
+                                    <?php
+                                    // list the groups, grouping as there are repeats
+                                    $cat_ref = '';
+                                    $tableset = $pdo->prepare("SELECT uid, university FROM uni_tbl ORDER BY university");
+                                    $tableset->execute();
+                                    while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                                      $uid = $row['uid'];
+                                      $university = $row['university'];
+                                      echo "<option value=\"$uid\"";
+                                      if ($uid == $cat_ref) {
+                                        echo "selected='selected'";
+                                      }
+                                      echo ">$university</option>";
+                                    }
+                                    $tableset->closeCursor();
+                                    ?>
+                                 </select>
+                              </div>
+                           </div>
+
+                           <hr class="my-4">
                                 <?php
                                 /*
                                  AT = "Full Admin Control";
@@ -585,178 +579,221 @@ $tableset->close();
                                 $tutorAO = 'AO';
                                 $tutorAE = 'AE';
                                 ?>
-                                <div class="row">
-                                    <div class="col form-group">
-                                        <label class="col-form-label" for="supervisor">Supervisor#1</label>
-                                        <select class="custom-select custom-select mb-3" id="supervisor" name="supervisor">
-                                         <option selected="selected" value="0">Select...</option>
-                                         <?php
-                                         // list Supervisors Only (& full admin)
-                                         $cat_ref = '';
-                                         $tableset = $mysqli->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE (admintype = ? OR admintype = ? OR admintype = ?)");
-                                         $tableset->bind_param("sss", $adminSO, $adminSE, $adminAT);
-                                         $tableset->execute();
-                                         $tableset->store_result();
-                                         $tableset->bind_result($supervisor, $realname, $thisadmintype);
-                                         while ($tableset->fetch()){
-                                          if ($thisadmintype == 'SO') {
-                                             $admin = " (OX)";
-                                          } else {
-                                             $admin = " (EX)";
-                                          }
-                                           echo "<option value=\"$supervisor\"";
-                                           if ($usrkey == $cat_ref) {
-                                             echo "selected='selected'";
-                                           }
-                                           echo ">$realname $thisadmintype</option>";
+                           <!-- Supervision & Support Section -->
+                           <div class="form-section mb-4">
+                              <h5 class="text-warning mb-3">Supervision & Support</h5>
+                              <div class="row">
+                                 <div class="col-12 col-md-6 form-group">
+                                    <label class="form-label font-weight-bold" for="supervisor">Primary Supervisor</label>
+                                    <select class="form-control" id="supervisor" name="supervisor">
+                                       <option selected="selected" value="0">Select primary supervisor...</option>
+                                       <?php
+                                       // list Supervisors Only (& full admin)
+                                       $cat_ref = '';
+                                       $tableset = $pdo->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE (admintype = ? OR admintype = ? OR admintype = ?) ORDER BY realname");
+                                       $tableset->execute([$adminSO, $adminSE, $adminAT]);
+                                       while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                                         $supervisor = $row['usrkey'];
+                                         $realname = $row['realname'];
+                                         $thisadmintype = $row['admintype'];
+                                        if ($thisadmintype == 'SO') {
+                                           $admin = " (OX)";
+                                        } else {
+                                           $admin = " (EX)";
+                                        }
+                                        echo "<option value=\"$supervisor\"";
+                                         if ($usrkey == $cat_ref) {
+                                           echo "selected='selected'";
                                          }
-                                         $tableset->close();
-                                         ?>
-                                       </select>
-                                    </div>
-                                    <div class="col form-group">
-                                        <label class="col-form-label" for="supervisor2">Supervisor #2</label>
-                                        <select class="custom-select custom-select mb-3" id="supervisor2" name="supervisor2">
-                                         <option selected="selected" value="0">Select...</option>
-                                         <?php
-                                         // list Supervisors Only (& full admin)
-                                         $cat_ref = '';
-                                         $tableset = $mysqli->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE (admintype = ? OR admintype = ? OR admintype = ?)");
-                                         $tableset->bind_param("sss", $adminSO, $adminSE, $adminAT);
-                                         $tableset->execute();
-                                         $tableset->store_result();
-                                         $tableset->bind_result($supervisor, $realname, $thisadmintype);
-                                         while ($tableset->fetch()){
-                                          if ($thisadmintype == 'SO') {
-                                             $admin = " (OX)";
-                                          } else {
-                                             $admin = " (EX)";
-                                          }
-                                           echo "<option value=\"$supervisor\"";
-                                           if ($usrkey == $cat_ref) {
-                                             echo "selected='selected'";
-                                           }
-                                           echo ">$realname $thisadmintype</option>";
-                                         }
-                                         $tableset->close();
-                                         ?>
-                                       </select>
-                                    </div>
-                                </div>
-                                <div class="row">
-                                    <div class="col form-group">
-                                        <label class="col-form-label" for="supervisor3">Supervisor #3</label>
-                                        <select class="custom-select custom-select mb-3" id="supervisor3" name="supervisor3">
-                                         <option selected="selected" value="0">Select...</option>
-                                         <?php
-                                         // list Supervisors Only (& full admin)
-                                         $cat_ref = '';
-                                         $tableset = $mysqli->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE (admintype = ? OR admintype = ? OR admintype = ?)");
-                                         $tableset->bind_param("sss", $adminSO, $adminSE, $adminAT);
-                                         $tableset->execute();
-                                         $tableset->store_result();
-                                         $tableset->bind_result($supervisor, $realname, $thisadmintype);
-                                         while ($tableset->fetch()){
-                                          if ($thisadmintype == 'SO') {
-                                             $admin = " (OX)";
-                                          } else {
-                                             $admin = " (EX)";
-                                          }
-                                           echo "<option value=\"$supervisor\"";
-                                           if ($usrkey == $cat_ref) {
-                                             echo "selected='selected'";
-                                           }
-                                           echo ">$realname $thisadmintype</option>";
-                                         }
-                                         $tableset->close();
-                                         ?>
-                                       </select>
-                                    </div>
-                                    <div class="col form-group">
-                                        <label class="col-form-label" for="tutor">Tutor</label>
-                                        <select class="custom-select custom-select mb-3" id="tutor" name="tutor">
-                                         <option selected="selected" value="0">Select...</option>
-                                         <?php
-                                         // list Tutors Only (& full admin)
-                                         $cat_ref = '';
-                                         $tableset = $mysqli->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE admintype = ? OR admintype = ? OR admintype = ?");
-                                         $tableset->bind_param("sss", $tutorAO, $tutorAE, $adminAT);
-                                         $tableset->execute();
-                                         $tableset->store_result();
-                                         $tableset->bind_result($tutor, $tutorname, $thisadmintype);
-                                         while ($tableset->fetch()){
-                                          if ($thisadmintype == 'AO') {
-                                             $admin = " (OX)";
-                                          } else {
-                                             $admin = " (EX)";
-                                          }
-                                           echo "<option value=\"$tutor\"";
-                                           if ($usrkey == $cat_ref) {
-                                             echo "selected='selected'";
-                                           }
-                                           echo ">$tutorname $thisadmintype</option>";
-                                         }
-                                         $tableset->close();
-                                         ?>
-                                       </select>
-                                    </div>
-                                </div>
-                             
-                             <div class="row">
-                                <div class="col">
-                                    <div class="form-group">
-                                    <label class="col-form-label" for="syslink">Employee Number</label>
-                                    <input class="form-control" type="text" id="syslink" name="syslink">
+                                        echo ">$realname $admin</option>";
+                                       }
+                                       $tableset->closeCursor();
+                                       ?>
+                                    </select>
                                  </div>
+                                 <div class="col-12 col-md-6 form-group">
+                                    <label class="form-label font-weight-bold" for="supervisor2">Secondary Supervisor</label>
+                                    <select class="form-control" id="supervisor2" name="supervisor2">
+                                       <option selected="selected" value="0">Select secondary supervisor...</option>
+                                       <?php
+                                       // list Supervisors Only (& full admin)
+                                       $cat_ref = '';
+                                       $tableset = $pdo->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE (admintype = ? OR admintype = ? OR admintype = ?) ORDER BY realname");
+                                       $tableset->execute([$adminSO, $adminSE, $adminAT]);
+                                       while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                                         $supervisor = $row['usrkey'];
+                                         $realname = $row['realname'];
+                                         $thisadmintype = $row['admintype'];
+                                        if ($thisadmintype == 'SO') {
+                                           $admin = " (OX)";
+                                        } else {
+                                           $admin = " (EX)";
+                                        }
+                                        echo "<option value=\"$supervisor\"";
+                                         if ($usrkey == $cat_ref) {
+                                           echo "selected='selected'";
+                                         }
+                                        echo ">$realname $admin</option>";
+                                       }
+                                       $tableset->closeCursor();
+                                       ?>
+                                    </select>
                                 </div>
-                                <div class="col">
+                              </div>
+                              <div class="row">
+                                 <div class="col-12 col-md-6 form-group">
+                                    <label class="form-label font-weight-bold" for="supervisor3">Tertiary Supervisor</label>
+                                    <select class="form-control" id="supervisor3" name="supervisor3">
+                                       <option selected="selected" value="0">Select tertiary supervisor...</option>
+                                       <?php
+                                       // list Supervisors Only (& full admin)
+                                       $cat_ref = '';
+                                       $tableset = $pdo->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE (admintype = ? OR admintype = ? OR admintype = ?) ORDER BY realname");
+                                       $tableset->execute([$adminSO, $adminSE, $adminAT]);
+                                       while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                                         $supervisor = $row['usrkey'];
+                                         $realname = $row['realname'];
+                                         $thisadmintype = $row['admintype'];
+                                        if ($thisadmintype == 'SO') {
+                                           $admin = " (OX)";
+                                        } else {
+                                           $admin = " (EX)";
+                                        }
+                                        echo "<option value=\"$supervisor\"";
+                                         if ($usrkey == $cat_ref) {
+                                           echo "selected='selected'";
+                                         }
+                                        echo ">$realname $admin</option>";
+                                       }
+                                       $tableset->closeCursor();
+                                       ?>
+                                    </select>
+                                 </div>
+                                 <div class="col-12 col-md-6 form-group">
+                                    <label class="form-label font-weight-bold" for="tutor">Course Tutor</label>
+                                    <select class="form-control" id="tutor" name="tutor">
+                                       <option selected="selected" value="0">Select course tutor...</option>
+                                       <?php
+                                       // list Tutors Only (& full admin)
+                                       $cat_ref = '';
+                                       $tableset = $pdo->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE admintype = ? OR admintype = ? OR admintype = ? ORDER BY realname");
+                                       $tableset->execute([$tutorAO, $tutorAE, $adminAT]);
+                                       while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                                         $tutor = $row['usrkey'];
+                                         $tutorname = $row['realname'];
+                                         $thisadmintype = $row['admintype'];
+                                        if ($thisadmintype == 'AO') {
+                                           $admin = " (OX)";
+                                        } else {
+                                           $admin = " (EX)";
+                                        }
+                                        echo "<option value=\"$tutor\"";
+                                         if ($usrkey == $cat_ref) {
+                                           echo "selected='selected'";
+                                         }
+                                        echo ">$tutorname $admin</option>";
+                                       }
+                                       $tableset->closeCursor();
+                                       ?>
+                                    </select>
+                                </div>
+                              </div>
+                           </div>
+
+                           <hr class="my-4">
+                             
+                           <!-- Additional Information Section -->
+                           <div class="form-section mb-4">
+                              <h5 class="text-info mb-3">Additional Information</h5>
+                              <div class="row">
+                                 <div class="col-12 col-md-6">
                                     <div class="form-group">
-                                        <label class="col-form-label" for="year">Cohort Year <span class="text-danger">*</span></label>
-                                        <select class="custom-select custom-select mb-3" id="year" name="year" required>
+                                       <label class="form-label font-weight-bold" for="syslink">Employee Number</label>
+                                       <input class="form-control" type="text" id="syslink" name="syslink" 
+                                              placeholder="Enter employee number (optional)">
+                                    </div>
+                                 </div>
+                                 <div class="col-12 col-md-6">
+                                    <div class="form-group">
+                                       <label class="form-label font-weight-bold" for="year">Cohort Year <span class="text-danger">*</span></label>
+                                       <select class="form-control" id="year" name="year" required>
                                           <?php
                                           $startyear = date("Y");
                                           $lastyear = $startyear - 2;
                                           $endyear = $lastyear + 5;
                                           for ($x = $lastyear; $x <= $endyear; $x++) {
                                              echo "<option value=\"$x\"";
-                                              if ($x == $startyear) {
+                                             if ($x == $startyear) {
                                                 echo "selected='selected'";
-                                              }
-                                              echo ">$x</option>";
+                                             }
+                                             echo ">$x</option>";
                                           }
                                           ?>
-                                        </select>
+                                       </select>
                                     </div>
-                                </div>
-                            </div>
-                          <div class="form-group">
-                            <label class="col-form-label">Permitted to use Sheets:</label>
-                            <div class="col-lg-12">
-                              <?PHP
-                              // Loop through tables 
-                              $loopstmt = $mysqli->prepare("SELECT tbid, tab_name, isvis FROM tabs_tbl");
-                              $loopstmt->execute();
-                              $loopstmt->store_result();
-                              $loopstmt->bind_result($tbid, $tab_name, $isvis);
-                              while ($loopstmt->fetch()) {
-                                 $selected = '';
-                                 if ($isvis == 1) {
-                                    $selected = 'checked';
-                                 }
-                                echo "<label class=\"checkbox-inline\"><input name=\"q$tbid\" type=\"checkbox\" $selected value=\"$tbid\"/> $tab_name</label><br>\r";
-                              }
-                              $loopstmt->close();
-                              ?>
-                            </div>
-                          </div>
+                                 </div>
+                              </div>
+                           </div>
 
-                           
+                           <hr class="my-4">
+                           <!-- Permissions Section -->
+                           <div class="form-section mb-4">
+                              <h5 class="text-secondary mb-3">Sheet Permissions</h5>
+                              <div class="form-group">
+                                 <label class="form-label font-weight-bold">Permitted to use Sheets:</label>
+                                 <div class="row">
+                                    <?PHP
+                                    // Loop through tables 
+                                    $loopstmt = $pdo->prepare("SELECT tbid, tab_name, isvis FROM tabs_tbl ORDER BY tab_name");
+                                    $loopstmt->execute();
+                                    $colCount = 0;
+                                    while ($row = $loopstmt->fetch(PDO::FETCH_ASSOC)) {
+                                      $tbid = $row['tbid'];
+                                      $tab_name = $row['tab_name'];
+                                      $isvis = $row['isvis'];
+                                      $selected = '';
+                                      if ($isvis == 1) {
+                                         $selected = 'checked';
+                                      }
+                                      
+                                      if ($colCount % 3 == 0) {
+                                         echo '<div class="col-12 col-md-4">';
+                                      }
+                                      
+                                      echo "<div class=\"form-check mb-2\">";
+                                      echo "<input class=\"form-check-input\" name=\"q$tbid\" type=\"checkbox\" $selected value=\"$tbid\" id=\"sheet_$tbid\">";
+                                      echo "<label class=\"form-check-label\" for=\"sheet_$tbid\">$tab_name</label>";
+                                      echo "</div>";
+                                      
+                                      $colCount++;
+                                      if ($colCount % 3 == 0) {
+                                         echo '</div>';
+                                      }
+                                    }
+                                    
+                                    // Close the last column if needed
+                                    if ($colCount % 3 != 0) {
+                                       echo '</div>';
+                                    }
+                                    
+                                    $loopstmt->closeCursor();
+                                    ?>
+                                 </div>
+                              </div>
+                           </div>
                         </div>
-                        <div class="card-footer">
+                        <div class="card-footer bg-light border-top">
                            <input type="hidden" name="newadmin" value="newadmin">
-                           <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
+                           <div class="d-flex justify-content-between align-items-center">
+                              <small class="text-muted">
+                                 All fields marked with <span class="text-danger">*</span> are required
+                              </small>
+                              <button class="btn btn-info btn-lg px-4" type="submit">
+                                 Add Trainee
+                              </button>
+                           </div>
                         </div>
-                     </div><!-- END card-->
+                    </div><!-- END card-->
                   </form>
                </div>
             </div>

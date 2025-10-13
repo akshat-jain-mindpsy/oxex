@@ -362,8 +362,8 @@ Two tables were created to support the CSV export functionality:
 #### CSV Templates Table
 
 ```sql
-CREATE TABLE csv_templates (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS csv_templates (
+    id SERIAL PRIMARY KEY,
     template_name VARCHAR(255) NOT NULL,
     description TEXT,
     created_by VARCHAR(100),
@@ -376,11 +376,11 @@ CREATE TABLE csv_templates (
 #### CSV Template Columns Table
 
 ```sql
-CREATE TABLE csv_template_columns (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS csv_template_columns (
+    id SERIAL PRIMARY KEY,
     template_id INT,
-    tbid TINYINT UNSIGNED COMMENT 'Table ID from tabs_tbl',
-    stid MEDIUMINT UNSIGNED COMMENT 'Field ID from select_types',
+    tbid SMALLINT, -- Table ID from tabs_tbl (PostgreSQL doesn't have TINYINT UNSIGNED)
+    stid INT, -- Field ID from select_types (PostgreSQL doesn't have MEDIUMINT UNSIGNED)
     column_order INT DEFAULT 0,
     FOREIGN KEY (template_id) REFERENCES csv_templates(id) ON DELETE CASCADE,
     FOREIGN KEY (tbid) REFERENCES tabs_tbl(tbid) ON DELETE CASCADE,

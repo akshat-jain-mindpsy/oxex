@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Events";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Page content";
 $listurl = "events.php"; # where the delete script is found
 $listname = "Events";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -67,21 +70,32 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
     }
 
   // Update record
-  $stmt = $mysqli->prepare("UPDATE events_tbl SET e_title = ?, date_text = ?, isdev = ?, e_txt = ?, e_url = ?, e_loc = ?, date_start = ?, date_end = ?, e_link = ? WHERE eid = ?"); 
-  $stmt->bind_param("ssisssiisi", $e_title, $date_text, $isdev, $e_txt, $e_url, $e_loc, $datefrom, $dateto, $e_link, $which);
-  $stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $stmt->close();
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("UPDATE events_tbl SET e_title = ?, date_text = ?, isdev = ?, e_txt = ?, e_url = ?, e_loc = ?, date_start = ?, date_end = ?, e_link = ? WHERE eid = ?"); 
+    $stmt->execute([$e_title, $date_text, $isdev, $e_txt, $e_url, $e_loc, $datefrom, $dateto, $e_link, $which]);
+  }
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT e_title, date_start, date_end, date_text, e_loc, e_txt, e_url, e_link, isdev FROM events_tbl WHERE eid =  ? ");
-$stmt->bind_param("i", $which); 
-$stmt->bind_result($e_title, $date_start, $date_end, $date_text, $e_loc, $e_txt, $e_url, $e_link, $isdev);
-$stmt->execute();
-$stmt->fetch();
-$stmt->close();
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $stmt = $pdo->prepare("SELECT e_title, date_start, date_end, date_text, e_loc, e_txt, e_url, e_link, isdev FROM events_tbl WHERE eid =  ? ");
+  $stmt->execute([$which]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($row) {
+    $e_title = $row['e_title'];
+    $date_start = $row['date_start'];
+    $date_end = $row['date_end'];
+    $date_text = $row['date_text'];
+    $e_loc = $row['e_loc'];
+    $e_txt = $row['e_txt'];
+    $e_url = $row['e_url'];
+    $e_link = $row['e_link'];
+    $isdev = $row['isdev'];
+  }
+}
 $dispdatefrom = strtotime($date_start);
 $dispdateto = strtotime($date_end);
 
@@ -101,7 +115,8 @@ $dispdateto = strtotime($date_end);
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -145,20 +160,14 @@ $dispdateto = strtotime($date_end);
                            <div class="form-group">
                               <label class="col-form-label" for="date_text">Date/Time Text</label>
                               <textarea class="form-control" type="text" id="date_text" name="date_text"><?php echo $date_text ?></textarea>
-                           </div>
-
-                           
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-               
-            </div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -170,11 +179,9 @@ $dispdateto = strtotime($date_end);
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

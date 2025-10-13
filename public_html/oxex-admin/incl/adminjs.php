@@ -1,6 +1,7 @@
 <!-- Modal for admin documentation-->
 <?php
 // get title for this section
+$whichDocModal = isset($whichDocModal) ? $whichDocModal : 0;
 switch ($whichDocModal) {
   case 0:
   $section = 'Dashboard';
@@ -9,6 +10,7 @@ switch ($whichDocModal) {
   $section = 'Pages';
   break;
   case 2:
+    
   $section = 'Trainees';
   break;
   case 3:
@@ -19,6 +21,9 @@ switch ($whichDocModal) {
   break;
   case 5:
   $section = 'Admin';
+  break;
+  default:
+  $section = 'Dashboard';
   break;
 }
 ?>
@@ -34,20 +39,33 @@ switch ($whichDocModal) {
       <div class="modal-body">
         <?php
         // get texts for this section
-        $tableset = $mysqli->prepare("SELECT sect_title, sect_txt FROM docs_tbl WHERE doc_section = ? AND sort_order != ? ORDER BY sort_order ASC");
-        $tableset->bind_param("ii", $whichDocModal, $value0); 
-        $tableset->execute();
-        $tableset->store_result();
-        $tableset->bind_result($sect_title, $sect_txt);
-        while ($tableset->fetch()){
-          echo "<h5><em>$sect_title</em></h5>";
-          echo $sect_txt;
+        $value0 = isset($value0) ? $value0 : 0;
+        $numdocs = 0;
+        
+        // Check if database connection is available
+        if (isset($supabase_pdo) && $supabase_pdo instanceof PDO) {
+          try {
+            $tableset = $supabase_pdo->prepare("SELECT sect_title, sect_txt FROM docs_tbl WHERE doc_section = ? AND sort_order != ? ORDER BY sort_order ASC");
+            $tableset->execute([$whichDocModal, $value0]);
+            
+            while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+              $sect_title = $row['sect_title'];
+              $sect_txt = $row['sect_txt'];
+              echo "<h5><em>$sect_title</em></h5>";
+              echo $sect_txt;
+              $numdocs++;
+            }
+          } catch (Exception $e) {
+            echo "<p><strong>Error loading documentation: " . htmlspecialchars($e->getMessage()) . "</strong></p>";
+            error_log("Modal documentation error: " . $e->getMessage());
+          }
+        } else {
+          echo "<p><strong>Database connection not available</strong></p>";
         }
-        $numdocs = $tableset->num_rows;
+        
         if ($numdocs == 0) {
           echo "<p><strong>Currently no documentation for this section</strong></p>";
         }
-        $tableset->close();
         ?>
       </div>
       <div class="modal-footer">
@@ -62,8 +80,26 @@ switch ($whichDocModal) {
 <script src="assets/vendor/i18next/i18next.js"></script>
 <script src="assets/vendor/i18next-xhr-backend/i18nextXHRBackend.js"></script>-->
 <script src="https://code.jquery.com/jquery-3.5.1.min.js" integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin="anonymous"></script>
+<script>
+// Fallback to local jQuery if CDN fails
+if (typeof window.jQuery === 'undefined') {
+  document.write('<script src="assets/vendor/jquery/dist/jquery.js"><\/script>');
+}
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49" crossorigin="anonymous"></script>
 <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy" crossorigin="anonymous"></script>
+<script>
+// Fallback to local Bootstrap if CDN fails (requires jQuery)
+(function(){
+  if (!window.jQuery) return;
+  var bsLoaded = !!(jQuery.fn && jQuery.fn.modal);
+  if (!bsLoaded) {
+    var s = document.createElement('script');
+    s.src = 'assets/vendor/bootstrap/dist/js/bootstrap.js';
+    document.head.appendChild(s);
+  }
+})();
+</script>
 <!-- Datatables-->
 <script src="assets/vendor/datatables.net/js/jquery.dataTables.js"></script>
 <script src="assets/vendor/datatables.net-bs4/js/dataTables.bootstrap4.js"></script>
@@ -81,33 +117,85 @@ switch ($whichDocModal) {
 <!-- include summernote css/js -->
 <link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-bs4.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-bs4.min.js"></script>
+<!-- Flot (required by app.js chart demos) -->
+<script src="assets/vendor/flot/jquery.flot.js"></script>
+<script src="assets/vendor/jquery.flot.tooltip/js/jquery.flot.tooltip.js"></script>
 <!-- =============== APP ===============-->
 <script src="assets/js/app.js"></script>
 <script>
 $(document).ready(function(){
+	// Debug dropdown functionality
+	console.log('Admin JS loaded');
+	console.log('jQuery version:', $.fn.jquery);
+	console.log('Bootstrap dropdown available:', typeof $.fn.dropdown !== 'undefined');
+	
+	// Check if dropdown elements exist
+	var userDropdownToggle = $('#userDropdownToggle');
+	var userDropdownMenu = $('#userDropdownMenu');
+	var logoutLink = $('#logoutLink');
+	
+	console.log('User dropdown toggle found:', userDropdownToggle.length);
+	console.log('User dropdown menu found:', userDropdownMenu.length);
+	console.log('Logout link found:', logoutLink.length);
+	
+	// Manual dropdown toggle for debugging
+	userDropdownToggle.on('click', function(e) {
+		console.log('User dropdown clicked');
+		e.preventDefault();
+		e.stopPropagation();
+		
+		// Toggle dropdown manually
+		userDropdownMenu.toggleClass('show');
+	});
+	
+	// Test logout link
+	logoutLink.on('click', function(e) {
+		console.log('Logout link clicked');
+		// Let the default action proceed
+	});
+	
+	// Close dropdown when clicking outside
+	$(document).on('click', function(e) {
+		if (!$(e.target).closest('.dropdown').length) {
+			userDropdownMenu.removeClass('show');
+		}
+	});
+	
+	// Ensure all modals are direct children of <body> to avoid clipping by transformed/overflowed parents
+	try {
+		$('.modal').each(function(){
+			if (!$(this).parent().is('body')) {
+				$(this).appendTo('body');
+			}
+		});
+	} catch (e) { /* noop */ }
 	// this sends messages using Ajax
 	$("#msgSubmit").click(function(){
+		var msgEmailAll = '';
 		if ($('#msgEmailAll').is(":checked")) {
-			var msgEmailAll = $("#msgEmailAll").val();
+			msgEmailAll = $("#msgEmailAll").val();
 		}
 		var msgTxt = $("#msgTxt").val(); // the message
 		var msgUsr = '<?php echo $usrkey ?>'; // the sender
 		<?php 
 	     // list all recipients; not developers
 			$msgaddons = '';
-			$tableset = $mysqli->prepare("SELECT whid FROM who_there WHERE isdev = ?");
-			$tableset->bind_param("i", $value0);
-			$tableset->execute();
-			$tableset->store_result();
-			$tableset->bind_result($whid);
-			while ($tableset->fetch()){
-	     	// put checkbox value in var IF it's checked
-	        echo "if ($('#msgEmail$whid').is(\":checked\")) {\r";
-			echo "var msgEmail$whid = $(\"#msgEmail$whid\").val();\r}\r";
-			// now make up list of form params to add to dataString
-	        $msgaddons .= " + '&msgEmail$whid=' + msgEmail$whid ";
-	     }
-	     $tableset->close();
+			if (isset($supabase_pdo) && $supabase_pdo instanceof PDO) {
+				try {
+					$tableset = $supabase_pdo->prepare("SELECT whid FROM who_there WHERE isdev = ?");
+					$tableset->execute([$value0]);
+					while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+						$whid = $row['whid'];
+			     	// put checkbox value in var IF it's checked
+			        echo "if ($('#msgEmail$whid').is(\":checked\")) {\r";
+					echo "var msgEmail$whid = $(\"#msgEmail$whid\").val();\r}\r";
+					// now make up list of form params to add to dataString
+			        $msgaddons .= " + '&msgEmail$whid=' + msgEmail$whid ";
+			     }
+				} catch (Exception $e) {
+					error_log("Modal messaging error: " . $e->getMessage());
+				}
+			}
 	     ?>
 		var dataString = 'msgEmailAll='+ msgEmailAll <?php echo $msgaddons ?> + '&msgTxt='+ msgTxt + '&msgUsr='+ msgUsr;
 		if(msgTxt == '')
@@ -124,7 +212,7 @@ $(document).ready(function(){
 			cache: false,
 			success: function(result){
 				document.getElementById("messageMsg").innerHTML = result;
-				document.getElementById("messsageForm").reset();
+				document.getElementById("messageForm").reset();
 			}
 			});
 		}
@@ -313,6 +401,121 @@ $(document).ready(function(){
 <!-- SweetAlert2 CSS -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
 
+<!-- Modal Fix CSS -->
+<style>
+/* Ensure modal is visible above any app chrome */
+.modal {
+    z-index: 10050 !important;
+}
+
+.modal-backdrop {
+    z-index: 10040 !important;
+}
+
+/* While a modal is open, drop nav/sidebars below it */
+.modal-open .topnavbar,
+.modal-open .wrapper .aside-container,
+.modal-open .offsidebar {
+    z-index: 10 !important;
+}
+
+/* Fix dropdowns inside modals (Bootstrap dropdown & Select2) */
+.modal .dropdown-menu {
+    z-index: 10060 !important;
+}
+
+.select2-container--open {
+    z-index: 10060 !important;
+}
+
+.modal { /* avoid clipping dropdowns */
+    overflow: visible !important;
+}
+
+/* Fix for modal positioning */
+.modal-dialog {
+    margin: 1.75rem auto;
+}
+
+/* Ensure modal content is visible */
+.modal-content {
+    position: relative;
+    z-index: 1051;
+}
+
+/* Debug: Make sure modal is not hidden */
+#docsModal {
+    display: none !important; /* Bootstrap default - will be overridden by JS */
+}
+
+#docsModal.show {
+    display: block !important;
+}
+
+/* Ensure dropdown is visible when show class is added */
+.dropdown-menu.show {
+    display: block !important;
+}
+
+/* Debug: Make dropdown more visible */
+#userDropdownMenu {
+    background-color: #fff;
+    border: 1px solid #ccc;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 1000;
+}
+
+#userDropdownMenu .dropdown-item {
+    padding: 8px 16px;
+    color: #333;
+}
+
+#userDropdownMenu .dropdown-item:hover {
+    background-color: #f8f9fa;
+}
+</style>
+
 <!-- At the end of the file, before closing body tag -->
 <!-- SweetAlert2 JS -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+
+<!-- Modal Debug Script -->
+<script>
+$(document).ready(function() {
+    // Debug modal functionality
+    console.log('Modal debug script loaded');
+    console.log('Docs modal element:', $('#docsModal').length);
+    console.log('Docs button element:', $('[data-target="#docsModal"]').length);
+    
+    // Test modal show functionality
+    $('[data-target="#docsModal"]').on('click', function(e) {
+        console.log('Docs button clicked!');
+        e.preventDefault();
+        
+        // Check if modal exists
+        if ($('#docsModal').length > 0) {
+            console.log('Modal found, attempting to show...');
+            $('#docsModal').modal('show');
+        } else {
+            console.error('Modal not found!');
+        }
+    });
+    
+    // Listen for modal events
+    $('#docsModal').on('show.bs.modal', function () {
+        console.log('Modal is about to show');
+    });
+    
+    $('#docsModal').on('shown.bs.modal', function () {
+        console.log('Modal is now shown');
+    });
+    
+    $('#docsModal').on('hide.bs.modal', function () {
+        console.log('Modal is about to hide');
+    });
+    
+    $('#docsModal').on('hidden.bs.modal', function () {
+        console.log('Modal is now hidden');
+    });
+});
+</script>

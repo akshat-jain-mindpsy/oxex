@@ -3,9 +3,10 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Check if user is logged in and has appropriate permissions
-if (login_check($mysqli) != true || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (login_check($pdo) != true || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     echo json_encode([
         'status' => 'error',
         'message' => 'Not authorized'
@@ -37,11 +38,19 @@ if ($stid <= 0 || empty($name)) {
 }
 
 // Update field name and type in database
-$stmt = $mysqli->prepare("UPDATE select_types SET str = ?, single = ? WHERE stid = ? LIMIT 1");
-$stmt->bind_param("sii", $name, $type, $stid);
-$stmt->execute();
+try {
+    $stmt = $supabase_pdo->prepare("UPDATE select_types SET str = ?, single = ? WHERE stid = ? LIMIT 1");
+    $stmt->execute([$name, $type, $stid]);
+    $affected = $stmt->rowCount();
+} catch (PDOException $e) {
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'Failed to update field details: ' . $e->getMessage()
+    ]);
+    exit;
+}
 
-if ($stmt->affected_rows > 0 || $mysqli->errno === 0) {
+if ($affected > 0) {
     echo json_encode([
         'status' => 'success',
         'message' => 'Field details updated successfully'
@@ -49,9 +58,8 @@ if ($stmt->affected_rows > 0 || $mysqli->errno === 0) {
 } else {
     echo json_encode([
         'status' => 'error',
-        'message' => 'Failed to update field details: ' . $mysqli->error
+        'message' => 'Failed to update field details'
     ]);
 }
 
-$stmt->close();
 ?> 

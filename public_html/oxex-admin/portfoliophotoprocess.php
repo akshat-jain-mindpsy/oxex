@@ -78,11 +78,11 @@ ini_set('max_execution_time', 300);
  $result = resize_save_jpeg( $temp_image_path, $large_image_path, 200, 200 );
  if ( $result )
  {
-
-	$stmt = $mysqli->prepare("UPDATE portfolio SET logo = ? WHERE pid = ?"); 
-	$stmt->bind_param("si", $actualname, $which);
-	$stmt->execute();
-	$stmt->close();
+	$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+	if ($pdo) {
+		$stmt = $pdo->prepare("UPDATE portfolio SET logo = ? WHERE pid = ?"); 
+		$stmt->execute([$actualname, $which]);
+	}
 	
 		echo "<p><a href=\"portfoliodetail.php?which=$which&amp;del=delphoto\"<span class=\"btn btn-danger\"> <i class=\"fa fa-times-circle\"></i> Delete Image</span></a></p>";
 		echo "<p><img src=\"../portfolio/$actualname\" width=\"200px\"></p>";

@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Check user permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     http_response_code(403); // Forbidden
     die(json_encode(['status' => 'error', 'message' => 'Unauthorized access']));
 }
@@ -40,64 +40,50 @@ if (empty($template_name)) {
 // Save the template
 try {
     // Start transaction
-    $mysqli->begin_transaction();
+    $supabase_pdo->beginTransaction();
     
     if ($template_id > 0) {
         // Update existing template - using only columns that exist in the database
-        $update_template = $mysqli->prepare("
+        $update_template = $supabase_pdo->prepare("
             UPDATE csv_templates SET 
                 template_name = ?, 
                 description = ?
             WHERE id = ?
         ");
         
-        $update_template->bind_param(
-            "ssi", 
-            $template_name, 
-            $description, 
-            $template_id
-        );
+        $update_template->execute([$template_name, $description, $template_id]);
         
-        $update_template->execute();
-        
-        if ($update_template->affected_rows < 0) {
+        if ($update_template->rowCount() < 0) {
             throw new Exception("Failed to update template");
         }
     } else {
         // Insert new template - using only columns that exist in the database
-        $insert_template = $mysqli->prepare("
+        $insert_template = $supabase_pdo->prepare("
             INSERT INTO csv_templates (
                 template_name, 
                 description, 
                 created_by
             ) VALUES (?, ?, ?)
+            RETURNING id
         ");
         
-        $insert_template->bind_param(
-            "sss", 
-            $template_name, 
-            $description, 
-            $adminname
-        );
+        $insert_template->execute([$template_name, $description, $adminname]);
         
-        $insert_template->execute();
-        
-        if ($insert_template->affected_rows === 0) {
-            throw new Exception("Failed to create template");
+        // Fetch returned id (Postgres-safe)
+        $template_id = $insert_template->fetchColumn();
+        if (!$template_id) {
+            throw new Exception("Failed to create template (no id returned)");
         }
-        
-        $template_id = $mysqli->insert_id;
     }
     
     // Handle columns if this is an update
     if ($template_id > 0 && !empty($columns)) {
         // First, delete existing columns for this template
-        $delete_columns = $mysqli->prepare("DELETE FROM csv_template_columns WHERE template_id = ?");
-        $delete_columns->bind_param("i", $template_id);
-        $delete_columns->execute();
+        $delete_columns = $supabase_pdo->prepare("DELETE FROM csv_template_columns WHERE template_id = ?");
+        $delete_columns->execute([$template_id]);
         
         // Then insert the new columns
-        $insert_column = $mysqli->prepare("
+        $insert_column = $supabase_pdo->prepare("
             INSERT INTO csv_template_columns (
                 template_id, 
                 table_id, 
@@ -111,13 +97,12 @@ try {
             $field_id = intval($column['field_id']);
             $display_order = $index + 1;
             
-            $insert_column->bind_param("iiii", $template_id, $table_id, $field_id, $display_order);
-            $insert_column->execute();
+            $insert_column->execute([$template_id, $table_id, $field_id, $display_order]);
         }
     }
     
     // Commit transaction
-    $mysqli->commit();
+    $supabase_pdo->commit();
     
     echo json_encode([
         'status' => 'success', 
@@ -127,11 +112,11 @@ try {
     
 } catch (Exception $e) {
     // Rollback on error
-    $mysqli->rollback();
+    if ($supabase_pdo->inTransaction()) {
+        $supabase_pdo->rollBack();
+    }
     error_log("Error saving template: " . $e->getMessage());
     echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
 }
-
-$mysqli->close();
 exit;
 ?> 

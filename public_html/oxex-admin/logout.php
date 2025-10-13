@@ -5,10 +5,8 @@ sec_session_start();
 // update their last status to logged out
 $value0 = 0;
 $usrkey = $_SESSION['usrkey'];
-$stmt = $mysqli->prepare("UPDATE who_there SET isonline = ?, lastlogin = ? WHERE usrkey = ?"); 
-$stmt->bind_param("iis", $value0, $value0, $usrkey);
-$stmt->execute();
-$stmt->close();
+$stmt = $supabase_pdo->prepare("UPDATE who_there SET isonline = ?, lastlogin = ? WHERE usrkey = ?"); 
+$stmt->execute([$value0, $value0, $usrkey]);
 
 // Unset all session values
 $_SESSION = array();

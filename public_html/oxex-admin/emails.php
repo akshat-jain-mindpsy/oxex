@@ -3,9 +3,11 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Emails";
+
 $subtitle = "Email Texts";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -48,11 +50,15 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                            </thead>
                            <tbody>
 <?PHP
-$stmt = $mysqli->prepare("SELECT sei, used_on, email_title, email_body FROM site_emails_tbl");
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $stmt = $pdo->prepare("SELECT sei, used_on, email_title, email_body FROM site_emails_tbl");
   $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($sei, $used_on, $email_title,  $email_body);
-  while ($stmt->fetch()){
+  while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $sei = $row['sei'];
+    $used_on = $row['used_on'];
+    $email_title = $row['email_title'];
+    $email_body = $row['email_body'];
     if ($email_body == '' ) {
       $email_body = '<span class="badge badge-info">No&nbsp;</span>';
     } else {
@@ -66,21 +72,17 @@ $stmt = $mysqli->prepare("SELECT sei, used_on, email_title, email_body FROM site
    <td><?php echo $email_body ?></td>
 </tr>
  <?php
- }
-$numrows = $stmt->num_rows;
-$stmt->close();
+  }
+}
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
                <div class="col-xl-8">
-                  
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

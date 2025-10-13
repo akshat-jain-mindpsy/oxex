@@ -2,6 +2,8 @@
 include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
 $valueblank = '';
 $value0 = 0;
 $value1 = 1;
@@ -79,10 +81,10 @@ ini_set('max_execution_time', 300);
  if ( $result )
  {
 
-	$stmt = $mysqli->prepare("UPDATE pages_tbl SET image = ? WHERE pid = ?"); 
-	$stmt->bind_param("si", $actualname, $which);
-	$stmt->execute();
-	$stmt->close();
+	if ($usingSupabase) {
+		$stmt = $supabase_pdo->prepare("UPDATE pages_tbl SET image = ? WHERE pid = ?"); 
+		$stmt->execute([$actualname, $which]);
+	}
 	
 		echo "<p><a href=\"pagedetail.php?which=$which&amp;del=delmasthead\"<span class=\"btn btn-danger\"> <i class=\"fa fa-times-circle\"></i> Delete Image</span></a></p>";
 		echo "<p><img src=\"../banner/$actualname\" width=\"200px\"></p>";

@@ -8,7 +8,7 @@ include '../incl/sess.php';
 header('Content-Type: application/json');
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
       $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
     echo json_encode(['status' => 'error', 'message' => 'Unauthorized access']);
@@ -38,19 +38,16 @@ unset($id);
 
 try {
     // Start transaction
-    $mysqli->begin_transaction();
+    $supabase_pdo->beginTransaction();
     
     // First, get the current section IDs for this table
-    $current_stmt = $mysqli->prepare("SELECT section_id FROM section_table_link WHERE tbid = ?");
-    $current_stmt->bind_param("i", $table_id);
-    $current_stmt->execute();
-    $current_result = $current_stmt->get_result();
+    $current_stmt = $supabase_pdo->prepare("SELECT section_id FROM section_table_link WHERE tbid = ?");
+    $current_stmt->execute([$table_id]);
     
     $current_section_ids = [];
-    while($row = $current_result->fetch_assoc()) {
+    while($row = $current_stmt->fetch(PDO::FETCH_ASSOC)) {
         $current_section_ids[] = (int)$row['section_id'];
     }
-    $current_stmt->close();
     
     // Determine which sections to add and which to remove
     $sections_to_add = array_diff($section_ids, $current_section_ids);
@@ -58,36 +55,29 @@ try {
     
     // Remove sections that are no longer assigned
     if(!empty($sections_to_remove)) {
-        $remove_stmt = $mysqli->prepare("DELETE FROM section_table_link WHERE tbid = ? AND section_id = ?");
+        $remove_stmt = $supabase_pdo->prepare("DELETE FROM section_table_link WHERE tbid = ? AND section_id = ?");
         
         foreach($sections_to_remove as $section_id) {
-            $remove_stmt->bind_param("ii", $table_id, $section_id);
-            $remove_stmt->execute();
+            $remove_stmt->execute([$table_id, $section_id]);
         }
-        
-        $remove_stmt->close();
     }
     
     // Add new section assignments
     if(!empty($sections_to_add)) {
-        $insert_stmt = $mysqli->prepare("INSERT INTO section_table_link (section_id, tbid, display_order) VALUES (?, ?, ?)");
+        $insert_stmt = $supabase_pdo->prepare("INSERT INTO section_table_link (section_id, tbid, display_order) VALUES (?, ?, ?)");
         
         $order = 1;
         foreach($sections_to_add as $section_id) {
-            $insert_stmt->bind_param("iii", $section_id, $table_id, $order);
-            
             try {
-                $insert_stmt->execute();
+                $insert_stmt->execute([$section_id, $table_id, $order]);
                 $order++;
-            } catch(mysqli_sql_exception $e) {
-                // Skip duplicate entries - error code 1062
-                if($e->getCode() != 1062) {
+            } catch(PDOException $e) {
+                // Skip duplicate entries - error code 23505 for PostgreSQL
+                if($e->getCode() != 23505) {
                     throw $e;
                 }
             }
         }
-        
-        $insert_stmt->close();
     }
     
     // Now check if any fields in removed sections need to be updated
@@ -101,16 +91,13 @@ try {
             AND tf.tbid = ?
         ";
         
-        $affected_fields_stmt = $mysqli->prepare($affected_fields_query);
-        $affected_fields_stmt->bind_param("i", $table_id);
-        $affected_fields_stmt->execute();
-        $affected_fields_result = $affected_fields_stmt->get_result();
+        $affected_fields_stmt = $supabase_pdo->prepare($affected_fields_query);
+        $affected_fields_stmt->execute([$table_id]);
         
         $affected_field_ids = [];
-        while($row = $affected_fields_result->fetch_assoc()) {
+        while($row = $affected_fields_stmt->fetch(PDO::FETCH_ASSOC)) {
             $affected_field_ids[] = (int)$row['stid'];
         }
-        $affected_fields_stmt->close();
         
         // If there are affected fields, handle them appropriately
         if(!empty($affected_field_ids)) {
@@ -121,13 +108,13 @@ try {
             // Uncomment below to enable this behavior instead
             /*
             $update_fields_query = "UPDATE select_types SET section_id = NULL WHERE stid IN (" . implode(',', $affected_field_ids) . ")";
-            $mysqli->query($update_fields_query);
+            $supabase_pdo->query($update_fields_query);
             */
         }
     }
     
     // Commit transaction
-    $mysqli->commit();
+    $supabase_pdo->commit();
     
     // Success response
     echo json_encode([
@@ -141,14 +128,14 @@ try {
     ]);
 } catch(Exception $e) {
     // Rollback on error
-    $mysqli->rollback();
+    if ($supabase_pdo->inTransaction()) {
+        $supabase_pdo->rollBack();
+    }
     
     echo json_encode([
         'status' => 'error',
         'message' => 'Error updating table sections: ' . $e->getMessage(),
-        'error_code' => $e instanceof mysqli_sql_exception ? $e->getCode() : 0
+        'error_code' => $e instanceof PDOException ? $e->getCode() : 0
     ]);
 }
-
-$mysqli->close();
 ?> 

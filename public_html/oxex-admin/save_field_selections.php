@@ -3,9 +3,10 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
       $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
     die(json_encode(['status' => 'error', 'message' => 'Not authorized']));
@@ -27,38 +28,34 @@ if (!is_array($selections) || empty($selections)) {
 
 try {
     // Start transaction
-    $mysqli->begin_transaction();
+    $pdo->beginTransaction();
 
     // First, delete existing selections for this field
-    $delete_stmt = $mysqli->prepare("DELETE FROM select_gen WHERE stid = ?");
-    $delete_stmt->bind_param("i", $stid);
-    $delete_stmt->execute();
-    $delete_stmt->close();
+    $delete_stmt = $pdo->prepare("DELETE FROM select_gen WHERE stid = ?");
+    $delete_stmt->execute([$stid]);
+    $delete_stmt->closeCursor();
 
     // Get the field type (single value)
-    $type_stmt = $mysqli->prepare("SELECT single FROM select_types WHERE stid = ?");
-    $type_stmt->bind_param("i", $stid);
-    $type_stmt->execute();
-    $type_stmt->bind_result($single);
-    $type_stmt->fetch();
-    $type_stmt->close();
+    $type_stmt = $pdo->prepare("SELECT single FROM select_types WHERE stid = ?");
+    $type_stmt->execute([$stid]);
+    $single = (int)$type_stmt->fetchColumn();
+    $type_stmt->closeCursor();
 
     // Prepare insert statement - now including select_type
-    $insert_stmt = $mysqli->prepare("INSERT INTO select_gen (stid, single, select_val, select_type) VALUES (?, ?, ?, ?)");
+    $insert_stmt = $pdo->prepare("INSERT INTO select_gen (stid, single, select_val, select_type) VALUES (?, ?, ?, ?)");
     
     // Insert each selection
     foreach ($selections as $option) {
         $value = $option['value'];
         $select_type = $option['select_type'] ?? $single; // Use provided select_type or fall back to single value
         
-        $insert_stmt->bind_param("iisi", $stid, $single, $value, $select_type);
-        $insert_stmt->execute();
+        $insert_stmt->execute([$stid, $single, $value, $select_type]);
     }
     
-    $insert_stmt->close();
+    $insert_stmt->closeCursor();
 
     // Commit transaction
-    $mysqli->commit();
+    $pdo->commit();
 
     // Return success response
     echo json_encode([
@@ -69,7 +66,7 @@ try {
 
 } catch (Exception $e) {
     // Roll back transaction on error
-    $mysqli->rollback();
+    if ($pdo->inTransaction()) { $pdo->rollBack(); }
     
     error_log("Error saving field selections: " . $e->getMessage());
     echo json_encode([

@@ -3,11 +3,13 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = 'Testimonials';
+
 $subtitle = "Page content";
 $listurl = "testimonials.php"; # where the delete script is found
 $listname = "Testimonial";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,10 +31,8 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($delicon == "delicon" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete image ref
-  $stmt = $mysqli->prepare("UPDATE testimonials SET image = ? WHERE did = ?"); 
-  $stmt->bind_param("si", $valueblank, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("UPDATE testimonials SET image = ? WHERE did = ?"); 
+  $stmt->execute([$valueblank, $which]);
 }
 
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  
@@ -43,26 +43,25 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $salutation = isset($_POST['salutation']) ? $_POST['salutation'] : '';
   $sender = isset($_POST['sender']) ? $_POST['sender'] : '';
   $company_name = isset($_POST['company_name']) ? $_POST['company_name'] : '';
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
+  $sort_order = isset($_POST['sort_order']) ? (int)$_POST['sort_order'] : 0;
 
   // Update record
-  $stmt = $mysqli->prepare("UPDATE testimonials SET test_txt = ?, salutation = ?, sender = ?, company_name = ?, sort_order = ? WHERE did = ?"); 
-    $stmt->bind_param("ssssii", $test_txt, $salutation, $sender, $company_name, $sort_order, $which);
-    $stmt->execute();
-    $anyerror = $mysqli->errno." ".$mysqli->error;
-    $stmt->close();
+  $stmt = $supabase_pdo->prepare("UPDATE testimonials SET test_txt = ?, salutation = ?, sender = ?, company_name = ?, sort_order = ? WHERE did = ?"); 
+  $stmt->execute([$test_txt, $salutation, $sender, $company_name, $sort_order, $which]);
 
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT test_txt, salutation, sender, company_name, sort_order, image FROM testimonials WHERE did = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($test_txt, $salutation, $sender, $company_name, $sort_order, $image);
-$stmt->fetch();
-$stmt->close();
+$stmt = $supabase_pdo->prepare("SELECT test_txt, salutation, sender, company_name, sort_order, image FROM testimonials WHERE did = ?");
+$stmt->execute([$which]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+$test_txt = $row ? $row['test_txt'] : '';
+$salutation = $row ? $row['salutation'] : '';
+$sender = $row ? $row['sender'] : '';
+$company_name = $row ? $row['company_name'] : '';
+$sort_order = $row ? (int)$row['sort_order'] : 0;
+$image = $row ? $row['image'] : '';
 
 ?>
 <body>
@@ -78,10 +77,11 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
+
             </div>
 
             <div class="row my-5">
-               <div class="col-xl-8">
+               <div class="col-12 col-xl-8">
                   <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>" data-parsley-validate="" novalidate="">
                      <!-- START card-->
                      <div class="card border-info">
@@ -108,20 +108,17 @@ $stmt->close();
                            <div class="form-group">
                               <label class="col-form-label" for="sort_order">Sort order</label>
                               <input class="form-control" type="number" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
-                           </div>
-                          
-                        </div>
+</div>
                         
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
                 
                </div>
-               <div class="col-xl-4">
+               <div class="col-12 col-xl-4">
                 <div class="card border-info">
                   <div class="card-header bg-info">
                      <div class="card-title">Logo </div>
@@ -152,14 +149,11 @@ $stmt->close();
                     <div id="err"></div>
                   </div>
                   <div class="card-footer">
-                  </div>
-                </div>
-
-               </div>
-            </div>
+</div>
+</div>
 
             <div class="row my-5">
-               <div class="col-xl-8">
+               <div class="col-12 col-xl-8">
                      <!-- START card-->
                      <div class="card border-danger">
                         <div class="card-header bg-danger text-white">
@@ -168,11 +162,9 @@ $stmt->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

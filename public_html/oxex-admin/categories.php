@@ -3,9 +3,13 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Categories";
+
+// Set variables needed by adminjs.php
+setAdminVars(3); // Tables section
 $subtitle = "Categories";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,19 +32,17 @@ $delalert = '';
 $select_type = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
    // delete all field links
-   $stmt = $mysqli->prepare("DELETE FROM tab_fields WHERE stid = ?");
-   $stmt->bind_param("i", $which); 
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("DELETE FROM tab_fields WHERE stid = ?");
+   $stmt->execute([$which]); 
+   $stmt->closeCursor();
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM select_types WHERE stid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
+  $stmt = $pdo->prepare("DELETE FROM select_types WHERE stid = ? LIMIT 1");
+  $stmt->execute([$which]); 
+  if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
   }
-  $stmt->close();
+  $stmt->closeCursor();
 
 }
 
@@ -51,34 +53,26 @@ if ($newadmin == 'newadmin') {
   $wouldlike = isset($_POST['wouldlike']) ? $_POST['wouldlike'] : 0;
   
   // Determine the next sort order
-  $sort_order_stmt = $mysqli->prepare("SELECT COALESCE(MAX(sort_order) + 1, 1) AS next_sort_order FROM select_types");
+  $sort_order_stmt = $pdo->prepare("SELECT COALESCE(MAX(sort_order) + 1, 1) AS next_sort_order FROM select_types");
   $sort_order_stmt->execute();
-  $sort_order_stmt->bind_result($next_sort_order);
-  $sort_order_stmt->fetch();
-  $sort_order_stmt->close();
+  $next_sort_order = (int)$sort_order_stmt->fetchColumn();
+  $sort_order_stmt->closeCursor();
 
   // Write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO select_types (str, single, musthave, wouldlike, sort_order) VALUES (?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("siiii", $str, $single, $musthave, $wouldlike, $next_sort_order);
-  $insert_stmt->execute();
+  $insert_stmt = $pdo->prepare("INSERT INTO select_types (str, single, musthave, wouldlike, sort_order) VALUES (?, ?, ?, ?, ?)");
+  $insert_stmt->execute([$str, $single, $musthave, $wouldlike, $next_sort_order]);
   
-  // Check for errors
-  if ($insert_stmt->errno) {
-    error_log("Insert error: " . $insert_stmt->error);
-  }
-  
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  $newid = $pdo->lastInsertId();
+  $insert_stmt->closeCursor();
 }
-function getSimilarExistingValues($type) {
-    global $mysqli;
-    $stmt = $mysqli->prepare("SELECT select_val FROM select_gen 
+function getSimilarExistingValues($type, $value) {
+    global $pdo;
+    $stmt = $pdo->prepare("SELECT select_val FROM select_gen 
                                WHERE select_type = ? 
                                ORDER BY SIMILARITY(select_val, ?) 
                                LIMIT 5");
-    $stmt->bind_param("ss", $type, $newValue);
-    $stmt->execute();
-    return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->execute([$type, $value]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 ?>
@@ -116,12 +110,16 @@ function getSimilarExistingValues($type) {
                               </thead>
                               <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT stid, str, single, musthave, wouldlike, sort_order FROM select_types ");
+$tableset = $pdo->prepare("SELECT stid, str, single, musthave, wouldlike, sort_order FROM select_types ");
 $tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($stid, $str, $single, $musthave, $wouldlike, $sort_order);
 // 'listselect_type' to avoid intereference with retaining selection
-while ($tableset->fetch()){
+while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+  $stid = $row['stid'];
+  $str = $row['str'];
+  $single = $row['single'];
+  $musthave = $row['musthave'];
+  $wouldlike = $row['wouldlike'];
+  $sort_order = (int)$row['sort_order'];
    if ($musthave == 0) {
       $musthave = '<div class="badge badge-secondary">No</div>';
    } else {
@@ -155,12 +153,10 @@ while ($tableset->fetch()){
       $listtype = 'Numeric (step integer)';
    }
    // how many values
-   $vids = $mysqli->prepare("SELECT pid FROM select_gen WHERE stid = ? ");
-   $vids->bind_param("i", $stid);
-   $vids->execute();
-   $vids->store_result();
-   $numlinks = $vids->num_rows;
-   $vids->close();
+   $vids = $pdo->prepare("SELECT pid FROM select_gen WHERE stid = ? ");
+   $vids->execute([$stid]);
+   $numlinks = $vids->rowCount();
+   $vids->closeCursor();
 ?>
 <tr>
    <td><a href="listtypedetail.php?which=<?php echo $stid ?>"><?php echo $str?></a></td>
@@ -171,15 +167,15 @@ while ($tableset->fetch()){
 </tr>
  <?php
  }
-$tableset->close();
+$tableset->closeCursor();
 ?>
                               </tbody>
                            </table>
                         </div>
                      </div>
-                  </div>
-               </div>
-            </div>
+                  </div><!-- /.card -->
+               </div><!-- /.col-12 -->
+            </div><!-- /.row -->
 
             <div class="row" id="newform">
                <div class="col-12">
@@ -229,7 +225,6 @@ $tableset->close();
                                  </div>
                                 </div>
                             </div>
-                           
                         </div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
@@ -239,8 +234,7 @@ $tableset->close();
                         </div>
                      </div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

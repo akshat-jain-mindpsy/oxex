@@ -7,7 +7,7 @@ include '../incl/sess.php';
 header('Content-Type: application/json');
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
       $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
     echo json_encode(['status' => 'error', 'message' => 'Access denied']);
@@ -34,15 +34,9 @@ $query = "
     WHERE section_id = ?
 ";
 
-$stmt = $mysqli->prepare($query);
-$stmt->bind_param("i", $section_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
-$tables = [];
-while ($row = $result->fetch_assoc()) {
-    $tables[] = $row['tbid'];
-}
+$stmt = $supabase_pdo->prepare($query);
+$stmt->execute([$section_id]);
+$tables = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
 // Return response
 header('Content-Type: application/json');

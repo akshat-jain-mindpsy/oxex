@@ -11,18 +11,18 @@ $date = isset($_POST['date']) ? $_POST['date'] : 0; # the new date
 $trainee = isset($_POST['trainee']) ? $_POST['trainee'] : ''; # who
 	$trainee = preg_replace('/[^\p{Latin}\d\s\p{P}]/u', '', $trainee);
 // only allowed one task per day so check new date:
-$vids = $mysqli->prepare("SELECT tsid FROM timesheet WHERE trainkey = ? AND taskdate = ? ");
-$vids->bind_param("si", $trainee, $date);
-$vids->execute();
-$vids->store_result();
-$numlinks = $vids->num_rows;
-$vids->close();
-if ($numlinks == 0) {
-	// update timesheet entry for this tsid
-	$stmt = $mysqli->prepare("UPDATE timesheet SET taskdate = ? WHERE tsid = ?"); 
-	$stmt->bind_param("ii", $date, $id);
-	$stmt->execute();
-	$stmt->close();
+try {
+    global $supabase_pdo;
+    $stmtCheck = $supabase_pdo->prepare('select tsid from timesheet where trainkey = ? and taskdate = ?');
+    $stmtCheck->execute([$trainee, $date]);
+    $numlinks = count($stmtCheck->fetchAll(PDO::FETCH_ASSOC));
+    if ($numlinks == 0) {
+        // update timesheet entry for this tsid
+        $stmtUpd = $supabase_pdo->prepare('update timesheet set taskdate = ? where tsid = ?');
+        $stmtUpd->execute([$date, $id]);
+    }
+} catch (Throwable $e) {
+    error_log('amendevent PDO error: ' . $e->getMessage());
 }
 /* return data for testing
 echo "{";

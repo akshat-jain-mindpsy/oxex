@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Items (Dropdown List) ";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Items";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,14 +31,12 @@ $delalert = '';
 $select_type = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM select_gen WHERE pid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
+  $stmt = $supabase_pdo->prepare("DELETE FROM select_gen WHERE pid = ? LIMIT 1");
+  $stmt->execute([$which]); 
+  if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
   }
-  $stmt->close();
 
 }
 
@@ -44,35 +45,31 @@ if ($newadmin == 'newadmin') {
   $select_val = isset($_POST['select_val']) ? $_POST['select_val'] : 0;
   
   // get single/multiple from select_types
-   $stmt = $mysqli->prepare("SELECT stid, single FROM select_types WHERE str = ?");
-   $stmt->bind_param("s", $select_type);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($stid, $single);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $supabase_pdo->prepare("SELECT stid, single FROM select_types WHERE str = ?");
+   $stmt->execute([$select_type]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   if ($row) {
+       $stid = (int)$row['stid'];
+       $single = (int)$row['single'];
+   }
 
 
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO select_gen (select_type, single, select_val, stid) VALUES (?, ?, ?, ?)");
-  $insert_stmt->bind_param("sisi", $select_type, $single, $select_val, $stid);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  $insert_stmt = $supabase_pdo->prepare("INSERT INTO select_gen (select_type, single, select_val, stid) VALUES (?, ?, ?, ?)");
+  $insert_stmt->execute([$select_type, $single, $select_val, $stid]);
+  $newid = $supabase_pdo->lastInsertId();
 
   
 }
 
 function getSimilarExistingValues($type) {
-    global $mysqli;
-    $stmt = $mysqli->prepare("SELECT select_val FROM select_gen 
+    global $supabase_pdo;
+    $stmt = $supabase_pdo->prepare("SELECT select_val FROM select_gen 
                                WHERE select_type = ? 
                                ORDER BY SIMILARITY(select_val, ?) 
                                LIMIT 5");
-    $stmt->bind_param("ss", $type, $newValue);
-    $stmt->execute();
-    return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->execute([$type, $newValue]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 ?>
 <body>
@@ -88,7 +85,8 @@ function getSimilarExistingValues($type) {
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
             <?php echo $delalert ?>
             <div class="row">
                <div class="col-xl-12">
@@ -103,12 +101,14 @@ function getSimilarExistingValues($type) {
                            </thead>
                            <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT pid, select_type, single, select_val FROM select_gen ");
+$tableset = $supabase_pdo->prepare("SELECT pid, select_type, single, select_val FROM select_gen ");
 $tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($pid, $listselect_type, $single, $select_val);
 // 'listselect_type' to avoid intereference with retaining selection
-while ($tableset->fetch()){
+while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+    $pid = (int)$row['pid'];
+    $listselect_type = $row['select_type'];
+    $single = (int)$row['single'];
+    $select_val = $row['select_val'];
    if ($single == 1) {
       $listtype = 'Multiple Selection';
    }
@@ -135,12 +135,10 @@ while ($tableset->fetch()){
 </tr>
  <?php
  }
-$tableset->close();
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -165,11 +163,11 @@ $tableset->close();
                                         <select class="custom-select custom-select-lg mb-3" id="select_type" name="select_type" required>
                                           <option <?php if ($select_type == '') echo "selected='selected'" ?> value="">Select...</option>
                                           <?php
-$tableset = $mysqli->prepare("SELECT str, single FROM select_types ORDER BY str ");
+$tableset = $supabase_pdo->prepare("SELECT str, single FROM select_types ORDER BY str ");
 $tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($str, $single);
-while ($tableset->fetch()){
+while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+   $str = $row['str'];
+   $single = (int)$row['single'];
    if ($single == 0) {
       $listtype = 'Single Selection';
    } else {
@@ -180,24 +178,17 @@ while ($tableset->fetch()){
       echo "selected='selected'";
    }
    echo ">$str ($listtype)</option>";
-}
-$numrows = $tableset->num_rows;
-$tableset->close();                                         
+}                                         
                                            ?>
                                        </select>
-                                    </div>
-                                </div>
-                             </div>
-
-                        </div>
+</div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

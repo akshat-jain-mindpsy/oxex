@@ -5,7 +5,7 @@ sec_session_start();
 include '../incl/sess.php';
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
       $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
     header('Content-Type: application/json');
@@ -46,16 +46,9 @@ try {
         ORDER BY tf.sort_order ASC, st.str ASC
     ";
     
-    $stmt = $mysqli->prepare($query);
-    $stmt->bind_param("ii", $section_id, $table_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    $fields = [];
-    while ($row = $result->fetch_assoc()) {
-        $fields[] = $row;
-    }
-    $stmt->close();
+    $stmt = $supabase_pdo->prepare($query);
+    $stmt->execute([$section_id, $table_id]);
+    $fields = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     header('Content-Type: application/json');
     echo json_encode([

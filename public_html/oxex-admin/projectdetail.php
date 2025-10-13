@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = 'Case Studies';
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Case Study";
 $listurl = "projects.php"; # where the delete script is found
 $listname = "Case Studies";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,17 +32,15 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($delicon == "delicon" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete image ref
-  $stmt = $mysqli->prepare("UPDATE events_tbl SET eventlogo = ? WHERE ID = ?"); 
-  $stmt->bind_param("si", $valueblank, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("UPDATE events_tbl SET eventlogo = ? WHERE ID = ?"); 
+  $stmt->execute([$valueblank, $which]);
+  $stmt->closeCursor();
 }
 if ($delicon == "delpdf" && ($admintype == 'AD' || $admintype == 'DV')) {
   // delete pdf ref
-  $stmt = $mysqli->prepare("UPDATE events_tbl SET eventpdf = ? WHERE ID = ?"); 
-  $stmt->bind_param("si", $valueblank, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("UPDATE events_tbl SET eventpdf = ? WHERE ID = ?"); 
+  $stmt->execute([$valueblank, $which]);
+  $stmt->closeCursor();
 }
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  
   $which = isset($_POST['which']) ? $_POST['which'] : 0;
@@ -54,51 +55,63 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $page_txt6 = isset($_POST['page_txt6']) ? $_POST['page_txt6'] : '';
   $page_txt12 = isset($_POST['page_txt12']) ? $_POST['page_txt12'] : '';
   $proj_vid = isset($_POST['proj_vid']) ? $_POST['proj_vid'] : '';
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
   $google_priority = isset($_POST['google_priority']) ? $_POST['google_priority'] : 0;
 
   // Update record
   // note we don't change semantic_url else SEO is hurt
-  $stmt = $mysqli->prepare("UPDATE proj_tbl SET proj_vid = ?, sort_order = ?, proj_name = ?, page_title = ?, page_txt1 = ?, page_txt2 = ?, page_txt3 = ?, page_txt4 = ?, page_txt5 = ?, page_txt6 = ?, page_txt12 = ?, google_priority = ?, date_modified = ? WHERE pid = ?"); 
-  $stmt->bind_param("sissssssssssii", $proj_vid, $sort_order, $proj_name, $page_title, $page_txt1, $page_txt2, $page_txt3, $page_txt4, $page_txt5, $page_txt6, $page_txt12, $google_priority, $today, $which);
-  $stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $stmt->close();
+  $stmt = $pdo->prepare("UPDATE proj_tbl SET proj_vid = ?, sort_order = ?, proj_name = ?, page_title = ?, page_txt1 = ?, page_txt2 = ?, page_txt3 = ?, page_txt4 = ?, page_txt5 = ?, page_txt6 = ?, page_txt12 = ?, google_priority = ?, date_modified = ? WHERE pid = ?"); 
+  $stmt->execute([$proj_vid, $$value0 = 0; // Default value for sort_order
+$subtitle = "which]);
+  //printf("[%d] %s\n", $pdo->errorCode(), $pdo->errorInfo()[2]);
+  $stmt->closeCursor();
 
   // delete existing tags before re-adding
-  $stmt = $mysqli->prepare("DELETE FROM proj_link_tbl WHERE pid = ? ");
-  $stmt->bind_param("i",$which);     
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("DELETE FROM proj_link_tbl WHERE pid = ? ");
+  $stmt->execute([$which]);     
+  $stmt->closeCursor();
   
   // update subject tag links
-  $tagstmt = $mysqli->prepare("SELECT catid FROM proj_cats");
+  $tagstmt = $pdo->prepare("SELECT catid FROM proj_cats");
   $tagstmt->execute();
-  $tagstmt->store_result();
-  $tagstmt->bind_result($catid);
-  while ($tagstmt->fetch()){
+  while ($row = $tagstmt->fetch(PDO::FETCH_ASSOC)){
+    $catid = $row['catid'];
     $posmarker = 'q'.$catid;
     $clicked = isset($_POST[$posmarker]) ? $_POST[$posmarker] : '';
     if ($clicked == $catid)  {
       // if checkbox has same value add to db
-      $insert_stmt = $mysqli->prepare("INSERT INTO proj_link_tbl (pid, catid) VALUES (?, ?)");
-      $insert_stmt->bind_param("ii", $which, $catid);
-      $insert_stmt->execute();
-      $insert_stmt->close();
+      $insert_stmt = $pdo->prepare("INSERT INTO proj_link_tbl (pid, catid) VALUES (?, ?)");
+      $insert_stmt->execute([$which, $catid]);
+      $insert_stmt->closeCursor();
     }
   }
-  $tagstmt->close();
+  $tagstmt->closeCursor();
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT proj_vid, sort_order, proj_name, semantic_url, page_title, page_txt1, page_txt2, page_txt3, page_txt4, page_txt5, page_txt6, page_txt12, google_priority, date_added, date_modified FROM proj_tbl WHERE pid =  ? ");
-$stmt->bind_param("i", $which); 
-$stmt->bind_result($proj_vid, $sort_order, $proj_name, $semantic_url, $page_title, $page_txt1, $page_txt2, $page_txt3, $page_txt4, $page_txt5, $page_txt6, $page_txt12, $google_priority, $date_added, $date_modified);
-$stmt->execute();
-$stmt->fetch();
-//printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-$stmt->close();
+$stmt = $pdo->prepare("SELECT proj_vid, sort_order, proj_name, semantic_url, page_title, page_txt1, page_txt2, page_txt3, page_txt4, page_txt5, page_txt6, page_txt12, google_priority, date_added, date_modified FROM proj_tbl WHERE pid =  ? ");
+$stmt->execute([$which]); 
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+$proj_vid = $row['proj_vid'];
+$$value0 = 0; // Default value for sort_order
+$subtitle = "row['sort_order'];
+$proj_name = $row['proj_name'];
+$semantic_url = $row['semantic_url'];
+$page_title = $row['page_title'];
+$page_txt1 = $row['page_txt1'];
+$page_txt2 = $row['page_txt2'];
+$page_txt3 = $row['page_txt3'];
+$page_txt4 = $row['page_txt4'];
+$page_txt5 = $row['page_txt5'];
+$page_txt6 = $row['page_txt6'];
+$page_txt12 = $row['page_txt12'];
+$google_priority = $row['google_priority'];
+$date_added = $row['date_added'];
+$date_modified = $row['date_modified'];
+//printf("[%d] %s\n", $pdo->errorCode(), $pdo->errorInfo()[2]);
+$stmt->closeCursor();
 $date_added = strtotime($date_added);
 $date_modified = strtotime($date_modified);
 // whatever the record name is
@@ -117,7 +130,8 @@ $date_modified = strtotime($date_modified);
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -173,12 +187,12 @@ $date_modified = strtotime($date_modified);
                            <div class="form-group">
                               <label class="col-form-label" for="sort_order"> Sort order</label>
                               <div class="col-lg-3">
-                                <input type="number" class="form-control" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>">
+                                <input type="number" class="form-control" id="$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order ?>">
                               </div>
                               <div class="col-lg-12">
                                 <p><small>(Enter 0 if post is not to be immediately displayed)</small></p>
-                              </div>
-                            </div>
+</div>
 
                           <div class="form-group">
                             <label class="col-form-label">Project Categories</label>
@@ -186,29 +200,26 @@ $date_modified = strtotime($date_modified);
                               <?PHP
                               $checked = '';
                               // Loop through cats 
-                              $loopstmt = $mysqli->prepare("SELECT catid, catproj FROM proj_cats");
+                              $loopstmt = $pdo->prepare("SELECT catid, catproj FROM proj_cats");
                               $loopstmt->execute();
-                              $loopstmt->store_result();
-                              $loopstmt->bind_result($catid, $catproj);
-                              while ($loopstmt->fetch()) {
+                              while ($row = $loopstmt->fetch(PDO::FETCH_ASSOC)) {
+                                $catid = $row['catid'];
+                                $catproj = $row['catproj'];
                                 // see if in links table for this record
-                                $whatlink = $mysqli->prepare("SELECT plid FROM proj_link_tbl WHERE pid = ? AND catid = ? ");
-                                $whatlink->bind_param("ii", $which, $catid);
-                                $whatlink->execute(); 
-                                $whatlink->bind_result($plid);
-                                $whatlink->fetch();
+                                $whatlink = $pdo->prepare("SELECT plid FROM proj_link_tbl WHERE pid = ? AND catid = ? ");
+                                $whatlink->execute([$which, $catid]); 
+                                $plid = $whatlink->fetchColumn();
                                 if ($plid > 0) {
                                   $checked = " checked=\"checked\" ";
                                 } else {
                                   $checked = '';
                                 }
-                                $whatlink->close();
+                                $whatlink->closeCursor();
                                 echo "<label class=\"checkbox-inline\"><input name=\"q$catid\" type=\"checkbox\" id=\"$catid\" value=\"$catid\" $checked> $catproj</label><br>\r";
                               }
-                              $loopstmt->close();
+                              $loopstmt->closeCursor();
                               ?>
-                            </div>
-                          </div>
+</div>
                           
                         <div class="card-footer">
                            <div class="form-group">
@@ -218,14 +229,9 @@ $date_modified = strtotime($date_modified);
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-                
-               </div>
-
-
-               </div>
+</div>
             </div>
 
             <div class="row my-5">
@@ -238,11 +244,9 @@ $date_modified = strtotime($date_modified);
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

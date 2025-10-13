@@ -15,15 +15,15 @@ try {
     error_log("Edit field request: " . json_encode($_REQUEST));
 
     // Check if the database connection is valid
-    if (!isset($mysqli) || $mysqli->connect_errno) {
-        throw new Exception("Database connection failed: " . ($mysqli ? $mysqli->connect_error : "Connection not established"));
+    if (!isset($supabase_pdo)) {
+        throw new Exception("Database connection failed: PDO connection not established");
     }
 
     // Get admin type from session
     $admintype = isset($_SESSION['admintype']) ? $_SESSION['admintype'] : '';
 
     // Check login and permissions
-    if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+    if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
         echo json_encode([
             'status' => 'error', 
             'message' => 'Unauthorized access'
@@ -49,41 +49,26 @@ try {
         }
 
         // Use prepared statements for security instead of direct SQL
-        $field_stmt = $mysqli->prepare("SELECT stid, str AS field_name, single AS field_type, section_id FROM select_types WHERE stid = ? LIMIT 1");
-        $field_stmt->bind_param("i", $field_id);
+        $field_stmt = $supabase_pdo->prepare("SELECT stid, str AS field_name, single AS field_type, section_id FROM select_types WHERE stid = ? LIMIT 1");
+        $field_stmt->execute([$field_id]);
+        $field = $field_stmt->fetch(PDO::FETCH_ASSOC);
         
-        if (!$field_stmt->execute()) {
-            throw new Exception("Database query failed: " . $mysqli->error);
-        }
-        
-        $field_result = $field_stmt->get_result();
-        
-        if ($field_result->num_rows === 0) {
+        if (!$field) {
             echo json_encode([
                 'status' => 'error',
                 'message' => 'Field not found'
             ]);
             exit;
         }
-
-        $field = $field_result->fetch_assoc();
-        $field_stmt->close();
         
         // Get field options using prepared statement
-        $options_stmt = $mysqli->prepare("SELECT select_val FROM select_gen WHERE stid = ? ORDER BY select_val ASC");
-        $options_stmt->bind_param("i", $field_id);
-        
-        if (!$options_stmt->execute()) {
-            throw new Exception("Options query failed: " . $mysqli->error);
-        }
-        
-        $options_result = $options_stmt->get_result();
+        $options_stmt = $supabase_pdo->prepare("SELECT select_val FROM select_gen WHERE stid = ? ORDER BY select_val ASC");
+        $options_stmt->execute([$field_id]);
         $options = [];
         
-        while ($option = $options_result->fetch_assoc()) {
+        while ($option = $options_stmt->fetch(PDO::FETCH_ASSOC)) {
             $options[] = $option['select_val'];
         }
-        $options_stmt->close();
         
         $response = [
             'status' => 'success',
@@ -118,57 +103,47 @@ try {
         }
 
         // Begin a transaction for multiple database operations
-        $mysqli->begin_transaction();
+        $supabase_pdo->beginTransaction();
         
         try {
             // If only updating the field type without a name
             if (empty($field_name)) {
                 // Get the current field name
-                $name_query = $mysqli->prepare("SELECT str FROM select_types WHERE stid = ?");
-                $name_query->bind_param("i", $field_id);
-                $name_query->execute();
-                $name_result = $name_query->get_result();
+                $name_query = $supabase_pdo->prepare("SELECT str FROM select_types WHERE stid = ?");
+                $name_query->execute([$field_id]);
+                $field_data = $name_query->fetch(PDO::FETCH_ASSOC);
                 
-                if ($name_result->num_rows === 0) {
+                if (!$field_data) {
                     throw new Exception("Field not found");
                 }
                 
-                $field_data = $name_result->fetch_assoc();
                 $field_name = $field_data['str'];
-                $name_query->close();
             }
             
             // Use prepared statements for security
-            $update_stmt = $mysqli->prepare("UPDATE select_types SET str = ?, single = ? WHERE stid = ?");
-            $update_stmt->bind_param("sii", $field_name, $field_type, $field_id);
-            
-            if (!$update_stmt->execute()) {
-                throw new Exception("Failed to update field: " . $mysqli->error);
+            $update_stmt = $supabase_pdo->prepare("UPDATE select_types SET str = ?, single = ? WHERE stid = ?");
+            if (!$update_stmt->execute([$field_name, $field_type, $field_id])) {
+                throw new Exception("Failed to update field");
             }
-            $update_stmt->close();
             
             // Handle section assignment if provided
             if ($field_section !== '') {
                 $section_id = $field_section === '' ? null : (int)$field_section;
-                $section_stmt = $mysqli->prepare("UPDATE select_types SET section_id = ? WHERE stid = ?");
-                $section_stmt->bind_param("ii", $section_id, $field_id);
+                $section_stmt = $supabase_pdo->prepare("UPDATE select_types SET section_id = ? WHERE stid = ?");
                 
-                if (!$section_stmt->execute()) {
-                    throw new Exception("Failed to update field section: " . $mysqli->error);
+                if (!$section_stmt->execute([$section_id, $field_id])) {
+                    throw new Exception("Failed to update field section");
                 }
-                $section_stmt->close();
             }
             
             // Handle options for select fields (type 0 or 1)
             if ($field_type == 0 || $field_type == 1) {
                 // First, delete existing options
-                $delete_stmt = $mysqli->prepare("DELETE FROM select_gen WHERE stid = ?");
-                $delete_stmt->bind_param("i", $field_id);
+                $delete_stmt = $supabase_pdo->prepare("DELETE FROM select_gen WHERE stid = ?");
                 
-                if (!$delete_stmt->execute()) {
-                    throw new Exception("Failed to delete existing options: " . $mysqli->error);
+                if (!$delete_stmt->execute([$field_id])) {
+                    throw new Exception("Failed to delete existing options");
                 }
-                $delete_stmt->close();
                 
                 // Then, insert new options if they exist
                 if (!empty($field_options)) {
@@ -177,48 +152,41 @@ try {
                     $options = array_filter($options); // Remove empty lines
                     
                     if (count($options) > 0) {
-                        $insert_stmt = $mysqli->prepare("INSERT INTO select_gen (stid, select_val) VALUES (?, ?)");
+                        $insert_stmt = $supabase_pdo->prepare("INSERT INTO select_gen (stid, select_val) VALUES (?, ?)");
                         
                         foreach ($options as $option_text) {
                             if (empty($option_text)) continue;
                             
-                            $insert_stmt->bind_param("is", $field_id, $option_text);
-                            
-                            if (!$insert_stmt->execute()) {
-                                throw new Exception("Failed to insert option: " . $mysqli->error);
+                            if (!$insert_stmt->execute([$field_id, $option_text])) {
+                                throw new Exception("Failed to insert option");
                             }
                         }
-                        $insert_stmt->close();
                     }
                 }
                 // For select fields with no options submitted but field type is being changed
                 else if (isset($_POST['field_type']) && !isset($_POST['field_options'])) {
                     // This case is when only updating field type without changing options
                     // For safety, we'll keep any existing options
-                    $get_options_stmt = $mysqli->prepare("SELECT select_val FROM select_gen WHERE stid = ? ORDER BY select_val");
-                    $get_options_stmt->bind_param("i", $field_id);
-                    $get_options_stmt->execute();
-                    $options_result = $get_options_stmt->get_result();
+                    $get_options_stmt = $supabase_pdo->prepare("SELECT select_val FROM select_gen WHERE stid = ? ORDER BY select_val");
+                    $get_options_stmt->execute([$field_id]);
+                    $options_result = $get_options_stmt->fetchAll(PDO::FETCH_ASSOC);
                     
-                    if ($options_result->num_rows > 0) {
-                        $insert_stmt = $mysqli->prepare("INSERT INTO select_gen (stid, select_val) VALUES (?, ?)");
+                    if (count($options_result) > 0) {
+                        $insert_stmt = $supabase_pdo->prepare("INSERT INTO select_gen (stid, select_val) VALUES (?, ?)");
                         
-                        while ($option = $options_result->fetch_assoc()) {
+                        foreach ($options_result as $option) {
                             $option_text = $option['select_val'];
-                            $insert_stmt->bind_param("is", $field_id, $option_text);
                             
-                            if (!$insert_stmt->execute()) {
-                                throw new Exception("Failed to reinsert option: " . $mysqli->error);
+                            if (!$insert_stmt->execute([$field_id, $option_text])) {
+                                throw new Exception("Failed to reinsert option");
                             }
                         }
-                        $insert_stmt->close();
                     }
-                    $get_options_stmt->close();
                 }
             }
             
             // Commit the transaction
-            $mysqli->commit();
+            $supabase_pdo->commit();
             
             echo json_encode([
                 'status' => 'success',
@@ -231,7 +199,9 @@ try {
             ]);
         } catch (Exception $e) {
             // Roll back the transaction on error
-            $mysqli->rollback();
+            if ($supabase_pdo->inTransaction()) {
+                $supabase_pdo->rollBack();
+            }
             
             error_log("Error in edit_field.php field update: " . $e->getMessage());
             error_log("Trace: " . $e->getTraceAsString());
@@ -261,7 +231,5 @@ try {
     ]);
 }
 
-if (isset($mysqli)) {
-    $mysqli->close();
-}
+// PDO connection is managed by config.php
 ?> 

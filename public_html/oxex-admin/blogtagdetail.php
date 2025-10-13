@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Blog Filter Tags";
+
+setAdminVars(4); // Blog section
 $subtitle = "Blog";
 $listurl = "blogtags.php";
 $listname = "Blog Filter Tags";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,15 +32,13 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row
-  $stmt = $mysqli->prepare("DELETE FROM blog_subject_tags WHERE btagid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("DELETE FROM blog_subject_tags WHERE btagid = ? LIMIT 1");
+  $stmt->execute([$which]); 
+  $stmt->closeCursor();
   // delete references in resource links  
-  $stmt = $mysqli->prepare("DELETE FROM blog_link_tbl WHERE btagid = ?");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("DELETE FROM blog_link_tbl WHERE btagid = ?");
+  $stmt->execute([$which]); 
+  $stmt->closeCursor();
 }
 if ($done == "done" && ($admintype == 'AD' || $admintype == 'AM')) {  
   $which = isset($_POST['which']) ? $_POST['which'] : 0;
@@ -45,21 +46,17 @@ if ($done == "done" && ($admintype == 'AD' || $admintype == 'AM')) {
   $btag = isset($_POST['btag']) ? $_POST['btag'] : '';
   
   // Update record
-  $stmt = $mysqli->prepare("UPDATE blog_subject_tags SET btag = ? WHERE btagid = ? "); 
-  $stmt->bind_param("si", $btag, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("UPDATE blog_subject_tags SET btag = ? WHERE btagid = ? "); 
+  $stmt->execute([$btag, $which]);
+  $stmt->closeCursor();
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT btag FROM blog_subject_tags WHERE btagid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($btag);
-$stmt->fetch();
-$stmt->close();
+$stmt = $pdo->prepare("SELECT btag FROM blog_subject_tags WHERE btagid = ?");
+$stmt->execute([$which]);
+$btag = $stmt->fetchColumn();
+$stmt->closeCursor();
 // whatever the record name is
   $changename = "$btag";
 ?>
@@ -76,7 +73,8 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(4); // Blog section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -90,17 +88,14 @@ $stmt->close();
                            <div class="form-group">
                               <label class="col-form-label" for="btag">Tag</label>
                               <input class="form-control" type="text" id="btag" name="btag" value="<?php echo $btag ?>">
-                           </div>
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -112,11 +107,9 @@ $stmt->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

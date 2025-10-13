@@ -4,9 +4,10 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Check proper access control
-if(!(login_check($mysqli) == true && $admintype == 'AT')) {
+if(!(login_check($pdo) == true && $admintype == 'AT')) {
     echo "You are not authorized to run this script.";
     exit();
 }
@@ -15,10 +16,10 @@ if(!(login_check($mysqli) == true && $admintype == 'AT')) {
 $output = '';
 
 // Get all sections
-$sections_result = $mysqli->query("SELECT section_id, table_ids FROM field_sections");
+$sections_result = $pdo->query("SELECT section_id, table_ids FROM field_sections");
 
-if ($sections_result->num_rows > 0) {
-    while ($section = $sections_result->fetch_assoc()) {
+if ($sections_result->rowCount() > 0) {
+    while ($section = $sections_result->fetch(PDO::FETCH_ASSOC)) {
         $section_id = $section['section_id'];
         $table_ids_str = $section['table_ids'];
         
@@ -37,12 +38,10 @@ if ($sections_result->num_rows > 0) {
             if ($tbid <= 0) continue;
             
             // Check if record already exists
-            $check_stmt = $mysqli->prepare("SELECT COUNT(*) FROM section_table_link WHERE section_id = ? AND tbid = ?");
-            $check_stmt->bind_param("ii", $section_id, $tbid);
-            $check_stmt->execute();
-            $check_stmt->bind_result($count);
-            $check_stmt->fetch();
-            $check_stmt->close();
+            $check_stmt = $pdo->prepare("SELECT COUNT(*) FROM section_table_link WHERE section_id = ? AND tbid = ?");
+            $check_stmt->execute([$section_id, $tbid]);
+            $count = $check_stmt->fetchColumn();
+            $check_stmt->closeCursor();
             
             if ($count > 0) {
                 $output .= "Link between section $section_id and table $tbid already exists. Skipping.<br>";
@@ -50,16 +49,15 @@ if ($sections_result->num_rows > 0) {
             }
             
             // Insert new record
-            $stmt = $mysqli->prepare("INSERT INTO section_table_link (section_id, tbid, display_order) VALUES (?, ?, ?)");
-            $stmt->bind_param("iii", $section_id, $tbid, $order);
+            $stmt = $pdo->prepare("INSERT INTO section_table_link (section_id, tbid, display_order) VALUES (?, ?, ?)");
             
-            if ($stmt->execute()) {
+            if ($stmt->execute([$section_id, $tbid, $order])) {
                 $output .= "Added section $section_id to table $tbid with order $order<br>";
             } else {
-                $output .= "Error adding section $section_id to table $tbid: " . $stmt->error . "<br>";
+                $output .= "Error adding section $section_id to table $tbid: " . $stmt->errorInfo()[2] . "<br>";
             }
             
-            $stmt->close();
+            $stmt->closeCursor();
             $order++;
         }
     }
@@ -86,12 +84,10 @@ if ($sections_result->num_rows > 0) {
             <div class="card-header">Results</div>
             <div class="card-body">
                 <?php echo $output; ?>
-            </div>
-        </div>
+</div>
         
         <div class="mt-4">
             <a href="sections.php" class="btn btn-primary">Back to Sections</a>
-        </div>
-    </div>
+</div>
 </body>
 </html>

@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Placement Attendance Tasks";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Tasks";
 $listurl = "tasks.php";
 $listname = "Tasks";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -41,21 +44,18 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $colour = str_replace("#", "", $colour);
   
   // Update record
-  $stmt = $mysqli->prepare("UPDATE tasks SET task = ?, colour = ?, textcolor = ? WHERE dtid = ? "); 
-  $stmt->bind_param("ssii", $task, $colour, $textcolor, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("UPDATE tasks SET task = ?, colour = ?, textcolor = ? WHERE dtid = ? "); 
+  $stmt->execute([$task, $colour, $textcolor, $which]);
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT task, colour, textcolor FROM tasks WHERE dtid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($task, $colour, $textcolor);
-$stmt->fetch();
-$stmt->close();
+$stmt = $supabase_pdo->prepare("SELECT task, colour, textcolor FROM tasks WHERE dtid = ?");
+$stmt->execute([$which]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+$task = $row ? $row['task'] : '';
+$colour = $row ? $row['colour'] : '';
+$textcolor = $row ? $row['textcolor'] : 0;
 // whatever the record name is
   $changename = "$task";
 ?>
@@ -70,9 +70,9 @@ $stmt->close();
       <section class="section-container">
          <!-- Page content-->
          <div class="content-wrapper">
-            <div class="content-header">
-               <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+           <div class="content-header">
+              <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
+           </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -92,7 +92,7 @@ $stmt->close();
                                 <div class="form-group">
                                     <label class="col-form-label" for="colour">Label Colour</label>
                                     <input class="form-control" type="text" id="color-picker" name="colour" value="<?php echo $colour ?>" required>
-                                 </div>
+                                </div>
                              </div>
                              <div class="col">
                                  <div class="form-group">
@@ -103,9 +103,8 @@ $stmt->close();
                                      </select>
                                  </div>
                              </div>
-                          </div>
+                           </div>
                         </div>
-                        
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
@@ -115,26 +114,22 @@ $stmt->close();
                   </form>
                </div>
                <div class="col-xl-4">
-
-
-               </div>
-            </div>
+</div>
 
             <div class="row my-5">
-               <div class="col-xl-8">
+               <div class="col-12">
                      <!-- START card-->
-                     <div class="card border-danger">
+                     <div class="card border-danger w-100">
                         <div class="card-header bg-danger text-white">
                            <div class="card-title">Delete <?php echo $changename ?></div>
                         </div>
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button" onclick="return confirm('Are you sure you want to delete this report and all associated data?')"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
+                           </div>
                         </div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

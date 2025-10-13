@@ -62,58 +62,54 @@ try {
 }
 
 
-// Database configuration for AWS RDS
-// Load from environment variables in .env file
-$mysql_host = getenv('MYSQL_HOST');
-$mysql_port = getenv('MYSQL_PORT') ?: 3306; // Default to 3306 if not set
-$mysql_user = getenv('MYSQL_USER');
-$mysql_password = getenv('MYSQL_PASSWORD');
-$mysql_database = getenv('MYSQL_DATABASE');
+// Prefer Supabase (Postgres) first, then fall back to MySQL (AWS RDS)
 
-// Validate required environment variables
-if (!$mysql_host || !$mysql_user || !$mysql_password || !$mysql_database) {
-    die('Error: Missing required database environment variables. Please check your .env file.');
-}
+// --- Supabase (Postgres) setup (optional) ---
+$supabase_host = getenv('SUPABASE_DB_HOST') ?: getenv('SUPABASE_HOST');
+$supabase_port = getenv('SUPABASE_DB_PORT') ?: 5432;
+$supabase_db = getenv('SUPABASE_DB_NAME') ?: getenv('SUPABASE_DATABASE');
+$supabase_user = getenv('SUPABASE_DB_USER') ?: getenv('SUPABASE_USER');
+$supabase_password = getenv('SUPABASE_DB_PASSWORD') ?: getenv('SUPABASE_PASSWORD');
+$supabase_sslmode = getenv('SUPABASE_DB_SSLMODE') ?: 'require';
 
-// Connect to AWS RDS MySQL database with persistent connection
-$mysqli = new mysqli('p:' . $mysql_host, $mysql_user, $mysql_password, $mysql_database, $mysql_port);
-
-if ($mysqli->connect_error) {
-    die('Connect Error (' . $mysqli->connect_errno . ') ' . $mysqli->connect_error);
-}
-
-// Set charset to ensure proper encoding
-$mysqli->set_charset("utf8mb4");
-
-// Set connection timeout and other settings to prevent "server has gone away"
-$mysqli->query("SET SESSION wait_timeout=28800"); // 8 hours
-$mysqli->query("SET SESSION interactive_timeout=28800"); // 8 hours
-$mysqli->query("SET SESSION net_read_timeout=60"); // 60 seconds
-$mysqli->query("SET SESSION net_write_timeout=60"); // 60 seconds
-
-// Function to check and reconnect if needed
-function ensureConnection($mysqli) {
-    if (!$mysqli->ping()) {
-        error_log("Database connection lost, attempting to reconnect...");
-        $mysqli->close();
-        
-        // Reconnect
-        global $mysql_host, $mysql_user, $mysql_password, $mysql_database, $mysql_port;
-        $mysqli = new mysqli('p:' . $mysql_host, $mysql_user, $mysql_password, $mysql_database, $mysql_port);
-        
-        if ($mysqli->connect_error) {
-            error_log("Reconnection failed: " . $mysqli->connect_error);
-            return false;
-        }
-        
-        $mysqli->set_charset("utf8mb4");
-        $mysqli->query("SET SESSION wait_timeout=28800");
-        $mysqli->query("SET SESSION interactive_timeout=28800");
-        $mysqli->query("SET SESSION net_read_timeout=60");
-        $mysqli->query("SET SESSION net_write_timeout=60");
-        
-        error_log("Database reconnected successfully");
+$supabase_pdo = null;
+if ($supabase_host && $supabase_db && $supabase_user && $supabase_password) {
+    try {
+        $dsn = 'pgsql:host=' . $supabase_host . ';port=' . $supabase_port . ';dbname=' . $supabase_db . ';sslmode=' . $supabase_sslmode;
+        $supabase_pdo = new PDO(
+            $dsn,
+            $supabase_user,
+            $supabase_password,
+            [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_TIMEOUT => 5,
+            ]
+        );
+    } catch (PDOException $e) {
+        error_log('Supabase connection error: ' . $e->getMessage());
+        $supabase_pdo = null;
     }
-    return $mysqli;
 }
+
+// Helper to quickly ping Supabase
+if (!function_exists('testSupabaseConnection')) {
+function testSupabaseConnection($pdo) {
+    if (!$pdo) {
+        return false;
+    }
+    try {
+        $pdo->query('SELECT 1');
+        return true;
+    } catch (Exception $e) {
+        error_log('Supabase test failed: ' . $e->getMessage());
+        return false;
+    }
+}}
+
+// Set $pdo to point to the Supabase connection for backward compatibility
+$pdo = $supabase_pdo;
+
+// MySQL configuration removed; using Supabase/Postgres exclusively
+// $mysqli and ensureConnection intentionally omitted
 ?>

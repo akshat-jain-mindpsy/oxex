@@ -3,9 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "FAQs";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Page content";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,29 +32,31 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AD' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM faq_tbl WHERE fid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
-    // show message when deleting, not refreshing
-    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("DELETE FROM faq_tbl WHERE fid = ? LIMIT 1");
+    $stmt->execute([$which]); 
+    if ($stmt->rowCount() > 0) {
+      // show message when deleting, not refreshing
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+    }
   }
-  $stmt->close();
-
 }
 
 if ($newadmin == 'newadmin') {
   $fa = isset($_POST['fa']) ? $_POST['fa'] : '';
   $fq = isset($_POST['fq']) ? $_POST['fq'] : '';
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
   
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO faq_tbl (fq, sort_order, fa) VALUES (?, ?, ?)");
-  $insert_stmt->bind_param("sis", $fq, $sort_order, $fa);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  if ($usingSupabase) {
+    $insert_stmt = $supabase_pdo->prepare("INSERT INTO faq_tbl (fq, sort_order, fa) VALUES (?, ?, ?)");
+    $insert_stmt->execute([$fq, $$value0 = 0; // Default value for sort_order
+$subtitle = "fa]);
+    $newid = $supabase_pdo->lastInsertId();
+  } else {
+    $newid = 0;
+  }
 }
 ?>
 <body>
@@ -65,7 +72,8 @@ if ($newadmin == 'newadmin') {
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New <?php echo $subtitle ?></a></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
             <?php echo $delalert ?>
             <div class="row">
                <div class="col-xl-12">
@@ -80,11 +88,20 @@ if ($newadmin == 'newadmin') {
                            </thead>
                            <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT fid, fq, sort_order, fa FROM faq_tbl ");
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($fid, $fq, $sort_order, $fa);
-while ($tableset->fetch()){   
+if ($usingSupabase) {
+    $tableset = $supabase_pdo->prepare("SELECT fid, fq, sort_order, fa FROM faq_tbl ");
+    $tableset->execute();
+    $faqs = $tableset->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $faqs = [];
+}
+
+foreach ($faqs as $faq) {
+    $fid = $faq['fid'];
+    $fq = $faq['fq'];
+    $$value0 = 0; // Default value for sort_order
+$subtitle = "faq['sort_order'];
+    $fa = $faq['fa'];
    if ($sort_order == 0) {
      $sort_order = '<div class="badge badge-danger">Not displayed</div>';
    }
@@ -97,13 +114,11 @@ while ($tableset->fetch()){
 </tr>
  <?php
  }
-$numrows = $tableset->num_rows;
-$tableset->close();
+$numrows = count($faqs);
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -133,11 +148,9 @@ $tableset->close();
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

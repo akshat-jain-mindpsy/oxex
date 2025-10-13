@@ -13,12 +13,14 @@
       <?php
       // users probably online
       $now = time();
-      $tableset = $mysqli->prepare("SELECT isonline, realname, photo, lastlogin, isdev FROM who_there WHERE isonline != ?");
-      $tableset->bind_param("i", $value0);
-      $tableset->execute();
-      $tableset->store_result();
-      $tableset->bind_result($isonline, $realname, $senderphoto, $lastlogin, $isdev);
-      while ($tableset->fetch()){
+      $tableset = $supabase_pdo->prepare("SELECT isonline, realname, photo, lastlogin, isdev FROM who_there WHERE isonline != ?");
+      $tableset->execute([$value0]);
+      while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+        $isonline = $row['isonline'];
+        $realname = $row['realname'];
+        $senderphoto = $row['photo'];
+        $lastlogin = $row['lastlogin'];
+        $isdev = $row['isdev'];
          if ($senderphoto == '') {
             $senderphoto = "assets/img/wizard.jpg";
          } else {
@@ -54,18 +56,18 @@
          echo "</div>";
          }
       }
-      $tableset->close();
       ?>
       <div class="px-2 py-3"><small class="text-muted">OFFLINE</small></div>
       <?php
       // users probably offline
       $now = time();
-      $tableset = $mysqli->prepare("SELECT isonline, realname, photo, isdev FROM who_there WHERE isonline = ?");
-      $tableset->bind_param("i", $value0);
-      $tableset->execute();
-      $tableset->store_result();
-      $tableset->bind_result($isonline, $realname, $senderphoto, $isdev);
-      while ($tableset->fetch()){
+      $tableset = $supabase_pdo->prepare("SELECT isonline, realname, photo, isdev FROM who_there WHERE isonline = ?");
+      $tableset->execute([$value0]);
+      while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+        $isonline = $row['isonline'];
+        $realname = $row['realname'];
+        $senderphoto = $row['photo'];
+        $isdev = $row['isdev'];
          if ($senderphoto == '') {
             $senderphoto = "assets/img/wizard.jpg";
          } else {
@@ -85,7 +87,6 @@
          echo "</div>";
          }
       }
-      $tableset->close();
       ?>
       <div class="p-2 dark-on-hover">
          <!-- Optional link to list more users--><a class="p" href="#" title="See more contacts"><strong><small class="text-muted">&hellip;</small></strong></a></div>

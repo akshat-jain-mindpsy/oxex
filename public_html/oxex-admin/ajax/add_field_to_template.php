@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Check user permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     http_response_code(403); // Forbidden
     die(json_encode(['status' => 'error', 'message' => 'Unauthorized access']));
 }
@@ -33,59 +33,56 @@ if ($template_id <= 0 || $table_id <= 0 || $field_id <= 0) {
     die(json_encode(['status' => 'error', 'message' => 'Invalid input values']));
 }
 
-// Check if template exists
-$check_template = $mysqli->prepare("SELECT id FROM csv_templates WHERE id = ?");
-$check_template->bind_param("i", $template_id);
-$check_template->execute();
-$template_result = $check_template->get_result();
+// DB connection (PDO)
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if (!$pdo) {
+    http_response_code(500);
+    die(json_encode(['status' => 'error', 'message' => 'No database connection available']));
+}
 
-if ($template_result->num_rows === 0) {
+// Check if template exists
+$check_template = $pdo->prepare("SELECT id FROM csv_templates WHERE id = ?");
+$check_template->execute([$template_id]);
+$template_row = $check_template->fetch(PDO::FETCH_ASSOC);
+
+if (!$template_row) {
     die(json_encode(['status' => 'error', 'message' => 'Template not found']));
 }
 
 // Check if field already exists in the template
-$check_field = $mysqli->prepare("SELECT id FROM csv_template_columns WHERE template_id = ? AND table_id = ? AND field_id = ?");
-$check_field->bind_param("iii", $template_id, $table_id, $field_id);
-$check_field->execute();
-$field_result = $check_field->get_result();
+$check_field = $pdo->prepare("SELECT id FROM csv_template_columns WHERE template_id = ? AND table_id = ? AND field_id = ?");
+$check_field->execute([$template_id, $table_id, $field_id]);
+$field_row = $check_field->fetch(PDO::FETCH_ASSOC);
 
-if ($field_result->num_rows > 0) {
+if ($field_row) {
     die(json_encode(['status' => 'error', 'message' => 'Field already exists in this template']));
 }
 
 // Get the current max display_order for this table in the template
-$max_order = 0;
-$order_check = $mysqli->prepare("SELECT MAX(display_order) AS max_order FROM csv_template_columns WHERE template_id = ? AND table_id = ?");
-$order_check->bind_param("ii", $template_id, $table_id);
-$order_check->execute();
-$result = $order_check->get_result();
-if ($row = $result->fetch_assoc()) {
-    $max_order = $row['max_order'] ?? 0;
-}
-$order_check->close();
+$order_check = $pdo->prepare("SELECT MAX(display_order) AS max_order FROM csv_template_columns WHERE template_id = ? AND table_id = ?");
+$order_check->execute([$template_id, $table_id]);
+$max_order = (int)($order_check->fetch(PDO::FETCH_ASSOC)['max_order'] ?? 0);
 
 // Increment for the new field
 $new_order = $max_order + 1;
 
 // Add the field to the template
 try {
-    $add_field = $mysqli->prepare("INSERT INTO csv_template_columns (template_id, table_id, field_id, display_order) VALUES (?, ?, ?, ?)");
-    $add_field->bind_param("iiii", $template_id, $table_id, $field_id, $new_order);
-    $add_field->execute();
-    
-    if ($add_field->affected_rows === 0) {
+    $add_field = $pdo->prepare("INSERT INTO csv_template_columns (template_id, table_id, field_id, display_order) VALUES (?, ?, ?, ?)");
+    $add_field->execute([$template_id, $table_id, $field_id, $new_order]);
+
+    if ($add_field->rowCount() === 0) {
         die(json_encode(['status' => 'error', 'message' => 'Failed to add field to template']));
     }
-    
+
     echo json_encode([
         'status' => 'success', 
         'message' => 'Field added to template successfully',
-        'column_id' => $mysqli->insert_id
+        'column_id' => $pdo->lastInsertId()
     ]);
-    
+
 } catch (Exception $e) {
     error_log("Error adding field to template: " . $e->getMessage());
     echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
 }
-
-$mysqli->close(); 
+ 

@@ -5,7 +5,7 @@ sec_session_start();
 include '../incl/sess.php';
 
 // Only allow authorized admins
-if (login_check($mysqli) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) {
+if (login_check($pdo) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) {
     header('HTTP/1.1 403 Forbidden');
     echo json_encode(['status' => 'error', 'message' => 'Not authorized.']);
     exit;
@@ -27,14 +27,10 @@ $sql = "SELECT st.stid, st.str
         WHERE tf.tbid = ?
         ORDER BY st.str ASC";
 
-if ($stmt = $mysqli->prepare($sql)) {
-    $stmt->bind_param("i", $tbid);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    while ($row = $result->fetch_assoc()) {
-        $fields[] = $row;
-    }
-    $stmt->close();
+$stmt = $supabase_pdo->prepare($sql);
+$stmt->execute([$tbid]);
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $fields[] = $row;
 }
 
 echo json_encode($fields); 

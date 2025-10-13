@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Check user permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     http_response_code(403); // Forbidden
     die(json_encode(['status' => 'error', 'message' => 'Unauthorized access']));
 }
@@ -36,23 +36,21 @@ if (empty($field_name)) {
 }
 
 // Check if field exists
-$check_field = $mysqli->prepare("SELECT stid FROM select_types WHERE stid = ?");
-$check_field->bind_param("i", $field_id);
-$check_field->execute();
-$field_result = $check_field->get_result();
+$check_field = $pdo->prepare("SELECT stid FROM select_types WHERE stid = ?");
+$check_field->execute([$field_id]);
+$field_exists = $check_field->fetch(PDO::FETCH_ASSOC);
 
-if ($field_result->num_rows === 0) {
+if (!$field_exists) {
     die(json_encode(['status' => 'error', 'message' => 'Field not found']));
 }
 
 // Update the field
 try {
     // Update the field in select_types
-    $update_field = $mysqli->prepare("UPDATE select_types SET str = ?, type = ? WHERE stid = ?");
-    $update_field->bind_param("ssi", $field_name, $field_type, $field_id);
-    $update_field->execute();
+    $update_field = $pdo->prepare("UPDATE select_types SET str = ?, type = ? WHERE stid = ?");
+    $update_field->execute([$field_name, $field_type, $field_id]);
     
-    if ($update_field->affected_rows === 0) {
+    if ($update_field->rowCount() === 0) {
         die(json_encode(['status' => 'error', 'message' => 'No changes were made']));
     }
     
@@ -67,5 +65,5 @@ try {
     echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
 }
 
-$mysqli->close();
+$pdo = null;
 ?> 

@@ -3,9 +3,10 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
       $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
     header("Location: index.php");
@@ -17,6 +18,9 @@ $pagetitle = "Sheet Details";
 $subtitle = "Sheet Categories";
 $listurl = "sheets.php";
 $listname = "Sheets";
+
+// Set variables needed by adminjs.php
+setAdminVars(3); // Tables section
 
 // Page actions
 $done = isset($_POST['done']) ? $_POST['done'] : '';
@@ -33,10 +37,8 @@ if (!empty($_POST)) {
 // Handle field deletion
 if ($del == "delfield" && ($admintype == 'AT' || $admintype == 'DV')) {
    $stid = isset($_GET['stid']) ? (int)$_GET['stid'] : '';
-   $stmt = $mysqli->prepare("DELETE FROM tab_fields WHERE stid = ? AND tbid = ? LIMIT 1");
-   $stmt->bind_param("ii", $stid, $which); 
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $supabase_pdo->prepare("DELETE FROM tab_fields WHERE stid = ? AND tbid = ? LIMIT 1");
+   $stmt->execute([$stid, $which]);
    
    // Add a success message or redirect
    header("Location: sheetdetail.php?which=$which&msg=field_deleted");
@@ -59,30 +61,22 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
     error_log("SHEETDETAIL UPDATE: tab_name='$tab_name', tab_notes='$tab_notes', isvis=$isvis, sort_order=$sort_order, which=$which");
     
     // First check if the record exists
-    $check_stmt = $mysqli->prepare("SELECT tbid, tab_name FROM tabs_tbl WHERE tbid = ?");
-    $check_stmt->bind_param("i", $which);
-    $check_stmt->execute();
-    $check_stmt->store_result();
-    $record_exists = $check_stmt->num_rows > 0;
-    $check_stmt->close();
+    $check_stmt = $supabase_pdo->prepare("SELECT tbid, tab_name FROM tabs_tbl WHERE tbid = ?");
+    $check_stmt->execute([$which]);
+    $record_exists = $check_stmt->rowCount() > 0;
     
     if (!$record_exists) {
       error_log("SHEETDETAIL ERROR: Record with ID $which does not exist");
       $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Record with ID $which does not exist in the database.</strong></div></div></div>";
     } else {
       // Update record
-    $stmt = $mysqli->prepare("UPDATE tabs_tbl SET tab_name = ?, tab_notes = ?, sort_order = ?, isvis = ? WHERE tbid = ?"); 
-    if (!$stmt) {
-      error_log("SHEETDETAIL PREPARE ERROR: " . $mysqli->error);
-      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to prepare statement: " . $mysqli->error . "</strong></div></div></div>";
-    } else {
-      $stmt->bind_param("ssiii", $tab_name, $tab_notes, $sort_order, $isvis, $which);
-      $result = $stmt->execute();
-      $affected_rows = $stmt->affected_rows;
-      $stmt->close();
+    try {
+      $stmt = $supabase_pdo->prepare("UPDATE tabs_tbl SET tab_name = ?, tab_notes = ?, sort_order = ?, isvis = ? WHERE tbid = ?"); 
+      $result = $stmt->execute([$tab_name, $tab_notes, $sort_order, $isvis, $which]);
+      $affected_rows = $stmt->rowCount();
       
       // Debug logging
-      error_log("SHEETDETAIL UPDATE RESULT: result=$result, affected_rows=$affected_rows, error=" . $mysqli->error);
+      error_log("SHEETDETAIL UPDATE RESULT: result=$result, affected_rows=$affected_rows");
       error_log("SHEETDETAIL UPDATE VALUES: tab_name='$tab_name', tab_notes='$tab_notes', sort_order=$sort_order, isvis=$isvis, tbid=$which");
       
       if ($result && $affected_rows > 0) {
@@ -90,6 +84,9 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
       } else {
         $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to update sheet. No rows affected. Check the error log for details.</strong></div></div></div>";
       }
+    } catch (PDOException $e) {
+      error_log("SHEETDETAIL PREPARE ERROR: " . $e->getMessage());
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to prepare statement: " . $e->getMessage() . "</strong></div></div></div>";
     }
     }
   }
@@ -105,29 +102,23 @@ if ($newadmin == "newfield" && ($admintype == 'AT' || $admintype == 'DV')) {
    $sort_order = isset($_POST['sort_order']) ? (int)$_POST['sort_order'] : 0;
    
    // Check if field already exists
-   $vids = $mysqli->prepare("SELECT COUNT(*) FROM tab_fields WHERE tbid = ? AND stid = ?");
-   $vids->bind_param("ii", $which, $stid);
-   $vids->execute();
-   $vids->bind_result($numlinks);
-   $vids->fetch();
-   $vids->close();
+   $vids = $supabase_pdo->prepare("SELECT COUNT(*) FROM tab_fields WHERE tbid = ? AND stid = ?");
+   $vids->execute([$which, $stid]);
+   $numlinks = (int)$vids->fetchColumn();
    
    if ($numlinks == 0) {
-      $insert_stmt = $mysqli->prepare("INSERT INTO tab_fields (tbid, stid, sort_order) VALUES (?, ?, ?)");
-      $insert_stmt->bind_param("iii", $which, $stid, $sort_order);
-      $insert_stmt->execute();
-      $newid = $insert_stmt->insert_id;
-      $insert_stmt->close();
+      $insert_stmt = $supabase_pdo->prepare("INSERT INTO tab_fields (tbid, stid, sort_order) VALUES (?, ?, ?)");
+      $insert_stmt->execute([$which, $stid, $sort_order]);
+      $newid = (int)$supabase_pdo->lastInsertId();
       
       // Check if this is an AJAX request
       if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
           // Get field details for the response
-          $field_stmt = $mysqli->prepare("SELECT str, single FROM select_types WHERE stid = ?");
-          $field_stmt->bind_param("i", $stid);
-          $field_stmt->execute();
-          $field_stmt->bind_result($str, $single);
-          $field_stmt->fetch();
-          $field_stmt->close();
+          $field_stmt = $supabase_pdo->prepare("SELECT str, single FROM select_types WHERE stid = ?");
+          $field_stmt->execute([$stid]);
+          $field_row = $field_stmt->fetch(PDO::FETCH_ASSOC);
+          $str = $field_row ? $field_row['str'] : '';
+          $single = $field_row ? (int)$field_row['single'] : 0;
           
           // Field type mapping
           $fieldTypes = [
@@ -174,13 +165,13 @@ if ($newadmin == "newfield" && ($admintype == 'AT' || $admintype == 'DV')) {
 }
 
 // Fetch table details
-$stmt = $mysqli->prepare("SELECT tab_name, tab_notes, sort_order, isvis FROM tabs_tbl WHERE tbid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($tab_name, $tab_notes, $sort_order, $isvis);
-$stmt->fetch();
-$stmt->close();
+$stmt = $supabase_pdo->prepare("SELECT tab_name, tab_notes, sort_order, isvis FROM tabs_tbl WHERE tbid = ?");
+$stmt->execute([$which]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+$tab_name = $row ? $row['tab_name'] : '';
+$tab_notes = $row ? $row['tab_notes'] : '';
+$sort_order = $row ? (int)$row['sort_order'] : 0;
+$isvis = $row ? (int)$row['isvis'] : 1;
 
 // Prepare page variables
 $changename = htmlspecialchars($tab_name);
@@ -513,8 +504,7 @@ $changename = htmlspecialchars($tab_name);
                     echo $delalert;
                 }
                 ?>
-               </div>
-            </div>
+</div>
 
             <!-- Amend Card -->
             <div class="row">
@@ -544,19 +534,16 @@ $changename = htmlspecialchars($tab_name);
                               <div class="col form-group">
                                  <label class="col-form-label" for="sort_order">Sort order</label>
                                  <input class="form-control" type="number" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
-                              </div>
-                            </div>
+</div>
                         </div>
                         
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?php echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
 
             <!-- Sheet Category Management Section -->
             <div class="row">
@@ -571,10 +558,8 @@ $changename = htmlspecialchars($tab_name);
                                 <button class="btn btn-success mr-2" data-toggle="modal" data-target="#addFieldModal">
                                    <i class="fa fa-plus"></i> Add New Category
                                 </button>
-                              </div>
-                        </div>
-                     </div>
-                  </div>
+</div>
+</div>
                   
             <!-- Categories preview -->
             <div class="card mb-0 w-100 logbook-preview-card" style="box-shadow:none;border-radius:0;">
@@ -595,29 +580,18 @@ $changename = htmlspecialchars($tab_name);
                 GROUP BY fs.section_id, fs.section_name, fs.section_description, fs.section_order
                 ORDER BY fs.section_order ASC";
                 
-                $sections_stmt = $mysqli->prepare($sections_query);
-                if ($sections_stmt === false) {
-                    // Handle query preparation error
-                    echo '<div class="alert alert-danger">Error preparing sections query: ' . $mysqli->error . '</div>';
-                } else {
-                    $sections_stmt->bind_param("i", $table_id);
-                    $result = $sections_stmt->execute();
-                    
-                    if ($result === false) {
-                        // Handle execution error
-                        echo '<div class="alert alert-danger">Error executing sections query: ' . $sections_stmt->error . '</div>';
-                        $sections_result = null;
-                    } else {
-                        $sections_result = $sections_stmt->get_result();
-                    }
+                try {
+                    $sections_stmt = $supabase_pdo->prepare($sections_query);
+                    $sections_stmt->execute([$table_id]);
+                    $sections_result = $sections_stmt->fetchAll(PDO::FETCH_ASSOC);
                     
                     $sections = [];
-                    if ($sections_result) {
-                        while ($section = $sections_result->fetch_assoc()) {
-                            $sections[$section['section_id']] = $section;
-                        }
+                    foreach ($sections_result as $section) {
+                        $sections[$section['section_id']] = $section;
                     }
-                    $sections_stmt->close();
+                } catch (PDOException $e) {
+                    echo '<div class="alert alert-danger">Error preparing sections query: ' . $e->getMessage() . '</div>';
+                    $sections = [];
                 }
                 
                 // Get fields for this table with section information using section_table_link
@@ -643,16 +617,15 @@ $changename = htmlspecialchars($tab_name);
                     st.str ASC
                 ";
                 
-                $fields_stmt = $mysqli->prepare($fields_query);
-                $fields_stmt->bind_param("ii", $table_id, $table_id);
-                $fields_stmt->execute();
-                $fields_result = $fields_stmt->get_result();
+                $fields_stmt = $supabase_pdo->prepare($fields_query);
+                $fields_stmt->execute([$table_id, $table_id]);
+                $fields_result = $fields_stmt->fetchAll(PDO::FETCH_ASSOC);
                 
                 // Group fields by section
                 $sectioned_fields = [];
                 $unsectioned_fields = [];
                 
-                while ($field = $fields_result->fetch_assoc()) {
+                foreach ($fields_result as $field) {
                   // Debug the field
                   $debug_section_id = $field['section_id'];
                   $debug_field_name = $field['field_name'];
@@ -667,7 +640,6 @@ $changename = htmlspecialchars($tab_name);
                     $unsectioned_fields[] = $field;
                   }
                 }
-                $fields_stmt->close();
                 
                 // Display sections and their fields
                 foreach ($sections as $section_id => $section) {
@@ -866,8 +838,7 @@ $changename = htmlspecialchars($tab_name);
                   echo '</div>'; // End card
                               }
                 ?>
-                </div>
-            </div>
+</div>
 
             <!-- Delete Section -->
             <div class="row">
@@ -880,12 +851,9 @@ $changename = htmlspecialchars($tab_name);
                            <div class="float-right">
                             <a href="<?php echo $listurl; ?>?del=del&amp;which=<?php echo $which; ?>" class="btn btn-labeled btn-danger" role="button" onclick="return confirm('Are you sure you want to delete this record and all associated data?')">
                               <span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
-                     </div>
-               </div>
-            </div>
-         </div>
+</div>
+</div>
+</div>
       </section>
    </div>
 
@@ -910,10 +878,8 @@ $changename = htmlspecialchars($tab_name);
                <button type="button" class="btn btn-warning" id="confirmDeleteFieldBtn">
                   <i class="fas fa-trash"></i> Remove Field
                </button>
-            </div>
-         </div>
-      </div>
-   </div>
+</div>
+</div>
 
    <!-- JavaScript will be loaded after jQuery -->
    <script type="text/javascript">
@@ -2176,8 +2142,7 @@ $changename = htmlspecialchars($tab_name);
                         <button class="btn btn-secondary cancel-option-edit" type="button">
                             <i class="fas fa-times"></i>
                         </button>
-                    </div>
-                </div>
+</div>
             `);
             
             // Focus on input and select all text
@@ -2380,9 +2345,10 @@ $changename = htmlspecialchars($tab_name);
                         <?php
                         // Fetch all tables for selection
                         $tables_query = "SELECT tbid, tab_name FROM tabs_tbl ORDER BY tab_name";
-                        $tables_result = $mysqli->query($tables_query);
+                        $tables_result = $supabase_pdo->query($tables_query);
+                        $tables = $tables_result->fetchAll(PDO::FETCH_ASSOC);
                         
-                        while ($table = $tables_result->fetch_assoc()) {
+                        foreach ($tables as $table) {
                            echo "<option value='" . $table['tbid'] . "'>" . htmlspecialchars($table['tab_name']) . "</option>";
                         }
                         ?>
@@ -2395,8 +2361,7 @@ $changename = htmlspecialchars($tab_name);
                      <label>Current Categories in This Section</label>
                      <div id="current_section_fields" class="border rounded p-2" style="min-height: 50px;">
                         <small class="text-muted">Loading fields...</small>
-                     </div>
-                  </div>
+</div>
                </div>
                <div class="modal-footer">
                   <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
@@ -2404,8 +2369,7 @@ $changename = htmlspecialchars($tab_name);
                   <button type="submit" class="btn btn-primary">Save Changes</button>
                </div>
             </form>
-         </div>
-      </div>
+</div>
    </div>
    
    <!-- Assign Unsectioned Fields Modal -->
@@ -2431,15 +2395,13 @@ $changename = htmlspecialchars($tab_name);
                   
                   <div class="alert alert-info">
                      <p>This will move all unsectioned fields for this table into the selected section.</p>
-                  </div>
-               </div>
+</div>
                <div class="modal-footer">
                   <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                   <button type="submit" class="btn btn-primary">Assign Categories</button>
                </div>
             </form>
-         </div>
-      </div>
+</div>
    </div>
 
    <!-- Add Field Modal -->
@@ -2463,15 +2425,14 @@ $changename = htmlspecialchars($tab_name);
                         <option value="">Choose a field</option>
                         <?php
                         // Fetch fields not already in this table
-                        $fieldstmt = $mysqli->prepare("
+                        $fieldstmt = $supabase_pdo->prepare("
                            SELECT st.stid, st.str, st.single 
                            FROM select_types st 
                            LEFT JOIN tab_fields tf ON st.stid = tf.stid AND tf.tbid = ?
                            WHERE tf.stid IS NULL
                         ");
-                        $fieldstmt->bind_param("i", $which);
-                        $fieldstmt->execute();
-                        $result = $fieldstmt->get_result();
+                        $fieldstmt->execute([$which]);
+                        $result = $fieldstmt->fetchAll(PDO::FETCH_ASSOC);
                         
                         // Field type mapping
                         $fieldTypes = [
@@ -2484,11 +2445,10 @@ $changename = htmlspecialchars($tab_name);
                             6 => 'Time'
                         ];
 
-                        while ($row = $result->fetch_assoc()) {
+                        foreach ($result as $row) {
                            $listtype = $fieldTypes[$row['single']] ?? 'Unknown';
                            echo "<option value=\"{$row['stid']}\">{$row['str']} ({$listtype})</option>";
                         }
-                        $fieldstmt->close();
                         ?>
                      </select>
                   </div>
@@ -2498,15 +2458,13 @@ $changename = htmlspecialchars($tab_name);
                      <input type="number" class="form-control" id="sort_order" name="sort_order" 
                             value="<?php echo $sort_order; ?>" 
                             required>
-                  </div>
-               </div>
+</div>
                <div class="modal-footer">
                   <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                   <button type="submit" class="btn btn-primary">Add Field</button>
                </div>
             </form>
-         </div>
-      </div>
+</div>
    </div>
 
    <!-- Add this modal for managing selections -->
@@ -2544,19 +2502,13 @@ $changename = htmlspecialchars($tab_name);
                            </button>
                         </div>
                         <!-- Suggestions dropdown will be dynamically inserted here -->
-                     </div>
-                     
-
-                  </div>
-               </div>
-            </div>
+</div>
+</div>
             <div class="modal-footer">
                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                <button type="button" class="btn btn-primary" id="saveSelectionsBtn">Save Selections</button>
-            </div>
-         </div>
-      </div>
-   </div>
+</div>
+</div>
 
    <!-- Edit Field Modal -->
    <div class="modal fade" id="editFieldModal" tabindex="-1" role="dialog" aria-labelledby="editFieldModalLabel" aria-hidden="true">
@@ -2609,10 +2561,8 @@ $changename = htmlspecialchars($tab_name);
             <div class="modal-footer">
                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                <button type="submit" class="btn btn-primary" form="edit_field_form">Save Changes</button>
-            </div>
-         </div>
-      </div>
-   </div>
+</div>
+</div>
 
 
     <!-- CSS for notifications -->
@@ -3106,8 +3056,7 @@ $changename = htmlspecialchars($tab_name);
                          <button class="btn btn-secondary cancel-option-edit" type="button">
                              <i class="fas fa-times"></i>
                          </button>
-                     </div>
-                 </div>
+</div>
              `);
              
              // Focus on input and select all text

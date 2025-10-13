@@ -680,9 +680,11 @@
     function initSidebar() {
         $sidebar = $('.sidebar');
 
-        // AUTOCOLLAPSE ITEMS
+        // AUTOCOLLAPSE ITEMS - DISABLED FOR NORMAL SIDEBAR BEHAVIOR
         // -----------------------------------
-
+        // Commented out to allow normal Bootstrap collapse behavior
+        // This was causing sidebar subsections to close immediately after opening
+        /*
         var sidebarCollapse = $sidebar.find('.collapse');
         sidebarCollapse.on('show.bs.collapse', function(event) {
             event.stopPropagation();
@@ -692,6 +694,7 @@
                     .not('#user-block')
                     .collapse('hide');
         });
+        */
 
         // SIDEBAR ACTIVE STATE
         // -----------------------------------

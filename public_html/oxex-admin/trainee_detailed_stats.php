@@ -39,17 +39,18 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Check permissions - allow all admin types to view trainee stats
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 
 // Fetch trainee subsets (groups) for filtering
 $subsets = [];
 $canViewAll = ($admintype == 'AT' || $admintype == 'DV');
 $subsets_query = "SELECT setkey, subset, usrkey FROM subset_tbl ORDER BY subset ASC";
-$subsets_result = $mysqli->query($subsets_query);
+$subsets_result = $pdo->query($subsets_query);
 if ($subsets_result) {
-    while ($subset = $subsets_result->fetch_assoc()) {
+    while ($subset = $subsets_result->fetch(PDO::FETCH_ASSOC)) {
         if ($canViewAll || $subset['usrkey'] == $usrkey) {
             $subsets[] = $subset;
         }
@@ -60,6 +61,13 @@ if ($subsets_result) {
 $thisyear = date("Y");
 $start_year = isset($_GET['start_year']) ? (int)$_GET['start_year'] : ($thisyear - 10); // Default to 10 years ago
 $end_year = isset($_GET['end_year']) ? (int)$_GET['end_year'] : ($thisyear + 1); // Default to next year
+
+// Validate date parameters to prevent overflow
+$start_year = max(1900, min(2100, $start_year));
+$end_year = max(1900, min(2100, $end_year));
+if ($start_year > $end_year) {
+    $start_year = $end_year;
+}
 $selected_course = isset($_GET['course']) ? (int)$_GET['course'] : 0;
 $selected_competency = isset($_GET['competency']) ? (int)$_GET['competency'] : 0;
 $selected_group = isset($_GET['group']) ? $_GET['group'] : ''; // empty = all groups, 'subset_123' = specific group, 'ALL_USERS' = all users
@@ -118,8 +126,8 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
                         WHERE 1=1 $course_condition $group_condition $babcp_condition_simple $additional_conditions
                         GROUP BY t.tid ORDER BY t.name";
         
-        $result = $mysqli->query($export_query);
-        while ($row = $result->fetch_assoc()) {
+        $result = $pdo->query($export_query);
+        while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
             fputcsv($output, [
                 $row['name'],
                 $row['email'],
@@ -135,7 +143,7 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
         
         // Use the same query as the competency difficulty analysis with all filters
         $competency_query = "
-            SELECT /*+ USE_INDEX(tabs, idx_tabs_isvis_sort) USE_INDEX(tl, idx_trainee_log_tbid) USE_INDEX(tl, idx_trainee_log_select_val) */
+            SELECT
                 tabs.tab_name,
                 COUNT(tl.tlogid) as total_attempts,
                 COUNT(CASE WHEN tl.select_val = '1' THEN 1 END) as successful_attempts,
@@ -151,8 +159,8 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
         
         $competency_query .= " GROUP BY tabs.tbid, tabs.tab_name ORDER BY success_rate ASC";
         
-        $result = $mysqli->query($competency_query);
-        while ($row = $result->fetch_assoc()) {
+        $result = $pdo->query($competency_query);
+        while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
             $difficulty = 'Easy';
             if ($row['success_rate'] < 60) {
                 $difficulty = 'Hard';
@@ -173,7 +181,7 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
         
         // Use the same query as the BABCP case analysis with all filters
         $full_report_query = "
-            SELECT /*+ USE_INDEX(t, idx_trainee_uid) USE_INDEX(tl, idx_trainee_log_trainkey) USE_INDEX(st, idx_select_types_str) USE_INDEX(tl, idx_trainee_log_logkey) USE_INDEX(tl, idx_trainee_log_stid) USE_INDEX(tl, idx_trainee_log_logkey_tbid) */
+            SELECT
                 t.trainkey,
                 t.name as trainee_name,
                 u.university,
@@ -218,15 +226,15 @@ if ($export_type && ($admintype == 'AT' || $admintype == 'DV')) {
             LEFT JOIN trainee_log tl ON t.trainkey = tl.trainkey
             LEFT JOIN select_types st ON tl.stid = st.stid
             LEFT JOIN (
-                SELECT /*+ USE_INDEX(trainee_log, idx_trainee_log_logkey) */ logkey, COUNT(DISTINCT tlogid) as session_count
+                SELECT logkey, COUNT(DISTINCT tlogid) as session_count
                 FROM trainee_log 
                 GROUP BY logkey
             ) session_counts ON tl.logkey = session_counts.logkey
             WHERE 1=1 $course_condition $babcp_condition_simple $additional_conditions
             GROUP BY t.trainkey, t.name ORDER BY t.name";
         
-        $result = $mysqli->query($full_report_query);
-        while ($row = $result->fetch_assoc()) {
+        $result = $pdo->query($full_report_query);
+        while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
             // Calculate compliance score
             $compliance_score = 0;
             if ($row['babcp_training_cases'] > 0) $compliance_score += 25;
@@ -327,6 +335,9 @@ class QueryCache {
 }
 
 $pagetitle = "Trainee Detailed Analytics";
+
+// Set variables needed by adminjs.php
+setAdminVars(2); // Trainees section
 $subtitle = "Advanced Trainee Statistics";
 $listurl = "trainee_stats.php";
 $listname = "Trainee Statistics";
@@ -424,8 +435,8 @@ $babcp_url = 'trainee_detailed_stats.php?' . ($base_query_str ? $base_query_str 
 
 <?php 
 // Date ranges for queries
-$datestart = $start_year . '0101';
-$dateend = $end_year . '1231';
+$datestart = sprintf('%04d0101', $start_year);
+$dateend = sprintf('%04d1231', $end_year);
 
 // Get course and group filter conditions
 $course_condition = "";
@@ -458,6 +469,20 @@ if ($selected_group === 'ALL_USERS') {
 $all_basic_params = $course_params;
 $all_basic_param_types = $course_param_types;
 
+// Debug: Log the parameter values
+error_log("Selected course: $selected_course");
+error_log("Selected group: $selected_group");
+error_log("Course params: " . print_r($course_params, true));
+error_log("All basic params: " . print_r($all_basic_params, true));
+
+// Validate course/group parameters to ensure they're not being treated as dates
+foreach ($all_basic_params as $i => $param) {
+    if (is_numeric($param) && strlen($param) == 8) {
+        // This could be mistaken for a date - log it for debugging
+        error_log("Warning: Parameter at index $i is 8 digits: '$param' - this might be a course ID, not a date");
+    }
+}
+
 // OPTIMIZED: Pre-compute BABCP trainee list to avoid complex subqueries with caching
 $babcp_trainees = [];
 if ($babcp_filter == 1) {
@@ -477,9 +502,9 @@ if ($babcp_filter == 1) {
             )
         ";
         
-        $result = $mysqli->query($babcp_trainees_query);
+        $result = $pdo->query($babcp_trainees_query);
         $babcp_trainees = [];
-        while ($row = $result->fetch_assoc()) {
+        while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
             $babcp_trainees[] = $row['trainkey'];
         }
         
@@ -516,9 +541,9 @@ if ($babcp_training == 1) {
         AND (st.str LIKE '%BABCP%' OR st.str LIKE '%Behavioural%' OR st.str LIKE '%Cognitive%')
     ";
     
-    $result = $mysqli->query($training_trainees_query);
+    $result = $pdo->query($training_trainees_query);
     $training_trainees = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
         $training_trainees[] = $row['trainkey'];
     }
     
@@ -539,9 +564,9 @@ if ($supervised_case == 1) {
         WHERE (st.str LIKE '%supervised%' OR st.str LIKE '%supervision%' OR st.str LIKE '%supervisor%')
     ";
     
-    $result = $mysqli->query($supervised_trainees_query);
+    $result = $pdo->query($supervised_trainees_query);
     $supervised_trainees = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
         $supervised_trainees[] = $row['trainkey'];
     }
     
@@ -562,9 +587,9 @@ if (!empty($primary_modality)) {
         WHERE st.str LIKE '%$primary_modality%'
     ";
     
-    $result = $mysqli->query($modality_trainees_query);
+    $result = $pdo->query($modality_trainees_query);
     $modality_trainees = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
         $modality_trainees[] = $row['trainkey'];
     }
     
@@ -585,9 +610,9 @@ if ($min_sessions > 0) {
                WHERE tl.trainkey = t.trainkey) >= $min_sessions
     ";
     
-    $result = $mysqli->query($sessions_trainees_query);
+    $result = $pdo->query($sessions_trainees_query);
     $sessions_trainees = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
         $sessions_trainees[] = $row['trainkey'];
     }
     
@@ -618,15 +643,33 @@ if (!empty($filter_trainees)) {
     }
 }
 
+// Helper function to validate YYYYMMDD date format
+function isValidYYYYMMDD($date) {
+    if (!preg_match('/^[0-9]{8}$/', $date)) {
+        return false;
+    }
+    $year = substr($date, 0, 4);
+    $month = substr($date, 4, 2);
+    $day = substr($date, 6, 2);
+    
+    // Check reasonable date ranges
+    if ($year < 1900 || $year > 2100) return false;
+    if ($month < 1 || $month > 12) return false;
+    if ($day < 1 || $day > 31) return false;
+    
+    // Check if date is valid
+    return checkdate($month, $day, $year);
+}
+
 // Get all courses for filter dropdown with caching
 $cache_key_courses = 'courses_list_detailed';
 $courses = QueryCache::get($cache_key_courses);
 
 if ($courses === null) {
-    $courses_query = "SELECT /*+ USE_INDEX(uni_tbl, idx_uni_university) */ uid, university FROM uni_tbl ORDER BY university";
-    $courses_result = $mysqli->query($courses_query);
+    $courses_query = "SELECT uid, university FROM uni_tbl ORDER BY university";
+    $courses_result = $pdo->query($courses_query);
     $courses = [];
-    while ($row = $courses_result->fetch_assoc()) {
+    while ($row = $courses_result->fetch(PDO::FETCH_ASSOC)) {
         $courses[] = $row;
     }
     QueryCache::set($cache_key_courses, $courses);
@@ -637,10 +680,10 @@ $cache_key_competencies = 'competencies_list';
 $competencies = QueryCache::get($cache_key_competencies);
 
 if ($competencies === null) {
-    $competencies_query = "SELECT /*+ USE_INDEX(tabs_tbl, idx_tabs_isvis_sort) */ tbid, tab_name FROM tabs_tbl WHERE isvis = 1 ORDER BY sort_order";
-    $competencies_result = $mysqli->query($competencies_query);
+    $competencies_query = "SELECT tbid, tab_name FROM tabs_tbl WHERE isvis = 1 ORDER BY sort_order";
+    $competencies_result = $pdo->query($competencies_query);
     $competencies = [];
-    while ($row = $competencies_result->fetch_assoc()) {
+    while ($row = $competencies_result->fetch(PDO::FETCH_ASSOC)) {
         $competencies[] = $row;
     }
     QueryCache::set($cache_key_competencies, $competencies);
@@ -655,36 +698,61 @@ if ($competencies === null) {
 if ($view === 'overview') {
     $monthly_activity_query = "
         SELECT 
-            DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m') as month,
+            TO_CHAR(CASE WHEN tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231 THEN TO_DATE(tl.date_added::text, 'YYYYMMDD') ELSE NULL END, 'YYYY-MM') as month,
             COUNT(*) as entries,
             COUNT(DISTINCT tl.trainkey) as active_trainees
         FROM trainee_log tl
         JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-        WHERE tl.date_added >= ? AND tl.date_added <= ? $course_condition $group_condition $babcp_condition_simple $additional_conditions
-        GROUP BY DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m')
+        WHERE tl.date_added >= ? AND tl.date_added <= ? 
+          AND tl.date_added::text ~ '^[0-9]{8}$'  -- Only valid YYYYMMDD format
+          AND tl.date_added >= 19000101  -- Reasonable date range
+          AND tl.date_added <= 21001231
+          AND CASE 
+            WHEN tl.date_added::text ~ '^[0-9]{8}$' THEN
+              CASE 
+                WHEN SUBSTR(tl.date_added::text, 1, 4)::int BETWEEN 1900 AND 2100 AND
+                     SUBSTR(tl.date_added::text, 5, 2)::int BETWEEN 1 AND 12 AND
+                     SUBSTR(tl.date_added::text, 7, 2)::int BETWEEN 1 AND 31
+                THEN TRUE
+                ELSE FALSE
+              END
+            ELSE FALSE
+          END
+          $course_condition $group_condition $babcp_condition_simple $additional_conditions
+        GROUP BY TO_CHAR(CASE WHEN tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231 THEN TO_DATE(tl.date_added::text, 'YYYYMMDD') ELSE NULL END, 'YYYY-MM')
         ORDER BY month DESC
         LIMIT 12
     ";
 
     // FIXED: The date_added field contains YYYYMMDD format, not Unix timestamps
-    $datestart_yyyymmdd = $start_year . '0101'; // YYYYMMDD format
-    $dateend_yyyymmdd = $end_year . '1231';     // YYYYMMDD format
+    $datestart_yyyymmdd = sprintf('%04d0101', $start_year); // YYYYMMDD format with proper padding
+    $dateend_yyyymmdd = sprintf('%04d1231', $end_year);     // YYYYMMDD format with proper padding
+    
+    // Additional validation to ensure proper format
+    if (!preg_match('/^\d{8}$/', $datestart_yyyymmdd) || !preg_match('/^\d{8}$/', $dateend_yyyymmdd)) {
+        error_log("Invalid date format generated: start=$datestart_yyyymmdd, end=$dateend_yyyymmdd");
+        throw new Exception("Invalid date format generated");
+    }
 
     error_log("Using YYYYMMDD format - Start: $datestart_yyyymmdd, End: $dateend_yyyymmdd");
-    $stmt = $mysqli->prepare($monthly_activity_query);
-    if (!empty($all_basic_params)) {
-        $stmt->bind_param("ii" . $all_basic_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$all_basic_params);
-    } else {
-        $stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
+    $stmt = $pdo->prepare($monthly_activity_query);
+    try {
+        if (!empty($all_basic_params)) {
+            $stmt->execute(array_merge([$datestart_yyyymmdd, $dateend_yyyymmdd], $all_basic_params));
+        } else {
+            $stmt->execute([$datestart_yyyymmdd, $dateend_yyyymmdd]);
+        }
+    } catch (PDOException $e) {
+        error_log("Monthly activity query error: " . $e->getMessage());
+        error_log("Query parameters - Start: $datestart_yyyymmdd, End: $dateend_yyyymmdd");
+        error_log("All basic params: " . print_r($all_basic_params, true));
+        throw $e;
     }
-    $stmt->execute();
-    $stmt->store_result();
-    $stmt->bind_result($month, $entries, $active_trainees);
     $monthly_activity = [];
-    while ($stmt->fetch()) {
-        $monthly_activity[] = ['month' => $month, 'entries' => $entries, 'active_trainees' => $active_trainees];
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $monthly_activity[] = ['month' => $row['month'], 'entries' => $row['entries'], 'active_trainees' => $row['active_trainees']];
     }
-    $stmt->close();
+    $stmt->closeCursor();
 
     // Debug: Log the monthly activity data and filter conditions
     error_log("=== FILTER DEBUG ===");
@@ -701,36 +769,32 @@ if ($view === 'overview') {
     } else {
         // Test if there's any data in trainee_log at all
         $test_query = "SELECT COUNT(*) as total FROM trainee_log";
-        $test_result = $mysqli->query($test_query);
+        $test_result = $pdo->query($test_query);
         if ($test_result) {
-            $test_row = $test_result->fetch_assoc();
+            $test_row = $test_result->fetch(PDO::FETCH_ASSOC);
             error_log("Total trainee_log entries: " . $test_row['total']);
         }
         
         // Test if there are any entries in the date range
-        $date_test_query = "SELECT COUNT(*) as date_count FROM trainee_log WHERE date_added >= ? AND date_added <= ?";
-        $date_stmt = $mysqli->prepare($date_test_query);
-        $date_stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
-        $date_stmt->execute();
-        $date_stmt->bind_result($date_count);
-        $date_stmt->fetch();
-        $date_stmt->close();
+        $date_test_query = "SELECT COUNT(*) as date_count FROM trainee_log WHERE date_added >= ? AND date_added <= ? AND date_added::text ~ '^[0-9]{8}$' AND date_added >= 19000101 AND date_added <= 21001231";
+        $date_stmt = $pdo->prepare($date_test_query);
+        $date_stmt->execute([$datestart_yyyymmdd, $dateend_yyyymmdd]);
+        $date_count = $date_stmt->fetchColumn();
+        $date_stmt->closeCursor();
         error_log("Trainee_log entries in date range: " . $date_count);
         
         // Test the actual query being used
-        $debug_query = "SELECT COUNT(*) as debug_count FROM trainee_log tl JOIN trainee_tbl t ON tl.trainkey = t.trainkey WHERE tl.date_added >= ? AND tl.date_added <= ? $course_condition $babcp_condition_simple $additional_conditions";
+        $debug_query = "SELECT COUNT(*) as debug_count FROM trainee_log tl JOIN trainee_tbl t ON tl.trainkey = t.trainkey WHERE tl.date_added >= ? AND tl.date_added <= ? AND tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231 $course_condition $babcp_condition_simple $additional_conditions";
         error_log("Debug query: $debug_query");
         
-        $debug_stmt = $mysqli->prepare($debug_query);
+        $debug_stmt = $pdo->prepare($debug_query);
         if (!empty($all_basic_params)) {
-            $debug_stmt->bind_param("ii" . $all_basic_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$all_basic_params);
+            $debug_stmt->execute(array_merge([$datestart_yyyymmdd, $dateend_yyyymmdd], $all_basic_params));
         } else {
-            $debug_stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
+            $debug_stmt->execute([$datestart_yyyymmdd, $dateend_yyyymmdd]);
         }
-        $debug_stmt->execute();
-        $debug_stmt->bind_result($debug_count);
-        $debug_stmt->fetch();
-        $debug_stmt->close();
+        $debug_count = $debug_stmt->fetchColumn();
+        $debug_stmt->closeCursor();
         error_log("Debug query result count: " . $debug_count);
         
         // Create sample data for demonstration if no real data exists
@@ -742,8 +806,8 @@ if ($view === 'overview') {
     }
 } else {
     // Ensure variables exist for other views
-    $datestart_yyyymmdd = $start_year . '0101';
-    $dateend_yyyymmdd = $end_year . '1231';
+    $datestart_yyyymmdd = sprintf('%04d0101', $start_year);
+    $dateend_yyyymmdd = sprintf('%04d1231', $end_year);
     $monthly_activity = [];
 }
 
@@ -751,7 +815,7 @@ if ($view === 'overview') {
 // OPTIMIZED: Use index hints for complex subquery optimization including supervisor2 and supervisor3
 if ($view === 'overview') {
     $supervisor_performance_query = "
-        SELECT /*+ USE_INDEX(w, idx_who_there_admintype) USE_INDEX(t, idx_trainee_supervisor) USE_INDEX(t, idx_trainee_supervisor2) USE_INDEX(t, idx_trainee_supervisor3) USE_INDEX(tl, idx_trainee_log_trainkey) */
+        SELECT
             w.realname as supervisor_name,
             COUNT(DISTINCT t.tid) as trainee_count,
             AVG(trainee_stats.avg_entries) as avg_entries_per_trainee,
@@ -765,7 +829,7 @@ if ($view === 'overview') {
                 (COUNT(DISTINCT tl.tbid) * 100.0 / (SELECT COUNT(*) FROM tabs_tbl WHERE isvis = 1)) as completion_rate
             FROM trainee_tbl t2
             LEFT JOIN trainee_log tl ON t2.trainkey = tl.trainkey
-            WHERE tl.date_added >= ? AND tl.date_added <= ?
+            WHERE tl.date_added >= ? AND tl.date_added <= ? AND tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231
             GROUP BY t2.trainkey
         ) trainee_stats ON t.trainkey = trainee_stats.trainkey
         WHERE w.admintype IN ('SO', 'SE') $course_condition $group_condition $babcp_condition_simple $additional_conditions
@@ -774,25 +838,22 @@ if ($view === 'overview') {
         LIMIT 10
     ";
 
-    $stmt = $mysqli->prepare($supervisor_performance_query);
+    $stmt = $pdo->prepare($supervisor_performance_query);
     if (!empty($all_basic_params)) {
-        $stmt->bind_param("ii" . $all_basic_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$all_basic_params);
+        $stmt->execute(array_merge([$datestart_yyyymmdd, $dateend_yyyymmdd], $all_basic_params));
     } else {
-        $stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
+        $stmt->execute([$datestart_yyyymmdd, $dateend_yyyymmdd]);
     }
-    $stmt->execute();
-    $stmt->store_result();
-    $stmt->bind_result($supervisor_name, $trainee_count, $avg_entries, $avg_completion_rate);
     $supervisor_performance = [];
-    while ($stmt->fetch()) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $supervisor_performance[] = [
-            'name' => $supervisor_name,
-            'trainee_count' => $trainee_count,
-            'avg_entries' => round($avg_entries ?? 0, 1),
-            'avg_completion_rate' => round($avg_completion_rate ?? 0, 1)
+            'name' => $row['supervisor_name'],
+            'trainee_count' => $row['trainee_count'],
+            'avg_entries' => round($row['avg_entries'] ?? 0, 1),
+            'avg_completion_rate' => round($row['avg_completion_rate'] ?? 0, 1)
         ];
     }
-    $stmt->close();
+    $stmt->closeCursor();
 } else {
     $supervisor_performance = [];
 }
@@ -801,7 +862,7 @@ if ($view === 'overview') {
 // PERFORMANCE: Simplified query with pre-computed BABCP flags and better indexing
 if ($view === 'competency') {
     $competency_difficulty_query = "
-        SELECT /*+ USE_INDEX(tabs, idx_tabs_isvis_sort) USE_INDEX(tl, idx_trainee_log_tbid) USE_INDEX(tl, idx_trainee_log_select_val) */
+        SELECT
             tabs.tab_name,
             COUNT(tl.tlogid) as total_attempts,
             COUNT(CASE WHEN tl.select_val = '1' THEN 1 END) as successful_attempts,
@@ -809,28 +870,27 @@ if ($view === 'competency') {
         FROM tabs_tbl tabs
         LEFT JOIN trainee_log tl ON tabs.tbid = tl.tbid
         LEFT JOIN trainee_tbl t ON tl.trainkey = t.trainkey
-        WHERE tabs.isvis = 1 $course_condition $group_condition $babcp_condition_with_tabs $additional_conditions
+        WHERE tabs.isvis = 1 AND tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231 $course_condition $group_condition $babcp_condition_with_tabs $additional_conditions
         GROUP BY tabs.tbid, tabs.tab_name
         ORDER BY success_rate ASC
     ";
 
-    $stmt = $mysqli->prepare($competency_difficulty_query);
+    $stmt = $pdo->prepare($competency_difficulty_query);
     if (!empty($all_basic_params)) {
-        $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
+        $stmt->execute($all_basic_params);
+    } else {
+        $stmt->execute();
     }
-    $stmt->execute();
-    $stmt->store_result();
-    $stmt->bind_result($tab_name, $total_attempts, $successful_attempts, $success_rate);
     $competency_difficulty = [];
-    while ($stmt->fetch()) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $competency_difficulty[] = [
-            'tab_name' => $tab_name,
-            'total_attempts' => $total_attempts,
-            'successful_attempts' => $successful_attempts,
-            'success_rate' => round($success_rate ?? 0, 1)
+            'tab_name' => $row['tab_name'],
+            'total_attempts' => $row['total_attempts'],
+            'successful_attempts' => $row['successful_attempts'],
+            'success_rate' => round($row['success_rate'] ?? 0, 1)
         ];
     }
-    $stmt->close();
+    $stmt->closeCursor();
 } else {
     $competency_difficulty = [];
 }
@@ -839,7 +899,7 @@ if ($view === 'competency') {
 // OPTIMIZED: Use index hints for complex case analysis including stid and logkey_tbid
 if ($view === 'babcp') {
     $babcp_case_analysis_query = "
-    SELECT /*+ USE_INDEX(t, idx_trainee_uid) USE_INDEX(tl, idx_trainee_log_trainkey) USE_INDEX(st, idx_select_types_str) USE_INDEX(tl, idx_trainee_log_logkey) USE_INDEX(tl, idx_trainee_log_stid) USE_INDEX(tl, idx_trainee_log_logkey_tbid) */
+    SELECT
         t.trainkey,
         t.name as trainee_name,
         COUNT(DISTINCT tl.logkey) as total_cases,
@@ -896,36 +956,40 @@ if ($view === 'babcp') {
             -- Prefer numeric session field if present
             MAX(CASE 
                 WHEN st_sc.str LIKE 'Number of sessions%'
-                     AND tl_sc.select_val REGEXP '^[0-9]+'
-                THEN CAST(tl_sc.select_val AS UNSIGNED)
+                     AND tl_sc.select_val ~ '^[0-9]+$'
+                     AND tl_sc.select_val !~ '\.'
+                     AND tl_sc.select_val !~ '[^0-9]'
+                THEN CAST(tl_sc.select_val AS INTEGER)
                 ELSE NULL
             END) AS numeric_sessions,
             -- Fallback: count distinct date-like values across fields
             COUNT(DISTINCT NULLIF(
                 COALESCE(
-                    STR_TO_DATE(tl_sc.select_val, '%Y-%m-%d'),
-                    STR_TO_DATE(tl_sc.select_val, '%d/%m/%Y'),
-                    STR_TO_DATE(tl_sc.select_val, '%d-%m-%Y'),
-                    STR_TO_DATE(tl_sc.select_val, '%Y/%m/%d'),
-                    STR_TO_DATE(tl_sc.select_val, '%Y%m%d')
+                    CASE WHEN tl_sc.select_val ~ '^\d{4}-\d{2}-\d{2}$' THEN tl_sc.select_val::date ELSE NULL END,
+                    CASE WHEN tl_sc.select_val ~ '^\d{2}/\d{2}/\d{4}$' THEN TO_DATE(tl_sc.select_val, 'DD/MM/YYYY') ELSE NULL END,
+                    CASE WHEN tl_sc.select_val ~ '^\d{2}-\d{2}-\d{4}$' THEN TO_DATE(tl_sc.select_val, 'DD-MM-YYYY') ELSE NULL END,
+                    CASE WHEN tl_sc.select_val ~ '^\d{4}/\d{2}/\d{2}$' THEN TO_DATE(tl_sc.select_val, 'YYYY/MM/DD') ELSE NULL END,
+                    CASE WHEN tl_sc.select_val ~ '^\d{8}$' AND tl_sc.select_val::int >= 19000101 AND tl_sc.select_val::int <= 21001231 THEN TO_DATE(tl_sc.select_val, 'YYYYMMDD') ELSE NULL END
                 ),
-                DATE('0000-00-00')
+                NULL
             )) AS distinct_dates
         FROM trainee_log tl_sc
         LEFT JOIN select_types st_sc ON st_sc.stid = tl_sc.stid
-        WHERE tl_sc.date_added >= ? AND tl_sc.date_added <= ?
+        WHERE tl_sc.date_added >= ? AND tl_sc.date_added <= ? AND tl_sc.date_added::text ~ '^[0-9]{8}$' AND tl_sc.date_added >= 19000101 AND tl_sc.date_added <= 21001231
         GROUP BY tl_sc.logkey
     ) session_counts ON tl.logkey = session_counts.logkey
     LEFT JOIN (
-        SELECT /*+ USE_INDEX(trainee_log, idx_trainee_log_logkey) */ 
+        SELECT 
             tl_hours.logkey,
             SUM(CASE 
                 WHEN tl_hours.select_val IS NOT NULL AND tl_hours.select_val != '0' AND tl_hours.select_val != '00:00'
-                THEN (CAST(SUBSTRING_INDEX(tl_hours.select_val, ':', 1) AS UNSIGNED) * 60 + CAST(SUBSTRING_INDEX(tl_hours.select_val, ':', -1) AS UNSIGNED)) / 60.0
+                AND SPLIT_PART(tl_hours.select_val, ':', 1) ~ '^[0-9]+$' AND SPLIT_PART(tl_hours.select_val, ':', 1) !~ '\.'
+                AND SPLIT_PART(tl_hours.select_val, ':', 2) ~ '^[0-9]+$' AND SPLIT_PART(tl_hours.select_val, ':', 2) !~ '\.'
+                THEN (CAST(SPLIT_PART(tl_hours.select_val, ':', 1) AS INTEGER) * 60 + CAST(SPLIT_PART(tl_hours.select_val, ':', 2) AS INTEGER)) / 60.0
                 ELSE 0
             END) as total_hours
         FROM trainee_log tl_hours 
-        WHERE tl_hours.stid = 60 AND tl_hours.date_added >= ? AND tl_hours.date_added <= ?
+        WHERE tl_hours.stid = 60 AND tl_hours.date_added >= ? AND tl_hours.date_added <= ? AND tl_hours.date_added::text ~ '^[0-9]{8}$' AND tl_hours.date_added >= 19000101 AND tl_hours.date_added <= 21001231
         GROUP BY tl_hours.logkey
     ) session_hours ON tl.logkey = session_hours.logkey
     LEFT JOIN (
@@ -961,44 +1025,69 @@ if ($view === 'babcp') {
             ) as is_cbt
         FROM trainee_log tl_sub
         LEFT JOIN select_types st_sub ON tl_sub.stid = st_sub.stid
-        WHERE tl_sub.date_added >= ? AND tl_sub.date_added <= ?
+        WHERE tl_sub.date_added >= ? AND tl_sub.date_added <= ? AND tl_sub.date_added::text ~ '^[0-9]{8}$' AND tl_sub.date_added >= 19000101 AND tl_sub.date_added <= 21001231
         GROUP BY tl_sub.logkey, tl_sub.trainkey
     ) flags ON flags.logkey = tl.logkey AND flags.trainkey = tl.trainkey
     WHERE 1=1 $course_condition $group_condition $babcp_condition_simple $additional_conditions
-    AND tl.date_added >= ? AND tl.date_added <= ?
+    AND tl.date_added >= ? AND tl.date_added <= ? AND tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231
     GROUP BY t.trainkey, t.name
     ORDER BY t.name
 ";
 
-    $stmt = $mysqli->prepare($babcp_case_analysis_query);
-    if (!empty($all_basic_params)) {
-        $stmt->bind_param("iiiiiiii" . $all_basic_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$all_basic_params);
-    } else {
-        $stmt->bind_param("iiiiiiii", $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd);
+    // Debug: Log all parameters before execution
+    error_log("BABCP Query - All basic params: " . print_r($all_basic_params, true));
+    
+    // The query structure is:
+    // 1. Subquery 1 (session_counts): 2 date params
+    // 2. Subquery 2 (session_hours): 2 date params  
+    // 3. Subquery 3 (flags): 2 date params
+    // 4. Main query: course/group params, then 2 date params
+    // Parameters order: [subq1_date1, subq1_date2, subq2_date1, subq2_date2, subq3_date1, subq3_date2, course/group_params, main_date1, main_date2]
+    $subquery_date_params = [$datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd, $datestart_yyyymmdd, $dateend_yyyymmdd];
+    $main_date_params = [$datestart_yyyymmdd, $dateend_yyyymmdd];
+    
+    // Validate all date parameters
+    $all_date_params = array_merge($subquery_date_params, $main_date_params);
+    foreach ($all_date_params as $i => $param) {
+        if (!preg_match('/^\d{8}$/', $param) || $param < 19000101 || $param > 21001231) {
+            error_log("Invalid date parameter at index $i: '$param'");
+            throw new Exception("Invalid date parameter: $param");
+        }
     }
-    $stmt->execute();
-    $stmt->store_result();
-    $stmt->bind_result($trainkey, $trainee_name, $total_cases, $babcp_training_cases, $supervised_cases, $cbt_cases, $babcp_supervised_cases, $closed_cbt_babcp_cases, $cases_with_5plus_sessions, $cases_with_5plus_hours, $trauma_cases, $anxiety_cases, $depression_cases, $ocd_cases);
+    
+    // Combine parameters in correct order: subquery dates, then course/group params, then main dates
+    $all_params = array_merge($subquery_date_params, $all_basic_params, $main_date_params);
+    
+    $stmt = $pdo->prepare($babcp_case_analysis_query);
+    try {
+        $stmt->execute($all_params);
+    } catch (PDOException $e) {
+        error_log("BABCP case analysis query error: " . $e->getMessage());
+        error_log("Query parameters - Start: $datestart_yyyymmdd, End: $dateend_yyyymmdd");
+        error_log("All basic params: " . print_r($all_basic_params, true));
+        error_log("All params being executed: " . print_r($all_params, true));
+        throw $e;
+    }
     $babcp_case_analysis = [];
-    while ($stmt->fetch()) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $babcp_case_analysis[] = [
-            'trainkey' => $trainkey,
-            'trainee_name' => $trainee_name,
-            'total_cases' => $total_cases,
-            'babcp_training_cases' => $babcp_training_cases,
-            'supervised_cases' => $supervised_cases,
-            'cbt_cases' => $cbt_cases,
-            'babcp_supervised_cases' => $babcp_supervised_cases,
-            'closed_cbt_babcp_cases' => $closed_cbt_babcp_cases,
-            'cases_with_5plus_sessions' => $cases_with_5plus_sessions,
-            'cases_with_5plus_hours' => $cases_with_5plus_hours,
-            'trauma_cases' => $trauma_cases,
-            'anxiety_cases' => $anxiety_cases,
-            'depression_cases' => $depression_cases,
-            'ocd_cases' => $ocd_cases
+            'trainkey' => $row['trainkey'],
+            'trainee_name' => $row['trainee_name'],
+            'total_cases' => $row['total_cases'],
+            'babcp_training_cases' => $row['babcp_training_cases'],
+            'supervised_cases' => $row['supervised_cases'],
+            'cbt_cases' => $row['cbt_cases'],
+            'babcp_supervised_cases' => $row['babcp_supervised_cases'],
+            'closed_cbt_babcp_cases' => $row['closed_cbt_babcp_cases'],
+            'cases_with_5plus_sessions' => $row['cases_with_5plus_sessions'],
+            'cases_with_5plus_hours' => $row['cases_with_5plus_hours'],
+            'trauma_cases' => $row['trauma_cases'],
+            'anxiety_cases' => $row['anxiety_cases'],
+            'depression_cases' => $row['depression_cases'],
+            'ocd_cases' => $row['ocd_cases']
         ];
     }
-    $stmt->close();
+    $stmt->closeCursor();
 
     // Get summary statistics for BABCP requirements - Enhanced with clinical issues and duration metrics
     $babcp_summary_stats = [
@@ -1029,7 +1118,7 @@ if ($view === 'babcp') {
     // Get BABCP growth trends over time for plotting - Fixed with all filters and YYYYMMDD format
     $babcp_growth_query = "
     SELECT 
-        DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m') as month,
+        TO_CHAR(CASE WHEN tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231 THEN TO_DATE(tl.date_added::text, 'YYYYMMDD') ELSE NULL END, 'YYYY-MM') as month,
         COUNT(DISTINCT CASE 
             WHEN st.str LIKE '%BABCP%' OR st.str LIKE '%Behavioural%' OR st.str LIKE '%Cognitive%'
             THEN tl.logkey 
@@ -1046,32 +1135,44 @@ if ($view === 'babcp') {
     FROM trainee_log tl
     JOIN trainee_tbl t ON tl.trainkey = t.trainkey
     LEFT JOIN select_types st ON tl.stid = st.stid
-    WHERE tl.date_added >= ? AND tl.date_added <= ? $course_condition $group_condition $babcp_condition_simple $additional_conditions
-    GROUP BY DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m')
+    WHERE tl.date_added >= ? AND tl.date_added <= ? 
+      AND tl.date_added::text ~ '^[0-9]{8}$'  -- Only valid YYYYMMDD format
+      AND tl.date_added >= 19000101  -- Reasonable date range
+      AND tl.date_added <= 21001231
+      AND CASE 
+        WHEN tl.date_added::text ~ '^[0-9]{8}$' THEN
+          CASE 
+            WHEN SUBSTR(tl.date_added::text, 1, 4)::int BETWEEN 1900 AND 2100 AND
+                 SUBSTR(tl.date_added::text, 5, 2)::int BETWEEN 1 AND 12 AND
+                 SUBSTR(tl.date_added::text, 7, 2)::int BETWEEN 1 AND 31
+            THEN TRUE
+            ELSE FALSE
+          END
+        ELSE FALSE
+      END
+      $course_condition $group_condition $babcp_condition_simple $additional_conditions
+    GROUP BY TO_CHAR(CASE WHEN tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231 THEN TO_DATE(tl.date_added::text, 'YYYYMMDD') ELSE NULL END, 'YYYY-MM')
     ORDER BY month DESC
     LIMIT 12
 ";
 
-    $stmt = $mysqli->prepare($babcp_growth_query);
+    $stmt = $pdo->prepare($babcp_growth_query);
     if (!empty($all_basic_params)) {
-        $stmt->bind_param("ii" . $all_basic_param_types, $datestart_yyyymmdd, $dateend_yyyymmdd, ...$all_basic_params);
+        $stmt->execute(array_merge([$datestart_yyyymmdd, $dateend_yyyymmdd], $all_basic_params));
     } else {
-        $stmt->bind_param("ii", $datestart_yyyymmdd, $dateend_yyyymmdd);
+        $stmt->execute([$datestart_yyyymmdd, $dateend_yyyymmdd]);
     }
-    $stmt->execute();
-    $stmt->store_result();
-    $stmt->bind_result($month, $babcp_cases, $supervised_cases, $cbt_cases, $active_trainees);
     $babcp_growth_data = [];
-    while ($stmt->fetch()) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $babcp_growth_data[] = [
-            'month' => $month, 
-            'babcp_cases' => $babcp_cases, 
-            'supervised_cases' => $supervised_cases, 
-            'cbt_cases' => $cbt_cases, 
-            'active_trainees' => $active_trainees
+            'month' => $row['month'], 
+            'babcp_cases' => $row['babcp_cases'], 
+            'supervised_cases' => $row['supervised_cases'], 
+            'cbt_cases' => $row['cbt_cases'],
+            'active_trainees' => $row['active_trainees']
         ];
     }
-    $stmt->close();
+    $stmt->closeCursor();
 
     // Debug: Log the BABCP growth data
     error_log("BABCP growth data count: " . count($babcp_growth_data));
@@ -1094,10 +1195,10 @@ if ($view === 'babcp') {
 
     // Debug: Check what's in select_types table for clinical issues
     $debug_select_types_query = "SELECT DISTINCT str FROM select_types WHERE str LIKE '%anxiety%' OR str LIKE '%depression%' OR str LIKE '%trauma%' OR str LIKE '%OCD%' OR str LIKE '%PTSD%' OR str LIKE '%GAD%' OR str LIKE '%panic%' OR str LIKE '%MDD%' OR str LIKE '%obsessive%' LIMIT 10";
-    $debug_select_types_result = $mysqli->query($debug_select_types_query);
+    $debug_select_types_result = $pdo->query($debug_select_types_query);
     if ($debug_select_types_result) {
         error_log("Sample clinical terms in select_types:");
-        while ($debug_select_types_row = $debug_select_types_result->fetch_assoc()) {
+        while ($debug_select_types_row = $debug_select_types_result->fetch(PDO::FETCH_ASSOC)) {
             error_log("Clinical term: " . $debug_select_types_row['str']);
         }
     } else {
@@ -1108,80 +1209,80 @@ if ($view === 'babcp') {
     // where clinical terms like 'OCD', 'PTSD', 'anxiety', 'depression', 'trauma' are embedded
 
     // Debug: Let's verify what cases we're actually detecting
-    $debug_anxiety_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%anxiety%' OR tl.select_val LIKE '%GAD%' OR tl.select_val LIKE '%panic%' OR tl.select_val LIKE '%worry%') LIMIT 10";
-    $debug_anxiety_result = $mysqli->query($debug_anxiety_cases_query);
+    $debug_anxiety_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231 AND (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%anxiety%' OR tl.select_val LIKE '%GAD%' OR tl.select_val LIKE '%panic%' OR tl.select_val LIKE '%worry%') LIMIT 10";
+    $debug_anxiety_result = $pdo->query($debug_anxiety_cases_query);
     if ($debug_anxiety_result) {
         error_log("Sample anxiety cases detected:");
-        while ($debug_anxiety_row = $debug_anxiety_result->fetch_assoc()) {
+        while ($debug_anxiety_row = $debug_anxiety_result->fetch(PDO::FETCH_ASSOC)) {
             error_log("Logkey: " . $debug_anxiety_row['logkey'] . " | Field: " . $debug_anxiety_row['field_name'] . " | Value: '" . $debug_anxiety_row['select_val'] . "'");
         }
     }
 
-    $debug_depression_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%depression%' OR tl.select_val LIKE '%MDD%' OR tl.select_val LIKE '%mood%' OR tl.select_val LIKE '%low mood%') LIMIT 10";
-    $debug_depression_result = $mysqli->query($debug_depression_cases_query);
+    $debug_depression_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231 AND (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%depression%' OR tl.select_val LIKE '%MDD%' OR tl.select_val LIKE '%mood%' OR tl.select_val LIKE '%low mood%') LIMIT 10";
+    $debug_depression_result = $pdo->query($debug_depression_cases_query);
     if ($debug_depression_result) {
         error_log("Sample depression cases detected:");
-        while ($debug_depression_row = $debug_depression_result->fetch_assoc()) {
+        while ($debug_depression_row = $debug_depression_result->fetch(PDO::FETCH_ASSOC)) {
             error_log("Logkey: " . $debug_depression_row['logkey'] . " | Field: " . $debug_depression_row['field_name'] . " | Value: '" . $debug_depression_row['select_val'] . "'");
         }
     }
 
-    $debug_trauma_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%trauma%' OR tl.select_val LIKE '%PTSD%' OR tl.select_val LIKE '%post-traumatic%') LIMIT 10";
-    $debug_trauma_result = $mysqli->query($debug_trauma_cases_query);
+    $debug_trauma_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231 AND (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%trauma%' OR tl.select_val LIKE '%PTSD%' OR tl.select_val LIKE '%post-traumatic%') LIMIT 10";
+    $debug_trauma_result = $pdo->query($debug_trauma_cases_query);
     if ($debug_trauma_result) {
         error_log("Sample trauma cases detected:");
-        while ($debug_trauma_row = $debug_trauma_result->fetch_assoc()) {
+        while ($debug_trauma_row = $debug_trauma_result->fetch(PDO::FETCH_ASSOC)) {
             error_log("Logkey: " . $debug_trauma_row['logkey'] . " | Field: " . $debug_trauma_row['field_name'] . " | Value: '" . $debug_trauma_row['select_val'] . "'");
         }
     }
 
-    $debug_ocd_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%OCD%' OR tl.select_val LIKE '%obsessive%' OR tl.select_val LIKE '%compulsive%') LIMIT 10";
-    $debug_ocd_result = $mysqli->query($debug_ocd_cases_query);
+    $debug_ocd_cases_query = "SELECT DISTINCT tl.logkey, tl.select_val, st.str as field_name FROM trainee_log tl JOIN select_types st ON tl.stid = st.stid WHERE tl.date_added::text ~ '^[0-9]{8}$' AND tl.date_added >= 19000101 AND tl.date_added <= 21001231 AND (st.str = 'Patient ID' OR st.str = 'General Comments (avoid commas!)') AND (tl.select_val LIKE '%OCD%' OR tl.select_val LIKE '%obsessive%' OR tl.select_val LIKE '%compulsive%') LIMIT 10";
+    $debug_ocd_result = $pdo->query($debug_ocd_cases_query);
     if ($debug_ocd_result) {
         error_log("Sample OCD cases detected:");
-        while ($debug_ocd_row = $debug_ocd_result->fetch_assoc()) {
+        while ($debug_ocd_row = $debug_ocd_result->fetch(PDO::FETCH_ASSOC)) {
             error_log("Logkey: " . $debug_ocd_row['logkey'] . " | Field: " . $debug_ocd_row['field_name'] . " | Value: '" . $debug_ocd_row['select_val'] . "'");
         }
     }
 
     // Additional debug: Check if there's any trainee data at all
     $debug_trainee_query = "SELECT COUNT(*) as trainee_count FROM trainee_tbl";
-    $debug_trainee_result = $mysqli->query($debug_trainee_query);
+    $debug_trainee_result = $pdo->query($debug_trainee_query);
     if ($debug_trainee_result) {
-        $debug_trainee_row = $debug_trainee_result->fetch_assoc();
+        $debug_trainee_row = $debug_trainee_result->fetch(PDO::FETCH_ASSOC);
         error_log("Total trainees in database: " . $debug_trainee_row['trainee_count']);
     }
 
     // Check if there are any trainee_log entries at all
     $debug_log_query = "SELECT COUNT(*) as log_count FROM trainee_log";
-    $debug_log_result = $mysqli->query($debug_log_query);
+    $debug_log_result = $pdo->query($debug_log_query);
     if ($debug_log_result) {
-        $debug_log_row = $debug_log_result->fetch_assoc();
+        $debug_log_row = $debug_log_result->fetch(PDO::FETCH_ASSOC);
         error_log("Total trainee_log entries in database: " . $debug_log_row['log_count']);
     }
 
     // Check the actual date range of the data - FIXED for YYYYMMDD format
-    $debug_date_range_query = "SELECT MIN(STR_TO_DATE(date_added, '%Y%m%d')) as earliest_date, MAX(STR_TO_DATE(date_added, '%Y%m%d')) as latest_date FROM trainee_log";
-    $debug_date_range_result = $mysqli->query($debug_date_range_query);
+    $debug_date_range_query = "SELECT MIN(CASE WHEN date_added::text ~ '^[0-9]{8}$' AND date_added >= 19000101 AND date_added <= 21001231 THEN TO_DATE(date_added::text, 'YYYYMMDD') ELSE NULL END) as earliest_date, MAX(CASE WHEN date_added::text ~ '^[0-9]{8}$' AND date_added >= 19000101 AND date_added <= 21001231 THEN TO_DATE(date_added::text, 'YYYYMMDD') ELSE NULL END) as latest_date FROM trainee_log WHERE date_added::text ~ '^[0-9]{8}$' AND date_added >= 19000101 AND date_added <= 21001231";
+    $debug_date_range_result = $pdo->query($debug_date_range_query);
     if ($debug_date_range_result) {
-        $debug_date_range_row = $debug_date_range_result->fetch_assoc();
+        $debug_date_range_row = $debug_date_range_result->fetch(PDO::FETCH_ASSOC);
         error_log("Actual data date range: " . $debug_date_range_row['earliest_date'] . " to " . $debug_date_range_row['latest_date']);
     }
 
     // Check raw timestamp values
     $debug_raw_timestamps_query = "SELECT MIN(date_added) as min_timestamp, MAX(date_added) as max_timestamp, COUNT(*) as count FROM trainee_log LIMIT 5";
-    $debug_raw_timestamps_result = $mysqli->query($debug_raw_timestamps_query);
+    $debug_raw_timestamps_result = $pdo->query($debug_raw_timestamps_query);
     if ($debug_raw_timestamps_result) {
-        $debug_raw_timestamps_row = $debug_raw_timestamps_result->fetch_assoc();
+        $debug_raw_timestamps_row = $debug_raw_timestamps_result->fetch(PDO::FETCH_ASSOC);
         error_log("Raw timestamps - Min: " . $debug_raw_timestamps_row['min_timestamp'] . ", Max: " . $debug_raw_timestamps_row['max_timestamp'] . ", Count: " . $debug_raw_timestamps_row['count']);
     }
 
     // Check if timestamps might be in a different format - FIXED for YYYYMMDD format
-    $debug_sample_query = "SELECT date_added, STR_TO_DATE(date_added, '%Y%m%d') as converted_date FROM trainee_log ORDER BY date_added DESC LIMIT 3";
-    $debug_sample_result = $mysqli->query($debug_sample_query);
+    $debug_sample_query = "SELECT date_added, CASE WHEN date_added::text ~ '^[0-9]{8}$' AND date_added >= 19000101 AND date_added <= 21001231 THEN TO_DATE(date_added::text, 'YYYYMMDD') ELSE NULL END as converted_date FROM trainee_log WHERE date_added::text ~ '^[0-9]{8}$' AND date_added >= 19000101 AND date_added <= 21001231 ORDER BY date_added DESC LIMIT 3";
+    $debug_sample_result = $pdo->query($debug_sample_query);
     if ($debug_sample_result) {
         error_log("Sample timestamp data:");
-        while ($debug_sample_row = $debug_sample_result->fetch_assoc()) {
+        while ($debug_sample_row = $debug_sample_result->fetch(PDO::FETCH_ASSOC)) {
             error_log("Raw: " . $debug_sample_row['date_added'] . " -> Converted: " . $debug_sample_row['converted_date']);
         }
     }
@@ -1213,8 +1314,7 @@ if ($view === 'babcp') {
                </div>
                <div class="content-subtitle">
                   <a href="<?php echo $listurl ?>" class="btn btn-sm btn-secondary">Back to Trainee Stats</a>
-               </div>
-            </div>
+</div>
 
             <!-- Lightweight View Navigation -->
             <ul class="nav nav-pills mb-3">
@@ -1270,8 +1370,7 @@ if ($view === 'babcp') {
                      <a href="?export=full_report&course=<?php echo $selected_course ?>&group=<?php echo urlencode($selected_group) ?>" class="btn btn-primary btn-sm">
                         <i class="fa fa-download"></i> Export Full Report
                      </a>
-                  </div>
-               </div>
+</div>
             </div>
             <?php endif; ?>
 
@@ -1390,10 +1489,8 @@ if ($view === 'babcp') {
                               <a href="trainee_detailed_stats.php" class="btn btn-secondary btn-block">Clear Filters</a>
                            </div>
                         </form>
-                     </div>
-                  </div>
-               </div>
-            </div>
+</div>
+</div>
 
 
 
@@ -1407,10 +1504,8 @@ if ($view === 'babcp') {
                      </div>
                      <div class="card-body">
                         <canvas id="monthlyActivityChart" width="400" height="200"></canvas>
-                     </div>
-                  </div>
-               </div>
-            </div>
+</div>
+</div>
             <?php endif; ?>
 
             <?php if ($view === 'babcp'): ?>
@@ -1424,8 +1519,7 @@ if ($view === 'babcp') {
                      </div>
                      <div class="card-body">
                         <canvas id="babcpGrowthChart" width="400" height="200"></canvas>
-                     </div>
-                  </div>
+</div>
                </div>
                <div class="col-md-6">
                   <div class="card">
@@ -1435,10 +1529,8 @@ if ($view === 'babcp') {
                      </div>
                      <div class="card-body">
                         <canvas id="clinicalIssuesChart" width="400" height="200"></canvas>
-                     </div>
-                  </div>
-               </div>
-            </div>
+</div>
+</div>
             <?php endif; ?>
 
             <?php if ($view === 'babcp'): ?>
@@ -1452,10 +1544,8 @@ if ($view === 'babcp') {
                      </div>
                      <div class="card-body">
                         <canvas id="supervisionHoursChart" width="400" height="200"></canvas>
-                     </div>
-                  </div>
-               </div>
-            </div>
+</div>
+</div>
             <?php endif; ?>
 
 
@@ -1493,8 +1583,7 @@ if ($view === 'babcp') {
                                              <div class="progress-bar <?php echo ($comp['success_rate'] ?? 0) >= 80 ? 'bg-success' : (($comp['success_rate'] ?? 0) >= 60 ? 'bg-warning' : 'bg-danger') ?>" 
                                                   style="width: <?php echo $comp['success_rate'] ?? 0 ?>%">
                                                 <?php echo $comp['success_rate'] ?? 0 ?>%
-                                             </div>
-                                          </div>
+</div>
                                        </td>
                                        <td>
                                           <?php 
@@ -1512,10 +1601,8 @@ if ($view === 'babcp') {
                                  <?php endforeach; ?>
                               </tbody>
                            </table>
-                        </div>
-                     </div>
-                  </div>
-               </div>
+</div>
+</div>
             </div>
             <?php endif; ?>
 
@@ -1534,26 +1621,22 @@ if ($view === 'babcp') {
                               <div class="text-center">
                                  <div class="metric-value text-primary" data-babcp-metric="trainees_with_babcp_training"><?php echo $babcp_summary_stats['trainees_with_babcp_training'] ?></div>
                                  <div class="metric-label">Trainees with BABCP Training Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-success" data-babcp-metric="trainees_with_3plus_supervised"><?php echo $babcp_summary_stats['trainees_with_3plus_supervised'] ?></div>
                                  <div class="metric-label">Trainees with 3+ Supervised Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-info" data-babcp-metric="trainees_with_cbt_cases"><?php echo $babcp_summary_stats['trainees_with_cbt_cases'] ?></div>
                                  <div class="metric-label">Trainees with CBT Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-warning" data-babcp-metric="trainees_with_5plus_sessions"><?php echo $babcp_summary_stats['trainees_with_5plus_sessions'] ?></div>
                                  <div class="metric-label">Trainees with 5+ Session Cases</div>
-                              </div>
-                           </div>
+</div>
                         </div>
                         
                         <!-- Cases with 5+ Hours Row -->
@@ -1562,26 +1645,22 @@ if ($view === 'babcp') {
                               <div class="text-center">
                                  <div class="metric-value text-secondary"><?php echo $babcp_summary_stats['total_cases_with_5plus_hours'] ?></div>
                                  <div class="metric-label">Cases with 5+ Hours</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-secondary"><?php echo $babcp_summary_stats['trainees_with_5plus_hours'] ?></div>
                                  <div class="metric-label">Trainees with 5+ Hour Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_trainees'] ?></div>
                                  <div class="metric-label">Total Trainees</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-warning"><?php echo $babcp_summary_stats['trainees_with_3plus_supervised'] ?></div>
                                  <div class="metric-label">Trainees with 3+ Supervised Cases</div>
-                              </div>
-                           </div>
+</div>
                         </div>
                         
                         <!-- Total Supervision Hours -->
@@ -1591,26 +1670,22 @@ if ($view === 'babcp') {
                                  <div class="metric-value text-primary"><?php echo $babcp_summary_stats['total_supervision_hours'] ?></div>
                                  <div class="metric-label">Total Supervision Hours</div>
                                  <small class="text-muted">(BABCP Supervised + Closed CBT BABCP)</small>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-success"><?php echo $babcp_summary_stats['trainees_with_babcp_supervised'] ?></div>
                                  <div class="metric-label">Trainees with BABCP Supervision</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-dark"><?php echo $babcp_summary_stats['trainees_with_closed_cbt_babcp'] ?></div>
                                  <div class="metric-label">Trainees with Closed CBT BABCP</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_trainees'] ?></div>
                                  <div class="metric-label">Total Trainees</div>
-                              </div>
-                           </div>
+</div>
                         </div>
                         
                         <!-- Case Counts -->
@@ -1619,38 +1694,32 @@ if ($view === 'babcp') {
                               <div class="text-center">
                                  <div class="metric-value text-primary"><?php echo $babcp_summary_stats['total_babcp_training_cases'] ?></div>
                                  <div class="metric-label">Total BABCP Training Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-success"><?php echo $babcp_summary_stats['total_supervised_cases'] ?></div>
                                  <div class="metric-label">Total Supervised Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_cbt_cases'] ?></div>
                                  <div class="metric-label">Total CBT Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-purple"><?php echo $babcp_summary_stats['total_babcp_supervised_cases'] ?></div>
                                  <div class="metric-label">BABCP Supervised Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-dark"><?php echo $babcp_summary_stats['total_closed_cbt_babcp_cases'] ?></div>
                                  <div class="metric-label">Closed CBT BABCP Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-warning"><?php echo $babcp_summary_stats['total_cases_with_5plus_sessions'] ?></div>
                                  <div class="metric-label">Cases with 5+ Sessions</div>
-                              </div>
-                           </div>
+</div>
                         </div>
 
                         <!-- Session Duration Statistics -->
@@ -1659,26 +1728,22 @@ if ($view === 'babcp') {
                               <div class="text-center">
                                  <div class="metric-value text-primary"><?php echo $babcp_summary_stats['total_cases_with_5plus_sessions'] ?></div>
                                  <div class="metric-label">Cases with 5+ Sessions</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-success"><?php echo $babcp_summary_stats['trainees_with_5plus_sessions'] ?></div>
                                  <div class="metric-label">Trainees with 5+ Session Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_trainees'] ?></div>
                                  <div class="metric-label">Total Trainees</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-warning"><?php echo $babcp_summary_stats['trainees_with_3plus_supervised'] ?></div>
                                  <div class="metric-label">Trainees with 3+ Supervised Cases</div>
-                              </div>
-                           </div>
+</div>
                         </div>
 
                         <!-- Clinical Issues Statistics -->
@@ -1687,26 +1752,22 @@ if ($view === 'babcp') {
                               <div class="text-center">
                                  <div class="metric-value text-danger"><?php echo $babcp_summary_stats['total_anxiety_cases'] ?></div>
                                  <div class="metric-label">Anxiety Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-warning"><?php echo $babcp_summary_stats['total_depression_cases'] ?></div>
                                  <div class="metric-label">Depression Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_trauma_cases'] ?></div>
                                  <div class="metric-label">Trauma Cases</div>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-secondary"><?php echo $babcp_summary_stats['total_ocd_cases'] ?></div>
                                  <div class="metric-label">OCD Cases</div>
-                              </div>
-                           </div>
+</div>
                         </div>
 
                         <!-- Detailed Trainee Analysis -->
@@ -1733,8 +1794,7 @@ if ($view === 'babcp') {
                                  <option value="asc">Ascending</option>
                                  <option value="desc" selected>Descending</option>
                               </select>
-                           </div>
-                        </div>
+</div>
                            <table class="table table-striped" id="babcpTable">
                               <thead>
                                  <tr>
@@ -1769,8 +1829,7 @@ if ($view === 'babcp') {
                                     <option value="100">100</option>
                                  </select>
                                  <span class="ml-2 mb-0">entries</span>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-6">
                               <div class="d-flex justify-content-end align-items-center">
                                  <span id="babcpPaginationInfo" class="mr-3 mb-0">Showing 1 to 25 of 0 entries</span>
@@ -1779,12 +1838,9 @@ if ($view === 'babcp') {
                                        <!-- Pagination buttons will be generated by JavaScript -->
                                     </ul>
                                  </nav>
-                              </div>
-                           </div>
-                        </div>
-                     </div>
-                  </div>
-               </div>
+</div>
+</div>
+</div>
             </div>
             <?php endif; ?>
 
@@ -1818,17 +1874,13 @@ if ($view === 'babcp') {
                            <div class="col-md-6">
                               <div class="alert alert-info">
                                  <strong>Total Clients:</strong> <span id="totalClients">0</span>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-6">
                               <div class="alert alert-success">
                                  <strong>Total Trainees:</strong> <span id="totalTrainees">0</span>
-                              </div>
-                           </div>
-                        </div>
-                     </div>
-                  </div>
-               </div>
+</div>
+</div>
+</div>
             </div>
             <?php endif; ?>
 
@@ -2283,8 +2335,7 @@ if ($view === 'babcp') {
                        <div class="progress progress-thin">
                            <div class="progress-bar" style="width: ${supervisor.avg_completion_rate}%">
                                ${supervisor.avg_completion_rate}%
-                           </div>
-                       </div>
+</div>
                    </td>
                    <td>
                        ${supervisor.performanceScore ? supervisor.performanceScore + '/5' : 'N/A'}
@@ -2765,8 +2816,7 @@ if ($view === 'babcp') {
                    <div class="progress progress-thin">
                        <div class="progress-bar bg-success" style="width: ${percentage}%">
                            ${percentage}%
-                       </div>
-                   </div>
+</div>
                </td>
            `;
            tbody.appendChild(row);

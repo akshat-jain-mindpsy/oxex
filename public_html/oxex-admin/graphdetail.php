@@ -3,11 +3,16 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Graph Key Colours";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Colours";
 $listurl = "graph.php";
 $listname = "Colours";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -39,21 +44,22 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $colour = str_replace("#", "", $colour);
   
   // Update record
-  $stmt = $mysqli->prepare("UPDATE report_colour SET colour = ? WHERE rcid = ? "); 
-  $stmt->bind_param("si", $colour, $which);
-  $stmt->execute();
-  $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("UPDATE report_colour SET colour = ? WHERE rcid = ? "); 
+    $stmt->execute([$colour, $which]);
+  }
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT colour FROM report_colour WHERE rcid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($colour);
-$stmt->fetch();
-$stmt->close();
+if ($usingSupabase) {
+  $stmt = $supabase_pdo->prepare("SELECT colour FROM report_colour WHERE rcid = ?");
+  $stmt->execute([$which]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  $colour = $row ? $row['colour'] : '';
+} else {
+  $colour = '';
+}
 // whatever the record name is
   $changename = "$which";
 ?>
@@ -70,7 +76,8 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -86,24 +93,18 @@ $stmt->close();
                                 <div class="form-group">
                                     <label class="col-form-label" for="colour">Label Colour</label>
                                     <input class="form-control" type="text" id="color-picker" name="colour" value="<?php echo $colour ?>" required>
-                                 </div>
-                             </div>
-                          </div>
-                        </div>
+</div>
+</div>
                         
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
                </div>
                <div class="col-xl-4">
-
-
-               </div>
-            </div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -115,11 +116,9 @@ $stmt->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

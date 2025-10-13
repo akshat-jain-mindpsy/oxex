@@ -33,6 +33,7 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 include 'incl/stats_logger.php';
 
 // Initialize logger
@@ -63,18 +64,21 @@ class QueryCache {
 }
 
 $pagetitle = "Trainee Statistics";
+
+// Set variables needed by adminjs.php
+setAdminVars(2); // Trainees section
 $subtitle = "Trainee Analytics";
 $listurl = "indextable.php";
 $listname = "Dashboard";
 
 // Check permissions - allow all admin types to view BABCP stats
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
     // CSV endpoint for per-trainee monthly timeline (honors basic filters)
     if (isset($_GET['data_type']) && $_GET['data_type'] === 'trainee_timeline_csv') {
-        $timeline_trainkey = isset($_GET['trainkey']) ? (int)$_GET['trainkey'] : 0;
-        if ($timeline_trainkey <= 0) {
+        $timeline_trainkey = isset($_GET['trainkey']) ? trim($_GET['trainkey']) : '';
+        if (empty($timeline_trainkey) || strlen($timeline_trainkey) < 10) {
             header('Content-Type: application/json');
-            echo json_encode(['status' => 'error', 'message' => 'Missing trainkey']);
+            echo json_encode(['status' => 'error', 'message' => 'Missing or invalid trainkey']);
             exit;
         }
 
@@ -93,21 +97,20 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
         // Lookup trainee name for filename
         $trainee_name = 'trainee';
         if ($timeline_trainkey > 0) {
-            $name_stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+            $name_stmt = $pdo->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
             if ($name_stmt) {
-                $name_stmt->bind_param('i', $timeline_trainkey);
-                $name_stmt->execute();
-                $name_stmt->bind_result($fetched_name);
-                if ($name_stmt->fetch() && !empty($fetched_name)) {
+                $name_stmt->execute([$timeline_trainkey]);
+                $fetched_name = $name_stmt->fetchColumn();
+                if ($fetched_name && !empty($fetched_name)) {
                     $trainee_name = $fetched_name;
                 }
-                $name_stmt->close();
+                $name_stmt->closeCursor();
             }
         }
 
         $timeline_query = "
             SELECT 
-                DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m') AS month,
+                TO_CHAR(TO_DATE(tl.date_added::text, 'YYYYMMDD'), 'YYYY-MM') AS month,
                 COUNT(DISTINCT tl.logkey) AS total_cases,
                 COUNT(DISTINCT CASE WHEN st.str LIKE '%BABCP%' OR st.str LIKE '%Behavioural%' OR st.str LIKE '%Cognitive%' THEN tl.logkey END) AS babcp_training_cases,
                 COUNT(DISTINCT CASE WHEN st.str LIKE '%supervised%' OR st.str LIKE '%supervision%' OR st.str LIKE '%supervisor%' THEN tl.logkey END) AS supervised_cases,
@@ -122,10 +125,8 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             ORDER BY month ASC
         ";
 
-        $stmt = $mysqli->prepare($timeline_query);
-        $stmt->bind_param('iii', $datestart_yyyymmdd_tmp, $dateend_yyyymmdd_tmp, $timeline_trainkey);
-        $stmt->execute();
-        $stmt->bind_result($month, $total_cases, $babcp_training_cases, $supervised_cases, $cbt_cases);
+        $stmt = $pdo->prepare($timeline_query);
+        $stmt->execute([$datestart_yyyymmdd_tmp, $dateend_yyyymmdd_tmp, $timeline_trainkey]);
 
         // Output CSV headers
         // Sanitize trainee name for filename
@@ -142,25 +143,25 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
         $output = fopen('php://output', 'w');
         // CSV header row
         fputcsv($output, ['Month', 'Total Cases', 'BABCP Training', 'Supervised', 'CBT']);
-        while ($stmt->fetch()) {
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             fputcsv($output, [
-                $month,
-                (int)$total_cases,
-                (int)$babcp_training_cases,
-                (int)$supervised_cases,
-                (int)$cbt_cases
+                $row['month'],
+                (int)$row['total_cases'],
+                (int)$row['babcp_training_cases'],
+                (int)$row['supervised_cases'],
+                (int)$row['cbt_cases']
             ]);
         }
         fclose($output);
-        $stmt->close();
+        $stmt->closeCursor();
         exit;
     }
     // Lightweight JSON endpoint for per-trainee monthly timeline (honors basic filters)
     if (isset($_GET['data_type']) && $_GET['data_type'] === 'trainee_timeline') {
         header('Content-Type: application/json');
-        $timeline_trainkey = isset($_GET['trainkey']) ? (int)$_GET['trainkey'] : 0;
-        if ($timeline_trainkey <= 0) {
-            echo json_encode(['status' => 'error', 'message' => 'Missing trainkey']);
+        $timeline_trainkey = isset($_GET['trainkey']) ? trim($_GET['trainkey']) : '';
+        if (empty($timeline_trainkey) || strlen($timeline_trainkey) < 10) {
+            echo json_encode(['status' => 'error', 'message' => 'Missing or invalid trainkey']);
             exit;
         }
 
@@ -178,7 +179,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
 
         $timeline_query = "
             SELECT 
-                DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m') AS month,
+                TO_CHAR(TO_DATE(tl.date_added::text, 'YYYYMMDD'), 'YYYY-MM') AS month,
                 COUNT(DISTINCT tl.logkey) AS total_cases,
                 COUNT(DISTINCT CASE WHEN st.str LIKE '%BABCP%' OR st.str LIKE '%Behavioural%' OR st.str LIKE '%Cognitive%' THEN tl.logkey END) AS babcp_training_cases,
                 COUNT(DISTINCT CASE WHEN st.str LIKE '%supervised%' OR st.str LIKE '%supervision%' OR st.str LIKE '%supervisor%' THEN tl.logkey END) AS supervised_cases,
@@ -189,27 +190,87 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             WHERE tl.date_added >= ? AND tl.date_added <= ?
               AND t.trainkey = ?
               $course_condition_tmp
-            GROUP BY DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '%Y-%m')
+            GROUP BY TO_CHAR(TO_DATE(tl.date_added::text, 'YYYYMMDD'), 'YYYY-MM')
             ORDER BY month ASC
         ";
 
-        $stmt = $mysqli->prepare($timeline_query);
-        $stmt->bind_param('iii', $datestart_yyyymmdd_tmp, $dateend_yyyymmdd_tmp, $timeline_trainkey);
-        $stmt->execute();
-        $stmt->bind_result($month, $total_cases, $babcp_training_cases, $supervised_cases, $cbt_cases);
+        // Debug: First check if trainee exists and has any log entries
+        $debug_query = "SELECT COUNT(*) as log_count FROM trainee_log WHERE trainkey = ?";
+        $debug_stmt = $pdo->prepare($debug_query);
+        $debug_stmt->execute([$timeline_trainkey]);
+        $log_count = $debug_stmt->fetchColumn();
+        $debug_stmt->closeCursor();
+        
+        // Debug: Check trainee name
+        $name_query = "SELECT name FROM trainee_tbl WHERE trainkey = ?";
+        $name_stmt = $pdo->prepare($name_query);
+        $name_stmt->execute([$timeline_trainkey]);
+        $trainee_name = $name_stmt->fetchColumn();
+        $name_stmt->closeCursor();
+        
+        $stmt = $pdo->prepare($timeline_query);
+        $stmt->execute([$datestart_yyyymmdd_tmp, $dateend_yyyymmdd_tmp, $timeline_trainkey]);
         $data = [];
-        while ($stmt->fetch()) {
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $data[] = [
-                'month' => $month,
-                'total_cases' => (int)$total_cases,
-                'babcp_training_cases' => (int)$babcp_training_cases,
-                'supervised_cases' => (int)$supervised_cases,
-                'cbt_cases' => (int)$cbt_cases,
+                'month' => $row['month'],
+                'total_cases' => (int)$row['total_cases'],
+                'babcp_training_cases' => (int)$row['babcp_training_cases'],
+                'supervised_cases' => (int)$row['supervised_cases'],
+                'cbt_cases' => (int)$row['cbt_cases'],
             ];
         }
-        $stmt->close();
+        $stmt->closeCursor();
+        
+        // Debug: Log detailed information for troubleshooting
+        error_log("Timeline debug - Trainee: $trainee_name (ID: $timeline_trainkey), Total logs: $log_count, Date range: $datestart_yyyymmdd_tmp to $dateend_yyyymmdd_tmp, Course: $selected_course_tmp, Timeline rows: " . count($data));
 
         echo json_encode(['status' => 'success', 'data' => $data]);
+        exit;
+    }
+    
+    // Debug endpoint to help troubleshoot timeline issues
+    if (isset($_GET['data_type']) && $_GET['data_type'] === 'timeline_debug') {
+        header('Content-Type: application/json');
+        $debug_trainkey = isset($_GET['trainkey']) ? (int)$_GET['trainkey'] : 0;
+        
+        if ($debug_trainkey <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Missing trainkey']);
+            exit;
+        }
+        
+        // Get trainee info
+        $trainee_query = "SELECT trainkey, name FROM trainee_tbl WHERE trainkey = ?";
+        $trainee_stmt = $pdo->prepare($trainee_query);
+        $trainee_stmt->execute([$debug_trainkey]);
+        $trainee_info = $trainee_stmt->fetch(PDO::FETCH_ASSOC);
+        $trainee_stmt->closeCursor();
+        
+        // Get log count
+        $log_query = "SELECT COUNT(*) as total_logs FROM trainee_log WHERE trainkey = ?";
+        $log_stmt = $pdo->prepare($log_query);
+        $log_stmt->execute([$debug_trainkey]);
+        $log_count = $log_stmt->fetchColumn();
+        $log_stmt->closeCursor();
+        
+        // Get sample log entries
+        $sample_query = "SELECT tl.logkey, tl.date_added, st.str as category 
+                        FROM trainee_log tl 
+                        LEFT JOIN select_types st ON tl.stid = st.stid 
+                        WHERE tl.trainkey = ? 
+                        ORDER BY tl.date_added DESC 
+                        LIMIT 5";
+        $sample_stmt = $pdo->prepare($sample_query);
+        $sample_stmt->execute([$debug_trainkey]);
+        $sample_logs = $sample_stmt->fetchAll(PDO::FETCH_ASSOC);
+        $sample_stmt->closeCursor();
+        
+        echo json_encode([
+            'status' => 'success',
+            'trainee_info' => $trainee_info,
+            'total_logs' => $log_count,
+            'sample_logs' => $sample_logs
+        ]);
         exit;
     }
 ?><!DOCTYPE html>
@@ -357,8 +418,8 @@ if ($babcp_filter == 1) {
         )
     ";
     
-    $result = $mysqli->query($babcp_trainees_query);
-    while ($row = $result->fetch_assoc()) {
+    $result = $pdo->query($babcp_trainees_query);
+    while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
         $babcp_trainees[] = $row['trainkey'];
     }
 }
@@ -392,9 +453,9 @@ if ($babcp_training == 1) {
         AND (st.str LIKE '%BABCP%' OR st.str LIKE '%Behavioural%' OR st.str LIKE '%Cognitive%')
     ";
     
-    $result = $mysqli->query($training_trainees_query);
+    $result = $pdo->query($training_trainees_query);
     $training_trainees = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
         $training_trainees[] = $row['trainkey'];
     }
     
@@ -415,9 +476,9 @@ if ($supervised_case == 1) {
         WHERE (st.str LIKE '%supervised%' OR st.str LIKE '%supervision%' OR st.str LIKE '%supervisor%')
     ";
     
-    $result = $mysqli->query($supervised_trainees_query);
+    $result = $pdo->query($supervised_trainees_query);
     $supervised_trainees = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
         $supervised_trainees[] = $row['trainkey'];
     }
     
@@ -438,9 +499,9 @@ if (!empty($primary_modality)) {
         WHERE st.str LIKE '%$primary_modality%'
     ";
     
-    $result = $mysqli->query($modality_trainees_query);
+    $result = $pdo->query($modality_trainees_query);
     $modality_trainees = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
         $modality_trainees[] = $row['trainkey'];
     }
     
@@ -461,9 +522,9 @@ if ($min_sessions > 0) {
                WHERE tl.trainkey = t.trainkey) >= $min_sessions
     ";
     
-    $result = $mysqli->query($sessions_trainees_query);
+    $result = $pdo->query($sessions_trainees_query);
     $sessions_trainees = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $result->fetch(PDO::FETCH_ASSOC)) {
         $sessions_trainees[] = $row['trainkey'];
     }
     
@@ -501,14 +562,14 @@ $query_start = microtime(true);
 $total_trainees_query = "SELECT /*+ USE_INDEX(t, idx_trainee_uid) */ COUNT(*) as total 
                         FROM trainee_tbl t 
                         WHERE 1=1 $course_condition $cohort_condition $babcp_condition_simple $additional_conditions";
-$stmt = $mysqli->prepare($total_trainees_query);
+$stmt = $pdo->prepare($total_trainees_query);
 if (!empty($course_params)) {
-    $stmt->bind_param($course_param_types, ...$course_params);
+    $stmt->execute($course_params);
+} else {
+    $stmt->execute();
 }
-$stmt->execute();
-$stmt->bind_result($total_trainees);
-$stmt->fetch();
-$stmt->close();
+$total_trainees = $stmt->fetchColumn();
+$stmt->closeCursor();
 $query_end = microtime(true);
 $stats_logger->logQuery($total_trainees_query, $course_params, round(($query_end - $query_start) * 1000, 2));
 
@@ -520,16 +581,14 @@ $active_trainees_query = "SELECT /*+ USE_INDEX(t, idx_trainee_last_used) */ COUN
                          FROM trainee_tbl t 
                          WHERE t.last_used >= ? $course_condition $cohort_condition $babcp_condition_simple $additional_conditions";
 $thirty_days_ago = date('Ymd', strtotime('-30 days'));
-$stmt = $mysqli->prepare($active_trainees_query);
+$stmt = $pdo->prepare($active_trainees_query);
 if (!empty($course_params)) {
-    $stmt->bind_param("i" . $course_param_types, $thirty_days_ago, ...$course_params);
+    $stmt->execute(array_merge([$thirty_days_ago], $course_params));
 } else {
-    $stmt->bind_param("i", $thirty_days_ago);
+    $stmt->execute([$thirty_days_ago]);
 }
-$stmt->execute();
-$stmt->bind_result($active_trainees);
-$stmt->fetch();
-$stmt->close();
+$active_trainees = $stmt->fetchColumn();
+$stmt->closeCursor();
 $query_end = microtime(true);
 $stats_logger->logQuery($active_trainees_query, array_merge([$thirty_days_ago], $course_params), round(($query_end - $query_start) * 1000, 2));
 
@@ -540,18 +599,17 @@ $trainees_by_year_query = "SELECT /*+ USE_INDEX(t, idx_trainee_uid_year) USE_IND
                           WHERE 1=1 $course_condition $cohort_condition $babcp_condition_simple $additional_conditions 
                           GROUP BY t.year 
                           ORDER BY t.year DESC";
-$stmt = $mysqli->prepare($trainees_by_year_query);
+$stmt = $pdo->prepare($trainees_by_year_query);
 if (!empty($course_params)) {
-    $stmt->bind_param($course_param_types, ...$course_params);
+    $stmt->execute($course_params);
+} else {
+    $stmt->execute();
 }
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($year, $count);
 $year_data = [];
-while ($stmt->fetch()) {
-    $year_data[] = ['year' => $year, 'count' => $count];
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $year_data[] = ['year' => $row['year'], 'count' => $row['count']];
 }
-$stmt->close();
+$stmt->closeCursor();
 
 // Get competency completion stats
 // PERFORMANCE: Complex query requiring multiple indexes:
@@ -562,6 +620,7 @@ $stmt->close();
 $competency_stats_query = "
     SELECT /*+ USE_INDEX(tabs, idx_tabs_isvis_sort) USE_INDEX(ttl, idx_trainee_tab_link_tbid) USE_INDEX(tl, idx_trainee_log_trainkey_tbid) */
         tabs.tab_name,
+        tabs.sort_order,
         COUNT(DISTINCT tl.trainkey) as trainees_with_data,
         COUNT(tl.tlogid) as total_entries
     FROM tabs_tbl tabs
@@ -569,55 +628,51 @@ $competency_stats_query = "
     LEFT JOIN trainee_tbl t ON ttl.trainkey = t.trainkey
     LEFT JOIN trainee_log tl ON t.trainkey = tl.trainkey AND tl.tbid = tabs.tbid
     WHERE tabs.isvis = 1 $course_condition $cohort_condition $babcp_condition_with_tabs $additional_conditions
-    GROUP BY tabs.tbid, tabs.tab_name
+    GROUP BY tabs.tbid, tabs.tab_name, tabs.sort_order
     ORDER BY tabs.sort_order
 ";
-$stmt = $mysqli->prepare($competency_stats_query);
+$stmt = $pdo->prepare($competency_stats_query);
 if (!empty($course_params)) {
-    $stmt->bind_param($course_param_types, ...$course_params);
+    $stmt->execute($course_params);
+} else {
+    $stmt->execute();
 }
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($tab_name, $trainees_with_data, $total_entries);
 $competency_data = [];
-while ($stmt->fetch()) {
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
     $competency_data[] = [
-        'tab_name' => $tab_name,
-        'trainees_with_data' => $trainees_with_data,
-        'total_entries' => $total_entries,
-                 'completion_rate' => $total_trainees > 0 ? round(($trainees_with_data / $total_trainees) * 100, 1) : 0
+        'tab_name' => $row['tab_name'],
+        'trainees_with_data' => $row['trainees_with_data'],
+        'total_entries' => $row['total_entries'],
+                 'completion_rate' => $total_trainees > 0 ? round(($row['trainees_with_data'] / $total_trainees) * 100, 1) : 0
     ];
 }
-$stmt->close();
+$stmt->closeCursor();
 
 // Get recent activity (last 7 days)
 // OPTIMIZED: Use index hints for date-based queries including composite index
 $recent_activity_query = "
     SELECT /*+ USE_INDEX(tl, idx_trainee_log_date_added) USE_INDEX(tl, idx_trainee_log_trainkey) USE_INDEX(tl, idx_trainee_log_trainkey_date) */
-        DATE(FROM_UNIXTIME(tl.date_added)) as activity_date,
+        DATE(TO_TIMESTAMP(tl.date_added)) as activity_date,
         COUNT(*) as entries
     FROM trainee_log tl
     JOIN trainee_tbl t ON tl.trainkey = t.trainkey
     WHERE tl.date_added >= ? $course_condition $cohort_condition $babcp_condition_simple $additional_conditions
-    GROUP BY DATE(FROM_UNIXTIME(tl.date_added))
+    GROUP BY DATE(TO_TIMESTAMP(tl.date_added))
     ORDER BY activity_date DESC
     LIMIT 7
 ";
 $seven_days_ago = strtotime('-7 days');
-$stmt = $mysqli->prepare($recent_activity_query);
+$stmt = $pdo->prepare($recent_activity_query);
 if (!empty($course_params)) {
-    $stmt->bind_param("i" . $course_param_types, $seven_days_ago, ...$course_params);
+    $stmt->execute(array_merge([$seven_days_ago], $course_params));
 } else {
-    $stmt->bind_param("i", $seven_days_ago);
+    $stmt->execute([$seven_days_ago]);
 }
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($activity_date, $entries);
 $recent_activity = [];
-while ($stmt->fetch()) {
-    $recent_activity[] = ['date' => $activity_date, 'entries' => $entries];
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $recent_activity[] = ['date' => $row['activity_date'], 'entries' => $row['entries']];
 }
-$stmt->close();
+$stmt->closeCursor();
 
 // Get supervisor distribution
 // OPTIMIZED: Use index hints for supervisor queries including supervisor2 and supervisor3
@@ -632,18 +687,17 @@ $supervisor_query = "
     ORDER BY trainee_count DESC
     LIMIT 10
 ";
-$stmt = $mysqli->prepare($supervisor_query);
+$stmt = $pdo->prepare($supervisor_query);
 if (!empty($course_params)) {
-    $stmt->bind_param($course_param_types, ...$course_params);
+    $stmt->execute($course_params);
+} else {
+    $stmt->execute();
 }
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($supervisor_name, $trainee_count);
 $supervisor_data = [];
-while ($stmt->fetch()) {
-    $supervisor_data[] = ['name' => $supervisor_name, 'count' => $trainee_count];
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $supervisor_data[] = ['name' => $row['supervisor_name'], 'count' => $row['trainee_count']];
 }
-$stmt->close();
+$stmt->closeCursor();
 
 // Get all courses for filter dropdown
 // OPTIMIZED: Use index hint for university sorting with caching
@@ -652,9 +706,9 @@ $courses = QueryCache::get($cache_key);
 
 if ($courses === null) {
     $courses_query = "SELECT /*+ USE_INDEX(uni_tbl, idx_uni_university) */ uid, university FROM uni_tbl ORDER BY university";
-    $courses_result = $mysqli->query($courses_query);
+    $courses_result = $pdo->query($courses_query);
     $courses = [];
-    while ($row = $courses_result->fetch_assoc()) {
+    while ($row = $courses_result->fetch(PDO::FETCH_ASSOC)) {
         $courses[] = $row;
     }
     QueryCache::set($cache_key, $courses);
@@ -680,8 +734,7 @@ if ($courses === null) {
                <div class="content-subtitle">
                   <a href="<?php echo $listurl ?>" class="btn btn-sm btn-secondary">Back to Dashboard</a>
                   <a href="trainee_detailed_stats.php" class="btn btn-sm btn-primary ml-2">Detailed Analytics</a>
-               </div>
-            </div>
+</div>
 
             <!-- Filters -->
             <div class="row mb-4">
@@ -782,10 +835,8 @@ if ($courses === null) {
                               <a href="trainee_stats.php" class="btn btn-secondary btn-block">Clear Filters</a>
                            </div>
                         </form>
-                     </div>
-                  </div>
-               </div>
-            </div>
+</div>
+</div>
 
             <!-- Key Metrics -->
             <div class="row mb-4">
@@ -794,34 +845,29 @@ if ($courses === null) {
                      <div class="card-body text-center">
                         <div class="metric-value" data-metric="total_trainees"><?php echo number_format($total_trainees) ?></div>
                         <div class="metric-label">Total Trainees</div>
-                     </div>
-                  </div>
+</div>
                </div>
                <div class="col-md-3">
                   <div class="card stats-card bg-success text-white" data-loading="overview">
                      <div class="card-body text-center">
                         <div class="metric-value" data-metric="active_trainees"><?php echo number_format($active_trainees) ?></div>
                         <div class="metric-label">Active (30 days)</div>
-                     </div>
-                  </div>
+</div>
                </div>
                <div class="col-md-3">
                   <div class="card stats-card bg-info text-white" data-loading="overview">
                      <div class="card-body text-center">
                         <div class="metric-value" data-metric="activity_rate"><?php echo $total_trainees > 0 ? round(($active_trainees / $total_trainees) * 100, 1) : 0 ?>%</div>
                         <div class="metric-label">Activity Rate</div>
-                     </div>
-                  </div>
+</div>
                </div>
                <div class="col-md-3">
                   <div class="card stats-card bg-warning text-white" data-loading="overview">
                      <div class="card-body text-center">
                         <div class="metric-value" data-metric="competency_count"><?php echo count($competency_data) ?></div>
                         <div class="metric-label">Competency Areas</div>
-                     </div>
-                  </div>
-               </div>
-            </div>
+</div>
+</div>
 
             <!-- Charts Row -->
             <div class="row mb-4">
@@ -840,8 +886,7 @@ if ($courses === null) {
                            <p class="mt-2">Loading enrollment data...</p>
                         </div>
                         <canvas id="enrollmentChart" width="400" height="200" style="display: none;"></canvas>
-                     </div>
-                  </div>
+</div>
                </div>
                
                <!-- Competency Completion -->
@@ -859,10 +904,8 @@ if ($courses === null) {
                            <p class="mt-2">Loading competency data...</p>
                         </div>
                         <canvas id="competencyChart" width="400" height="200" style="display: none;"></canvas>
-                     </div>
-                  </div>
-               </div>
-            </div>
+</div>
+</div>
 
             <!-- Individual Trainee Timeline -->
             <div class="row mb-4">
@@ -886,28 +929,25 @@ if ($courses === null) {
                                 WHERE tl.date_added >= ? AND tl.date_added <= ?
                                   $course_condition $cohort_condition $babcp_condition_simple $additional_conditions
                                 ORDER BY t.name";
-                              $trainee_list_stmt = $mysqli->prepare($trainee_list_query);
+                              $trainee_list_stmt = $pdo->prepare($trainee_list_query);
                               if ($trainee_list_stmt) {
-                                 $bind_types = 'ii' . $course_param_types;
                                  if (!empty($course_params)) {
-                                    $trainee_list_stmt->bind_param($bind_types, $datestart, $dateend, ...$course_params);
+                                    $trainee_list_stmt->execute(array_merge([$datestart, $dateend], $course_params));
                                  } else {
-                                    $trainee_list_stmt->bind_param('ii', $datestart, $dateend);
+                                    $trainee_list_stmt->execute([$datestart, $dateend]);
                                  }
-                                 $trainee_list_stmt->execute();
-                                 $result = $trainee_list_stmt->get_result();
-                                 if ($result) {
-                                    while ($trow = $result->fetch_assoc()) {
-                                       echo '<option value="' . (int)$trow['trainkey'] . '">' . htmlspecialchars($trow['name']) . '</option>';
-                                    }
+                                 $trainee_count = 0;
+                                 while ($trow = $trainee_list_stmt->fetch(PDO::FETCH_ASSOC)) {
+                                    echo '<option value="' . htmlspecialchars($trow['trainkey']) . '">' . htmlspecialchars($trow['name']) . '</option>';
+                                    $trainee_count++;
                                  }
-                                 $trainee_list_stmt->close();
+                                 $trainee_list_stmt->closeCursor();
+                                 echo '<script>console.log("[Timeline] Populated dropdown with ' . $trainee_count . ' trainees");</script>';
                               }
                               ?>
                            </select>
                            <button id="downloadTimelineCsv" class="btn btn-sm btn-outline-primary ml-2" type="button" disabled>Download CSV</button>
-                        </div>
-                     </div>
+</div>
                      <div class="card-body">
                         <div class="chart-container">
                            <div class="loading-overlay" id="timelineLoading"><div class="spinner"></div></div>
@@ -928,10 +968,8 @@ if ($courses === null) {
                                  <tr><td colspan="5" class="text-muted text-center">Select a trainee to view timeline</td></tr>
                               </tbody>
                            </table>
-                        </div>
-                     </div>
-                  </div>
-               </div>
+</div>
+</div>
             </div>
 
             <!-- Performance Monitoring Panel (only visible to admins) -->
@@ -950,14 +988,12 @@ if ($courses === null) {
                               <h6>Query Performance</h6>
                               <div id="performanceMetrics">
                                  <p>Loading performance data...</p>
-                              </div>
-                           </div>
+</div>
                            <div class="col-md-6">
                               <h6>Cache Status</h6>
                               <div id="cacheStatus">
                                  <p>Loading cache information...</p>
-                              </div>
-                           </div>
+</div>
                         </div>
                         <div class="row mt-3">
                            <div class="col-md-6">
@@ -972,12 +1008,9 @@ if ($courses === null) {
                                  <li>Consider query result caching for large datasets</li>
                                  <li>Use EXPLAIN ANALYZE for query optimization</li>
                               </ul>
-                           </div>
-                        </div>
-                     </div>
-                  </div>
-               </div>
-            </div>
+</div>
+</div>
+</div>
             <?php endif; ?>
 
             <!-- Recent Activity and Supervisor Distribution -->
@@ -990,8 +1023,7 @@ if ($courses === null) {
                      </div>
                      <div class="card-body">
                         <canvas id="activityChart" width="400" height="200"></canvas>
-                     </div>
-                  </div>
+</div>
                </div>
                
                <!-- Supervisor Distribution -->
@@ -1002,10 +1034,8 @@ if ($courses === null) {
                      </div>
                      <div class="card-body">
                         <canvas id="supervisorChart" width="400" height="200"></canvas>
-                     </div>
-                  </div>
-               </div>
-            </div>
+</div>
+</div>
 
             <!-- Detailed Competency Table -->
             <div class="row">
@@ -1039,21 +1069,16 @@ if ($courses === null) {
                                                   aria-valuenow="<?php echo $comp['completion_rate'] ?>" 
                                                   aria-valuemin="0" aria-valuemax="100">
                                                 <?php echo $comp['completion_rate'] ?>%
-                                             </div>
-                                          </div>
+</div>
                                        </td>
                                        <td><?php echo $comp['trainees_with_data'] > 0 ? round($comp['total_entries'] / $comp['trainees_with_data'], 1) : 0 ?></td>
                                     </tr>
                                  <?php endforeach; ?>
                               </tbody>
                            </table>
-                        </div>
-                     </div>
-                  </div>
-               </div>
-            </div>
-
-         </div>
+</div>
+</div>
+</div>
       </section>
    </div>
    
@@ -1343,6 +1368,12 @@ if ($courses === null) {
 
    // Initialize charts with PHP data on page load
    document.addEventListener('DOMContentLoaded', function() {
+       // Check timeline dropdown
+       const timelineDropdown = document.getElementById('timelineTraineeSelect');
+       if (timelineDropdown) {
+           console.log('[Timeline] Ready with', timelineDropdown.options.length, 'trainees available');
+       }
+       
        // Load charts with PHP data directly
        loadChartsWithPHPData();
        
@@ -1361,13 +1392,22 @@ if ($courses === null) {
         if (traineeSelect) {
             traineeSelect.addEventListener('change', function() {
                 const raw = this.value;
-                const trainkey = parseInt(raw, 10);
-                if (!trainkey || trainkey <= 0 || Number.isNaN(trainkey)) {
-                    console.warn('[Timeline] Ignoring invalid trainkey:', raw);
-                   if (downloadBtn) downloadBtn.disabled = true;
+                console.log('[Timeline] Trainee selected:', raw);
+                
+                // Skip if empty or default option
+                if (!raw || raw === '' || raw === '0') {
+                    if (downloadBtn) downloadBtn.disabled = true;
                     return;
                 }
-               if (downloadBtn) downloadBtn.disabled = false;
+                
+                const trainkey = raw; // Keep as string since trainee IDs are UUIDs
+                if (!trainkey || trainkey === '' || trainkey.length < 10) {
+                    console.warn('[Timeline] Invalid trainee ID:', raw);
+                    if (downloadBtn) downloadBtn.disabled = true;
+                    return;
+                }
+                
+                if (downloadBtn) downloadBtn.disabled = false;
                 const loader = document.getElementById('timelineLoading');
                 this.disabled = true;
                 if (loader) loader.classList.add('active');
@@ -1379,17 +1419,24 @@ if ($courses === null) {
                 const params = new URLSearchParams(window.location.search);
                 params.set('data_type', 'trainee_timeline');
                 params.set('trainkey', trainkey);
-                console.log('[Timeline] Request', { trainkey, query: params.toString() });
-                fetch('trainee_stats.php?' + params.toString(), { credentials: 'same-origin', signal })
+                const requestUrl = 'trainee_stats.php?' + params.toString();
+                console.log('[Timeline] Loading data for trainee:', trainkey);
+                
+                fetch(requestUrl, { credentials: 'same-origin', signal })
                     .then(r => r.json())
                     .then(json => {
-                        console.log('[Timeline] Status:', json.status);
+                        console.log('[Timeline] Response:', json.status, json.data ? json.data.length + ' rows' : 'no data');
                         if (json.status === 'success') {
-                            console.log('[Timeline] Rows:', json.data);
-                            renderTraineeTimelineChart(json.data);
-                            renderTraineeTimelineTable(json.data);
+                            if (json.data && json.data.length > 0) {
+                                renderTraineeTimelineChart(json.data);
+                                renderTraineeTimelineTable(json.data);
+                            } else {
+                                console.warn('[Timeline] No data found for this trainee');
+                                renderTraineeTimelineChart([]);
+                                renderTraineeTimelineTable([]);
+                            }
                         } else {
-                            console.warn('[Timeline] Message:', json.message || 'No data');
+                            console.error('[Timeline] Error:', json.message || 'Unknown error');
                             renderTraineeTimelineChart([]);
                             renderTraineeTimelineTable([]);
                         }
@@ -1412,8 +1459,8 @@ if ($courses === null) {
            if (downloadBtn) {
                downloadBtn.addEventListener('click', function() {
                    const raw = traineeSelect.value;
-                   const trainkey = parseInt(raw, 10);
-                   if (!trainkey || trainkey <= 0 || Number.isNaN(trainkey)) return;
+                   const trainkey = raw; // Keep as string since trainee IDs are UUIDs
+                   if (!trainkey || trainkey === '' || trainkey.length < 10) return;
                    const params = new URLSearchParams(window.location.search);
                    params.set('data_type', 'trainee_timeline_csv');
                    params.set('trainkey', trainkey);

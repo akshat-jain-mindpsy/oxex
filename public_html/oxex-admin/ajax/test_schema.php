@@ -8,18 +8,17 @@ header('Content-Type: application/json');
 
 try {
     // Check if section_id column exists in select_types table
-    $query = "DESCRIBE select_types";
-    $result = $mysqli->query($query);
-    
-    $columns = [];
-    while ($row = $result->fetch_assoc()) {
-        $columns[] = $row;
-    }
+    $query = "SELECT column_name, data_type, is_nullable, column_default 
+              FROM information_schema.columns 
+              WHERE table_name = 'select_types' 
+              ORDER BY ordinal_position";
+    $result = $supabase_pdo->query($query);
+    $columns = $result->fetchAll(PDO::FETCH_ASSOC);
     
     // Check if section_id column exists
     $section_id_exists = false;
     foreach ($columns as $column) {
-        if ($column['Field'] === 'section_id') {
+        if ($column['column_name'] === 'section_id') {
             $section_id_exists = true;
             break;
         }

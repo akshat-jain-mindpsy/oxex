@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Team/Staff";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Page content";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,14 +32,12 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AD' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM stafflist WHERE slil = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
+  $stmt = $supabase_pdo->prepare("DELETE FROM stafflist WHERE slil = ? LIMIT 1");
+  $stmt->execute([$which]);
+  if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
   }
-  $stmt->close();
 }
 
 if ($newadmin == 'newadmin') {
@@ -49,14 +50,14 @@ if ($newadmin == 'newadmin') {
   $soc_fb = isset($_POST['soc_fb']) ? $_POST['soc_fb'] : '';
   $soc_tw = isset($_POST['soc_tw']) ? $_POST['soc_tw'] : '';
   $soc_lk = isset($_POST['soc_lk']) ? $_POST['soc_lk'] : '';
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
   $lastsort = $sort_order + 1;
 
-  $insert_stmt = $mysqli->prepare("INSERT INTO stafflist (name, position, title, email, maintext, photo, sort_order, photocaption, phone, soc_fb, soc_tw, soc_lk) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("ssssssisssss", $name, $position, $valueblank, $email, $maintext, $valueblank, $sort_order, $valueblank, $valueblank, $soc_fb, $soc_tw, $soc_lk);
-  $insert_stmt->execute();
-  $newid =  $insert_stmt->insert_id;
-  $insert_stmt->close();
+  $insert_stmt = $supabase_pdo->prepare("INSERT INTO stafflist (name, position, title, email, maintext, photo, sort_order, photocaption, phone, soc_fb, soc_tw, soc_lk) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  $insert_stmt->execute([$name, $position, $valueblank, $email, $maintext, $valueblank, $$value0 = 0; // Default value for sort_order
+$subtitle = "soc_lk]);
+  $newid = $supabase_pdo->lastInsertId();
 
   if (is_uploaded_file($_FILES['Image1']['tmp_name'])) {
       // create images and add filename
@@ -123,10 +124,8 @@ if ($newadmin == 'newadmin') {
      $result = resize_save_jpeg( $temp_image_path, $large_image_path, 500, 500 );
      if ( $result )
      {
-      $stmt = $mysqli->prepare("UPDATE stafflist SET photo = ? WHERE slil = ?"); 
-      $stmt->bind_param("si", $actualname, $newid);
-      $stmt->execute();
-      $stmt->close();
+      $stmt = $supabase_pdo->prepare("UPDATE stafflist SET photo = ? WHERE slil = ?"); 
+      $stmt->execute([$actualname, $newid]);
      }
   }
 
@@ -148,7 +147,8 @@ $todaydisp = strtotime($today); # default 'to' date for datepicker
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
             <?php echo $delalert ?>
             <div class="row">
                <div class="col-xl-12">
@@ -165,11 +165,17 @@ $todaydisp = strtotime($today); # default 'to' date for datepicker
                          </thead>
                          <tbody>
 <?PHP
-$stmt = $mysqli->prepare("SELECT slil, name, position, email, photo, sort_order FROM stafflist");
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($slil, $name, $position, $email, $photo, $sort_order);
-while ($stmt->fetch()){
+$stmt = $supabase_pdo->prepare("SELECT slil, name, position, email, photo, sort_order FROM stafflist");
+$stmt->execute();
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+  $slil = $row['slil'];
+  $name = $row['name'];
+  $position = $row['position'];
+  $email = $row['email'];
+  $photo = $row['photo'];
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "row['sort_order'];
+  
   $sortdate = strtotime($sortdate);
   if ($photo == '' || $photo == '0') {
     $vidqty = '<span class="btn btn-danger">No</span>';
@@ -190,13 +196,10 @@ while ($stmt->fetch()){
 </tr>
 <?php
 }
-$numrows = $stmt->num_rows;
-$stmt->close();
 ?>
                          </tbody>
                       </table>
-                   </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -225,20 +228,17 @@ $stmt->close();
                               <label class="col-form-label" for="soc_fb">Facebook Link</label>
                               <div class="input-group">
                                  <div class="input-group-prepend"><span class="input-group-text" id="basic-addon1">https://</span></div><input class="form-control" type="text" id="soc_fb" name="soc_fb">
-                              </div>
-                           </div>
+</div>
                            <div class="form-group">
                               <label class="col-form-label" for="soc_tw">Twitter Link</label>
                               <div class="input-group">
                                  <div class="input-group-prepend"><span class="input-group-text" id="basic-addon1">https://</span></div><input class="form-control" type="text" id="soc_tw" name="soc_tw">
-                              </div>
-                           </div>
+</div>
                            <div class="form-group">
                               <label class="col-form-label" for="soc_lk">LinkedIn Link</label>
                               <div class="input-group">
                                  <div class="input-group-prepend"><span class="input-group-text" id="basic-addon1">https://</span></div><input class="form-control" type="text" id="soc_lk" name="soc_lk">
-                              </div>
-                           </div>
+</div>
                            <div class="form-group">
                               <label class="col-form-label" for="maintext">Text</label>
                               <textarea class="form-control summernote" type="text" id="maintext" name="maintext"></textarea>
@@ -252,19 +252,13 @@ $stmt->close();
                            <div class="form-group">
                               <label class="col-form-label">Photo</label>
                               <input type="file" class="form-control" name="Image1" id="Image1">
-                          </div>
-                           
-                          
-
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

@@ -5,15 +5,15 @@
  * A wrapper class that provides a clean interface for evaluating trainee competencies
  * across different parts of the system. This acts as a decorator for the pass standard functions.
  * 
- * Usage:
- * $evaluator = new CompetencyEvaluator($mysqli);
- * $status = $evaluator->evaluateCompetency($traineeKey, $competencyId);
+     * Usage:
+     * $evaluator = new CompetencyEvaluator($pdo);
+     * $status = $evaluator->evaluateCompetency($traineeKey, $competencyId);
  */
 class CompetencyEvaluator {
-    private $mysqli;
+    private $pdo;
     
-    public function __construct($mysqli) {
-        $this->mysqli = $mysqli;
+    public function __construct($pdo) {
+        $this->pdo = $pdo;
         
         // Include the core functions
         if (!function_exists('checkCompetencyStatus')) {
@@ -30,7 +30,7 @@ class CompetencyEvaluator {
      * @return array The competency status and breakdown
      */
     public function evaluateCompetency($traineeKey, $competencyId, $endDate = null) {
-        return checkCompetencyStatus($traineeKey, $competencyId, $this->mysqli, $endDate);
+        return checkCompetencyStatus($traineeKey, $competencyId, $this->pdo, $endDate);
     }
     
     /**
@@ -81,9 +81,8 @@ class CompetencyEvaluator {
     public function getCompetencySummary($traineeKey) {
         // Get all available competencies
         $query = "SELECT DISTINCT tbid, tab_name FROM tabs_tbl ORDER BY tab_name";
-        $stmt = $this->mysqli->prepare($query);
+        $stmt = $this->pdo->prepare($query);
         $stmt->execute();
-        $result = $stmt->get_result();
         
         $competencies = [];
         $passed = 0;
@@ -91,7 +90,7 @@ class CompetencyEvaluator {
         $failed = 0;
         $notApplicable = 0;
         
-        while ($row = $result->fetch_assoc()) {
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $status = $this->evaluateCompetency($traineeKey, $row['tbid']);
             $competencies[] = [
                 'tbid' => $row['tbid'],
@@ -115,7 +114,6 @@ class CompetencyEvaluator {
                     break;
             }
         }
-        $stmt->close();
         
         return [
             'competencies' => $competencies,

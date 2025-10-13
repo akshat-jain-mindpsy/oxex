@@ -3,9 +3,10 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Check authorization
-if (!(login_check($mysqli) == true && 
+if (!(login_check($pdo) == true && 
      in_array($admintype, ['AT', 'DV', 'AO', 'AE', 'SO', 'SE']))) {
     echo json_encode([
         'status' => 'error',
@@ -28,11 +29,11 @@ if ($tbid <= 0 || empty($positions)) {
 }
 
 // Start transaction
-$mysqli->begin_transaction();
+$supabase_pdo->beginTransaction();
 
 try {
     // Prepare statement for updating sort order
-    $update_stmt = $mysqli->prepare("
+    $update_stmt = $supabase_pdo->prepare("
         UPDATE tab_fields 
         SET sort_order = ? 
         WHERE stid = ? AND tbid = ?
@@ -40,13 +41,14 @@ try {
     
     // Update each field's sort order
     foreach ($positions as $index => $stid) {
-        $sort_order = $index + 1;  // 1-based indexing
-        $update_stmt->bind_param("iii", $sort_order, $stid, $tbid);
-        $update_stmt->execute();
+        $$value0 = 0; // Default value for sort_order
+$subtitle = "index + 1;  // 1-based indexing
+        $update_stmt->execute([$$value0 = 0; // Default value for sort_order
+$subtitle = "tbid]);
     }
     
     // Commit transaction
-    $mysqli->commit();
+    $supabase_pdo->commit();
     
     echo json_encode([
         'status' => 'success',
@@ -54,7 +56,7 @@ try {
     ]);
 } catch (Exception $e) {
     // Rollback on error
-    $mysqli->rollback();
+    $supabase_pdo->rollback();
     
     error_log("Field order update error: " . $e->getMessage());
     

@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Customers";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Customers";
 $listurl = "customers.php";
 $listname = "Customers";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -31,10 +34,9 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row
-  $stmt = $mysqli->prepare("DELETE FROM cust_tbl WHERE cid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("DELETE FROM cust_tbl WHERE cid = ? LIMIT 1");
+  $stmt->execute([$which]); 
+  $stmt->closeCursor();
 }
 
 if (($done == "done" || $newphoto == "newphoto") && ($admintype == 'AD' || $admintype == 'DV')) {  
@@ -52,21 +54,32 @@ if (($done == "done" || $newphoto == "newphoto") && ($admintype == 'AD' || $admi
   $admin_txt = isset($_POST['admin_txt']) ? $_POST['admin_txt'] : '';
 
   // Update record
-  $stmt = $mysqli->prepare("UPDATE cust_tbl SET bus_name = ?, contact = ?, vehicle = ?, email = ?, phone = ?, address = ?, town = ?, zip = ?, cust_txt = ?, admin_txt = ?, who_by = ?, date_modified = ? WHERE cid = ? "); 
-  $stmt->bind_param("ssi", $bus_name, $contact, $vehicle, $email, $phone, $address, $town, $zip, $cust_txt, $admin_txt, $usrkey, $today, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("UPDATE cust_tbl SET bus_name = ?, contact = ?, vehicle = ?, email = ?, phone = ?, address = ?, town = ?, zip = ?, cust_txt = ?, admin_txt = ?, who_by = ?, date_modified = ? WHERE cid = ? "); 
+  $stmt->execute([$bus_name, $contact, $vehicle, $email, $phone, $address, $town, $zip, $cust_txt, $admin_txt, $usrkey, $today, $which]);
+  $stmt->closeCursor();
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT custusr, bus_name, contact, vehicle, email, phone, address, town, zip, cust_txt, admin_txt, who_by, date_added, date_modified, last_used FROM cust_tbl WHERE cid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($custusr, $bus_name, $contact, $vehicle, $email, $phone, $address, $town, $zip, $cust_txt, $admin_txt, $usrkey, $date_added, $date_modified, $last_used);
-$stmt->fetch();
-$stmt->close();
+$stmt = $pdo->prepare("SELECT custusr, bus_name, contact, vehicle, email, phone, address, town, zip, cust_txt, admin_txt, who_by, date_added, date_modified, last_used FROM cust_tbl WHERE cid = ?");
+$stmt->execute([$which]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+$custusr = $row['custusr'];
+$bus_name = $row['bus_name'];
+$contact = $row['contact'];
+$vehicle = $row['vehicle'];
+$email = $row['email'];
+$phone = $row['phone'];
+$address = $row['address'];
+$town = $row['town'];
+$zip = $row['zip'];
+$cust_txt = $row['cust_txt'];
+$admin_txt = $row['admin_txt'];
+$usrkey = $row['who_by'];
+$date_added = $row['date_added'];
+$date_modified = $row['date_modified'];
+$last_used = $row['last_used'];
+$stmt->closeCursor();
    $date_added = strtotime($date_added);
    $date_modified = strtotime($date_modified);
    $last_used = strtotime($last_used);
@@ -144,21 +157,19 @@ if ($newphoto == "newphoto" && ($admintype == 'AD' || $admintype == 'DV')) {
    if ( $result )
    {
       // find last sort order, add 4 and create new record
-   $stmt = $mysqli->prepare("SELECT sort_order FROM customer_gallery WHERE custusr = ? ORDER BY sort_order DESC LIMIT 1");
-   $stmt->bind_param("s", $custusr);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($sort_order);
-   $stmt->fetch();
-   $stmt->close();
-   $sort_order = $sort_order + 4;
+   $stmt = $pdo->prepare("SELECT sort_order FROM customer_gallery WHERE custusr = ? ORDER BY sort_order DESC LIMIT 1");
+   $stmt->execute([$custusr]);
+   $$value0 = 0; // Default value for sort_order
+$subtitle = "stmt->fetchColumn();
+   $stmt->closeCursor();
+   $$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order + 4;
 
-   $insert_stmt = $mysqli->prepare("INSERT INTO customer_gallery (sort_order, filename, caption, date_created, custusr, who_by) VALUES (?, ?, ?, ?, ?, ?)");
-   $insert_stmt->bind_param("ississ", $sort_order, $actualname, $caption, $today, $custusr, $usrkey);
-   $insert_stmt->execute();
-      printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-   $newid = $insert_stmt->insert_id;
-   $insert_stmt->close();
+   $insert_stmt = $pdo->prepare("INSERT INTO customer_gallery (sort_order, filename, caption, date_created, custusr, who_by) VALUES (?, ?, ?, ?, ?, ?)");
+   $insert_stmt->execute([$$value0 = 0; // Default value for sort_order
+$subtitle = "usrkey]);
+   $newid = $pdo->lastInsertId();
+   $insert_stmt->closeCursor();
    }
   }# if image uploaded
 }
@@ -177,7 +188,8 @@ if ($newphoto == "newphoto" && ($admintype == 'AD' || $admintype == 'DV')) {
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -228,15 +240,13 @@ if ($newphoto == "newphoto" && ($admintype == 'AD' || $admintype == 'DV')) {
                            <div class="form-group">
                               <label class="col-form-label" for="admin_txt">Hidden Admin Text</label>
                               <textarea class="form-control" type="text" id="admin_txt" name="admin_txt"><?php echo $admin_txt ?></textarea>
-                           </div>
-                        </div>
+</div>
                         
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
                </div>
                <div class="col-xl-4">
@@ -246,18 +256,17 @@ if ($newphoto == "newphoto" && ($admintype == 'AD' || $admintype == 'DV')) {
                   </div>
                   <div class="card-body">
                     <?php
-                    // list photos
-                     $tableset = $mysqli->prepare("SELECT filename, caption, date_created FROM customer_gallery WHERE custusr = ? ORDER BY sort_order ASC");
-                     $tableset->bind_param("s", $custusr);
-                     $tableset->execute();
-                     $tableset->store_result();
-                     $tableset->bind_result($filename, $caption, $date_created);
-                     while ($tableset->fetch()){
+                     // list photos
+                     $tableset = $pdo->prepare("SELECT filename, caption, date_created FROM customer_gallery WHERE custusr = ? ORDER BY sort_order ASC");
+                     $tableset->execute([$custusr]);
+                     while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                        $filename = $row['filename'];
+                        $caption = $row['caption'];
+                        $date_created = $row['date_created'];
                         $date_created = strtotime($date_created);
                         echo "<p><em>$caption</em> <small>".date("d/m/Y", $date_created)."</small><br><img src=\"../custgallery/$filename\" alt=\"cust image\" width=\"200px\"></p>";
                      }
-                     $numrows = $tableset->num_rows;
-                     $tableset->close();                    
+                     $tableset->closeCursor();
                     ?>
 
                   </div>
@@ -274,14 +283,10 @@ if ($newphoto == "newphoto" && ($admintype == 'AD' || $admintype == 'DV')) {
                               <input type="hidden" name="newphoto" value="newphoto">
                               <input type="hidden" name="which" value="<?PHP echo $which ?>">
                               <div class="float-right"><button class="btn btn-purple" type="submit">Add Photo</button></div>
-                           </div>
-                       </div>
+</div>
                      </form>
-                  </div>
-                </div>
-
-               </div>
-            </div>
+</div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -293,11 +298,9 @@ if ($newphoto == "newphoto" && ($admintype == 'AD' || $admintype == 'DV')) {
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

@@ -5,13 +5,13 @@
  *
  * @param string $traineeKey The unique key for the trainee.
  * @param int $tbid The ID of the competency/table to check.
- * @param mysqli $mysqli The database connection object.
+ * @param PDO $pdo The database connection object.
  * @param string|int|null $endDate The optional end date for the competency (format: YYYYMMDD or YYYY-MM-DD).
  * @return array A structured array with the overall status and a detailed breakdown.
  */
-function checkCompetencyStatus($traineeKey, $tbid, $mysqli, $endDate = null) {
+function checkCompetencyStatus($traineeKey, $tbid, $pdo, $endDate = null) {
     // Step 1: Fetch all rules for this competency, ordered to process parents first.
-    $all_rules = _fetchAllRulesForCompetency($tbid, $mysqli);
+    $all_rules = _fetchAllRulesForCompetency($tbid, $pdo);
 
     if (empty($all_rules)) {
         return [
@@ -29,7 +29,7 @@ function checkCompetencyStatus($traineeKey, $tbid, $mysqli, $endDate = null) {
     $results_breakdown = [];
     foreach ($rule_tree as $parent_rule) {
         // The recursive evaluation function does the heavy lifting.
-        $parent_result = _evaluateRule($parent_rule, $traineeKey, $mysqli);
+        $parent_result = _evaluateRule($parent_rule, $traineeKey, $pdo);
 
         if (!$parent_result['is_passed']) {
             $all_parent_rules_passed = false;
@@ -66,29 +66,24 @@ function checkCompetencyStatus($traineeKey, $tbid, $mysqli, $endDate = null) {
  * Fetches a flat list of all rules associated with a competency.
  *
  * @param int $tbid The competency ID.
- * @param mysqli $mysqli The database connection.
+ * @param PDO $pdo The database connection.
  * @return array A list of rules.
  */
-function _fetchAllRulesForCompetency($tbid, $mysqli) {
+function _fetchAllRulesForCompetency($tbid, $pdo) {
     $query = "SELECT * FROM pass_standards WHERE tbid = ? AND is_active = 1 ORDER BY parent_standard_id ASC, psid ASC";
-    $stmt = $mysqli->prepare($query);
-    $stmt->bind_param("i", $tbid);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt = $pdo->prepare($query);
+    $stmt->execute([$tbid]);
     $rules = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         // Fetch OR fields if the main stid is NULL
         if (is_null($row['stid'])) {
             $or_query = "SELECT stid FROM pass_standard_fields WHERE standard_id = ?";
-            $or_stmt = $mysqli->prepare($or_query);
-            $or_stmt->bind_param("i", $row['psid']);
-            $or_stmt->execute();
-            $or_result = $or_stmt->get_result();
+            $or_stmt = $pdo->prepare($or_query);
+            $or_stmt->execute([$row['psid']]);
             $row['or_fields'] = [];
-            while ($or_row = $or_result->fetch_assoc()) {
+            while ($or_row = $or_stmt->fetch(PDO::FETCH_ASSOC)) {
                 $row['or_fields'][] = $or_row['stid'];
             }
-            $or_stmt->close();
         }
         
         // Parse subfield rules if they exist
@@ -98,7 +93,6 @@ function _fetchAllRulesForCompetency($tbid, $mysqli) {
         
         $rules[] = $row;
     }
-    $stmt->close();
     return $rules;
 }
 
@@ -158,14 +152,14 @@ function _buildRuleTree(array &$rules) {
  *
  * @param array $rule The rule to evaluate.
  * @param string $traineeKey The trainee's key.
- * @param mysqli $mysqli The database connection.
+ * @param PDO $pdo The database connection.
  * @param array|null $population_logkeys A pre-filtered list of logkeys from a parent rule.
  * @return array A detailed result object for this specific rule.
  */
-function _evaluateRule($rule, $traineeKey, $mysqli, $population_logkeys = null) {
+function _evaluateRule($rule, $traineeKey, $pdo, $population_logkeys = null) {
     // Check if this rule has subfield rules
     if (!empty($rule['subfield_rules'])) {
-        return _evaluateSubfieldRule($rule, $traineeKey, $mysqli, $population_logkeys);
+        return _evaluateSubfieldRule($rule, $traineeKey, $pdo, $population_logkeys);
     }
     
     // Original evaluation logic for regular rules
@@ -245,12 +239,9 @@ function _evaluateRule($rule, $traineeKey, $mysqli, $population_logkeys = null) 
     // Execute the query to get the trainee's current value
     if (!isset($current_value)) {
         $final_query = $base_query . " WHERE " . implode(" AND ", $where_clauses);
-        $stmt = $mysqli->prepare($final_query);
-        $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $stmt->bind_result($current_value);
-        $stmt->fetch();
-        $stmt->close();
+        $stmt = $pdo->prepare($final_query);
+        $stmt->execute($params);
+        $current_value = $stmt->fetchColumn();
     }
     
     $current_value = $current_value ?? 0;
@@ -261,10 +252,10 @@ function _evaluateRule($rule, $traineeKey, $mysqli, $population_logkeys = null) 
     $all_children_passed = true;
     if ($is_passed && !empty($rule['children'])) {
         // Get the specific population of logkeys that satisfied THIS rule
-        $new_population_logkeys = _getLogkeysForPassedRule($rule, $traineeKey, $mysqli, $population_logkeys);
+        $new_population_logkeys = _getLogkeysForPassedRule($rule, $traineeKey, $pdo, $population_logkeys);
         
         foreach ($rule['children'] as &$child_rule) {
-            $child_result = _evaluateRule($child_rule, $traineeKey, $mysqli, $new_population_logkeys);
+            $child_result = _evaluateRule($child_rule, $traineeKey, $pdo, $new_population_logkeys);
             if (!$child_result['is_passed']) {
                 $all_children_passed = false;
             }
@@ -291,17 +282,17 @@ function _evaluateRule($rule, $traineeKey, $mysqli, $population_logkeys = null) 
  *
  * @param array $rule The rule with subfield rules to evaluate.
  * @param string $traineeKey The trainee's key.
- * @param mysqli $mysqli The database connection.
+ * @param PDO $pdo The database connection.
  * @param array|null $population_logkeys A pre-filtered list of logkeys from a parent rule.
  * @return array A detailed result object for this rule with subfield breakdown.
  */
-function _evaluateSubfieldRule($rule, $traineeKey, $mysqli, $population_logkeys = null) {
+function _evaluateSubfieldRule($rule, $traineeKey, $pdo, $population_logkeys = null) {
     $subfield_results = [];
     $all_subfields_passed = true;
     
     // Evaluate each subfield rule
     foreach ($rule['subfield_rules'] as $subfield_rule) {
-        $subfield_result = _evaluateSubfieldIndividualRule($rule, $subfield_rule, $traineeKey, $mysqli, $population_logkeys);
+        $subfield_result = _evaluateSubfieldIndividualRule($rule, $subfield_rule, $traineeKey, $pdo, $population_logkeys);
         $subfield_results[] = $subfield_result;
         
         if (!$subfield_result['is_passed']) {
@@ -328,11 +319,11 @@ function _evaluateSubfieldRule($rule, $traineeKey, $mysqli, $population_logkeys 
  * @param array $main_rule The main rule containing the subfield rules.
  * @param array $subfield_rule The specific subfield rule to evaluate.
  * @param string $traineeKey The trainee's key.
- * @param mysqli $mysqli The database connection.
+ * @param PDO $pdo The database connection.
  * @param array|null $population_logkeys A pre-filtered list of logkeys from a parent rule.
  * @return array A detailed result object for this subfield rule.
  */
-function _evaluateSubfieldIndividualRule($main_rule, $subfield_rule, $traineeKey, $mysqli, $population_logkeys = null) {
+function _evaluateSubfieldIndividualRule($main_rule, $subfield_rule, $traineeKey, $pdo, $population_logkeys = null) {
     $params = [$traineeKey];
     $types = 's';
     $where_clauses = ["trainkey = ?"];
@@ -388,12 +379,9 @@ function _evaluateSubfieldIndividualRule($main_rule, $subfield_rule, $traineeKey
     
     // Execute the query
     $final_query = $base_query . " WHERE " . implode(" AND ", $where_clauses);
-    $stmt = $mysqli->prepare($final_query);
-    $stmt->bind_param($types, ...$params);
-    $stmt->execute();
-    $stmt->bind_result($current_value);
-    $stmt->fetch();
-    $stmt->close();
+    $stmt = $pdo->prepare($final_query);
+    $stmt->execute($params);
+    $current_value = $stmt->fetchColumn();
     
     $current_value = $current_value ?? 0;
     $required_value = (int)($subfield_rule['specific_value'] ?? 0);
@@ -401,7 +389,7 @@ function _evaluateSubfieldIndividualRule($main_rule, $subfield_rule, $traineeKey
     
     return [
         'subfield_value' => $subfield_rule['subfield_value'],
-        'subfield_name' => _getSubfieldName($subfield_rule['subfield_value'], $mysqli),
+        'subfield_name' => _getSubfieldName($subfield_rule['subfield_value'], $pdo),
         'requirement_type' => $subfield_rule['requirement_type'],
         'is_passed' => $is_passed,
         'current_value' => $current_value,
@@ -413,21 +401,18 @@ function _evaluateSubfieldIndividualRule($main_rule, $subfield_rule, $traineeKey
  * Gets the display name for a subfield value.
  *
  * @param string $subfield_value The subfield value ID.
- * @param mysqli $mysqli The database connection.
+ * @param PDO $pdo The database connection.
  * @return string The display name for the subfield value.
  */
-function _getSubfieldName($subfield_value, $mysqli) {
+function _getSubfieldName($subfield_value, $pdo) {
     if (empty($subfield_value)) {
         return 'Unknown';
     }
     
     $query = "SELECT select_val FROM select_gen WHERE pid = ?";
-    $stmt = $mysqli->prepare($query);
-    $stmt->bind_param("s", $subfield_value);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-    $stmt->close();
+    $stmt = $pdo->prepare($query);
+    $stmt->execute([$subfield_value]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
     
     return $row ? $row['select_val'] : 'Unknown';
 }
@@ -438,11 +423,11 @@ function _getSubfieldName($subfield_value, $mysqli) {
  *
  * @param array $rule The rule that was passed.
  * @param string $traineeKey The trainee's key.
- * @param mysqli $mysqli The database connection.
+ * @param PDO $pdo The database connection.
  * @param array|null $parent_population_logkeys The logkey population from the parent.
  * @return array An array of logkeys.
  */
-function _getLogkeysForPassedRule($rule, $traineeKey, $mysqli, $parent_population_logkeys = null) {
+function _getLogkeysForPassedRule($rule, $traineeKey, $pdo, $parent_population_logkeys = null) {
     // This function re-builds the WHERE clause from _evaluateRule but selects `logkey`
     // This is a simplified version for brevity. The actual implementation would mirror
     // the query construction logic from _evaluateRule to ensure consistency.
@@ -478,15 +463,12 @@ function _getLogkeysForPassedRule($rule, $traineeKey, $mysqli, $parent_populatio
     }
     
     $query = "SELECT DISTINCT logkey FROM trainee_log WHERE " . implode(" AND ", $where_clauses);
-    $stmt = $mysqli->prepare($query);
-    $stmt->bind_param($types, ...$params);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt = $pdo->prepare($query);
+    $stmt->execute($params);
     $logkeys = [];
-    while($row = $result->fetch_assoc()) {
+    while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $logkeys[] = $row['logkey'];
     }
-    $stmt->close();
     return $logkeys;
 }
 ?> 

@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Page Title";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "List and add";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -37,8 +40,7 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                   <p>A row with content</p>
                   <p><?php echo $thispage ?></p>
                   <p><strong><?php echo "usrkey $usrkey" ?></strong></p>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

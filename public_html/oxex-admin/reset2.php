@@ -17,13 +17,11 @@ $tid = 0;
 // check valid email
 if (!filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
   $valid_email = strtolower($email);
-  $stmt = $mysqli->prepare("SELECT whid, usrkey FROM who_there WHERE email = ? ");
-  $stmt->bind_param("s", $valid_email);
-  $stmt->bind_result($whid, $usrkey);
-  $stmt->execute();
-  $stmt->fetch();
-  $numrows = $stmt->num_rows;
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("SELECT whid, usrkey FROM who_there WHERE email = ? ");
+  $stmt->execute([$valid_email]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  $whid = $row ? (int)$row['whid'] : 0;
+  $usrkey = $row ? $row['usrkey'] : null;
 } else {
    $page_txt4 = "<p>That isn't a valid email address.</p>";
   $valid_email = "no";
@@ -46,23 +44,21 @@ if ($valid_email != "no") {
   // write to reset table
   try {
     $pid = 0; // Set pid to 0 as seen in existing records
-    $stmt = $mysqli->prepare("INSERT INTO reset_tbl (pid, usrkey, timesent, timeexp, req_date, tokenhash, tokensalt, invalidated) VALUES (?, ?, ?, ?, ?, ?, ?, ? )");
-    $stmt->bind_param("issssssi", $pid, $usrkey, $timestamp, $expired, $today, $hashed_token, $salt, $invalidated );
-    $stmt->execute();
-    $stmt->close();
-  } catch (mysqli_sql_exception $e) {
+    $stmt = $supabase_pdo->prepare("INSERT INTO reset_tbl (pid, usrkey, timesent, timeexp, req_date, tokenhash, tokensalt, invalidated) VALUES (?, ?, ?, ?, ?, ?, ?, ? )");
+    $stmt->execute([$pid, $usrkey, $timestamp, $expired, $today, $hashed_token, $salt, $invalidated]);
+  } catch (PDOException $e) {
     error_log("Database insertion error: " . $e->getMessage());
     $err_msg = "An error occurred while processing your request. Please try again.";
   }
   
   // get email content
-  $stmt = $mysqli->prepare("SELECT email_subject, email_body, email_body2, email_body3 FROM site_emails_tbl WHERE sei = ?");
-  $stmt->bind_param("i", $value2);
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($email_subject, $email_body, $email_body2, $email_body3);
-  $stmt->fetch();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("SELECT email_subject, email_body, email_body2, email_body3 FROM site_emails_tbl WHERE sei = ?");
+  $stmt->execute([$value2]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  $email_subject = $row ? $row['email_subject'] : '';
+  $email_body = $row ? $row['email_body'] : '';
+  $email_body2 = $row ? $row['email_body2'] : '';
+  $email_body3 = $row ? $row['email_body3'] : '';
   // Build admin reset link using ADMIN_BASE_URL from .env if provided, otherwise BASE_URL
   $adminBase = getenv('ADMIN_BASE_URL');
   if (!$adminBase) {

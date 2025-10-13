@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "University Course";
+
 $subtitle = "Courses";
 $listurl = "courses.php";
 $listname = "Courses";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -30,10 +33,10 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row
-  $stmt = $mysqli->prepare("DELETE FROM uni_tbl WHERE uid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("DELETE FROM uni_tbl WHERE uid = ? LIMIT 1");
+    $stmt->execute([$which]);
+  }
 }
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  
   $which = isset($_POST['which']) ? $_POST['which'] : 0;
@@ -42,21 +45,24 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $ident = isset($_POST['ident']) ? $_POST['ident'] : '';
   
   // Update record
-  $stmt = $mysqli->prepare("UPDATE uni_tbl SET university = ?, ident = ? WHERE uid = ? "); 
-  $stmt->bind_param("ssi", $university, $ident, $which);
-  $stmt->execute();
-  $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("UPDATE uni_tbl SET university = ?, ident = ? WHERE uid = ? "); 
+    $stmt->execute([$university, $ident, $which]);
+  }
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT university, ident FROM uni_tbl WHERE uid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($university, $ident);
-$stmt->fetch();
-$stmt->close();
+if ($usingSupabase) {
+  $stmt = $supabase_pdo->prepare("SELECT university, ident FROM uni_tbl WHERE uid = ?");
+  $stmt->execute([$which]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  $university = $row ? $row['university'] : '';
+  $ident = $row ? $row['ident'] : '';
+} else {
+  $university = '';
+  $ident = '';
+}
 // whatever the record name is
   $changename = "$university";
 ?>
@@ -77,7 +83,7 @@ $stmt->close();
 
             <div class="row my-5">
                <div class="col-xl-8">
-                  <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>" data-parsley-validate="" novalidate="">
+                  <form method="post" action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>?which=<?php echo $which; ?>" data-parsley-validate="" novalidate="">
                      <!-- START card-->
                      <div class="card border-info">
                         <div class="card-header bg-info">
@@ -93,7 +99,6 @@ $stmt->close();
                               <input class="form-control" type="text" id="ident" name="ident" value="<?php echo $ident ?>" maxlength="2" required>
                            </div>
                         </div>
-                        
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
@@ -103,24 +108,22 @@ $stmt->close();
                   </form>
                </div>
                <div class="col-xl-4">
-
-
                </div>
             </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
-                     <!-- START card-->
-                     <div class="card border-danger">
-                        <div class="card-header bg-danger text-white">
-                           <div class="card-title">Delete <?php echo $changename ?></div>
+                  <!-- START card-->
+                  <div class="card border-danger">
+                     <div class="card-header bg-danger text-white">
+                        <div class="card-title">Delete <?php echo $changename ?></div>
+                     </div>
+                     <div class="card-footer">
+                        <div class="float-right">
+                           <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button" onclick="return confirm('Are you sure you want to delete this record and all associated data?')"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
                         </div>
-                        <div class="card-footer">
-                           <div class="float-right">
-                            <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button" onclick="return confirm('Are you sure you want to delete this record and all associated data?')"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
-                     </div><!-- END card-->
+                     </div>
+                  </div><!-- END card-->
                </div>
             </div>
          </div>

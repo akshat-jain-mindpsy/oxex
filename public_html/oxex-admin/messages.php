@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Messages";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Messages";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -26,14 +29,13 @@ $del = isset($_GET['del']) ? $_GET['del'] : 0;
 $delalert = '';
 if ($del == 1) {
   // mark as read if it's your message
-   $stmt = $mysqli->prepare("UPDATE admin_msg SET isread = ? WHERE amid = ? AND usrkey_to = ?"); 
-   $stmt->bind_param("iis", $value1, $msg, $usrkey); 
-   $stmt->execute();
-   if ($mysqli->affected_rows > 0) {
+   $stmt = $pdo->prepare("UPDATE admin_msg SET isread = ? WHERE amid = ? AND usrkey_to = ?"); 
+   $stmt->execute([$value1, $msg, $usrkey]); 
+   if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Message marked as read</strong></div></div></div>";
    }
-   $stmt->close();
+   $stmt->closeCursor();
 }
 ?>
 <body>
@@ -58,21 +60,23 @@ if ($del == 1) {
                   $now = time();
                   // list  unread messages
                   if ($nummsg > 0) {
-                     $tableset = $mysqli->prepare("SELECT amid, usrkey_from, date_sent, msg FROM admin_msg WHERE usrkey_to = ? AND isread = ? ORDER BY date_sent DESC");
-                     $tableset->bind_param("si", $usrkey, $value0);
-                     $tableset->execute();
-                     $tableset->store_result();
-                     $tableset->bind_result($amid, $usrkey_from, $date_sent, $msg);
-                     while ($tableset->fetch()){
+                     $tableset = $pdo->prepare("SELECT amid, usrkey_from, date_sent, msg FROM admin_msg WHERE usrkey_to = ? AND isread = ? ORDER BY date_sent DESC");
+                     $tableset->execute([$usrkey, $value0]);
+                     while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                        $amid = $row['amid'];
+                        $usrkey_from = $row['usrkey_from'];
+                        $date_sent = $row['date_sent'];
+                        $msg = $row['msg'];
                         $msg_sm = substr($msg, 0, 80)."...";
                         // lookup sender
-                        $stmt = $mysqli->prepare("SELECT realname, isonline, lastlogin, photo FROM who_there WHERE usrkey = ?");
-                        $stmt->bind_param("s", $usrkey_from);
-                        $stmt->execute();
-                        $stmt->store_result();
-                        $stmt->bind_result($mailername, $isonline, $lastlogin, $senderphoto);
-                        $stmt->fetch();
-                        $stmt->close();
+                        $stmt = $pdo->prepare("SELECT realname, isonline, lastlogin, photo FROM who_there WHERE usrkey = ?");
+                        $stmt->execute([$usrkey_from]);
+                        $sender_row = $stmt->fetch(PDO::FETCH_ASSOC);
+                        $mailername = $sender_row['realname'];
+                        $isonline = $sender_row['isonline'];
+                        $lastlogin = $sender_row['lastlogin'];
+                        $senderphoto = $sender_row['photo'];
+                        $stmt->closeCursor();
                         if ($mailername == '') {
                            $mailername = "assets/img/user/wizard.jpg";
                         } else {
@@ -92,12 +96,11 @@ if ($del == 1) {
                         echo "   </div>";
                         echo "</div>";
                      }
-                     $numrows = $tableset->num_rows;
-                     $tableset->close();
+                     $numrows = $tableset->rowCount();
+                     $tableset->closeCursor();
                   }
                   ?>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

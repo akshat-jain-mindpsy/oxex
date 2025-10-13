@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Report Competency";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Reports";
 //$listurl = "reports.php"; # will be specific, see later
 $listname = "this Report";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -31,10 +34,8 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
    // deleting a competency
    $rfid = isset($_GET['rfid']) ? $_GET['rfid'] : '';
-   $stmt = $mysqli->prepare("DELETE FROM report_maker_det WHERE rfid = ? LIMIT 1");
-   $stmt->bind_param("i", $rfid); 
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("DELETE FROM report_maker_det WHERE rfid = ? LIMIT 1");
+   $stmt->execute([$rfid]);
 }
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
    // amend competency
@@ -44,38 +45,36 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
    $minval = isset($_POST['minval']) ? $_POST['minval'] : 0;
    $valtype = isset($_POST['valtype']) ? $_POST['valtype'] : 0;
    
-   $stmt = $mysqli->prepare("UPDATE report_maker_det SET stid = ?, minval = ?, valtype = ? WHERE rfid = ?"); 
-   $stmt->bind_param("iiii", $stid, $minval, $valtype, $which);
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("UPDATE report_maker_det SET stid = ?, minval = ?, valtype = ? WHERE rfid = ?"); 
+   $stmt->execute([$stid, $minval, $valtype, $which]);
    
    // find the required competency record
-   $stmt = $mysqli->prepare("SELECT rid, stid, minval, valtype FROM report_maker_det WHERE rfid = ?");
-   $stmt->bind_param("i", $which);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($rid, $thisstid, $thisminval, $thisvaltype);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT rid, stid, minval, valtype FROM report_maker_det WHERE rfid = ?");
+   $stmt->execute([$which]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   if ($row) {
+     $rid = (int)$row['rid'];
+     $thisstid = (int)$row['stid'];
+     $thisminval = (int)$row['minval'];
+     $thisvaltype = (int)$row['valtype'];
+   }
 
  // find the linked report record
-   $stmt = $mysqli->prepare("SELECT report_title, who_by, date_added, date_modified FROM report_maker WHERE rid = ?");
-   $stmt->bind_param("i", $rid);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($report_title, $who_by, $date_added, $date_modified);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT report_title, who_by, date_added, date_modified FROM report_maker WHERE rid = ?");
+   $stmt->execute([$rid]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   if ($row) {
+     $report_title = $row['report_title'];
+     $who_by = $row['who_by'];
+     $date_added = $row['date_added'];
+     $date_modified = $row['date_modified'];
+   }
    $date_modified = strtotime($date_modified);
    $date_added = strtotime($date_added);
  // who changed last?
-  $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $who_by);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($who_by);
-   $stmt->fetch();
-   $stmt->close();
+  $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+   $stmt->execute([$who_by]);
+   $who_by = $stmt->fetchColumn();
 $listurl = "reportdetail.php?which=$rid";
    
 }
@@ -85,32 +84,35 @@ if ($edit == "edit" && ($admintype == 'AT' || $admintype == 'DV')) {
   $rfid = (int)$rfid;
   
    // find the required competency record
-   $stmt = $mysqli->prepare("SELECT rid, stid, minval, valtype FROM report_maker_det WHERE rfid = ?");
-   $stmt->bind_param("i", $rfid);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($rid, $thisstid, $thisminval, $thisvaltype);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT rid, stid, minval, valtype FROM report_maker_det WHERE rfid = ?");
+   $stmt->execute([$rfid]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   if ($row) {
+     $rid = (int)$row['rid'];
+     $thisstid = (int)$row['stid'];
+     $thisminval = (int)$row['minval'];
+     $thisvaltype = (int)$row['valtype'];
+   }
+   $stmt->closeCursor();
 
  // find the linked report record
-   $stmt = $mysqli->prepare("SELECT report_title, who_by, date_added, date_modified FROM report_maker WHERE rid = ?");
-   $stmt->bind_param("i", $rid);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($report_title, $who_by, $date_added, $date_modified);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT report_title, who_by, date_added, date_modified FROM report_maker WHERE rid = ?");
+   $stmt->execute([$rid]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   if ($row) {
+     $report_title = $row['report_title'];
+     $who_by = $row['who_by'];
+     $date_added = $row['date_added'];
+     $date_modified = $row['date_modified'];
+   }
+   $stmt->closeCursor();
    $date_modified = strtotime($date_modified);
    $date_added = strtotime($date_added);
  // who changed last?
-  $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $who_by);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($who_by);
-   $stmt->fetch();
-   $stmt->close();
+  $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+   $stmt->execute([$who_by]);
+   $who_by = $stmt->fetchColumn();
+   $stmt->closeCursor();
 $listurl = "reportdetail.php?which=$rid";
 }
 ?>
@@ -127,7 +129,8 @@ $listurl = "reportdetail.php?which=$rid";
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -153,31 +156,27 @@ $listurl = "reportdetail.php?which=$rid";
 // loop through tabs_tbl then fields within tables:-
 // 'tab_fields' links all the fields to a table
 // 'select_types' says the name of the field 
-$tabset = $mysqli->prepare("SELECT tbid, tab_name FROM tabs_tbl ORDER BY tab_name ");
+$tabset = $pdo->prepare("SELECT tbid, tab_name FROM tabs_tbl ORDER BY tab_name ");
 $tabset->execute();
-$tabset->store_result();
-$tabset->bind_result($tbid, $tab_name);
-while ($tabset->fetch()){
-      $tableset = $mysqli->prepare("SELECT select_types.stid, select_types.str FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order");
-      $tableset->bind_param("i", $tbid);
-      $tableset->execute();
-      $tableset->store_result();
-      $tableset->bind_result($stid, $str);
-      while ($tableset->fetch()){
+while ($tabrow = $tabset->fetch(PDO::FETCH_ASSOC)){
+      $tbid = (int)$tabrow['tbid'];
+      $tab_name = $tabrow['tab_name'];
+      $tableset = $pdo->prepare("SELECT select_types.stid, select_types.str FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order");
+      $tableset->execute([$tbid]);
+      while ($frow = $tableset->fetch(PDO::FETCH_ASSOC)){
+        $stid = (int)$frow['stid'];
+        $str = $frow['str'];
          echo "<option value=\"$stid\"";
          if ($thisstid == $stid) {
             echo "selected";
          }
          echo ">$str ($tab_name)</option>";
       }
-      $numrows = $tableset->num_rows;
-      $tableset->close();                                         
 }
-$tabset->close();                                       
+
                                            ?>
                                        </select>
-                                    </div>
-                                </div>
+</div>
                              </div>
                              <div class="form-group">
                                <label class="col-form-label" for="valtype">Competency Type</label>
@@ -191,16 +190,13 @@ $tabset->close();
                              <div class="form-group">
                               <label class="col-form-label" for="minval">Competency Value</label>
                               <input class="form-control" type="number" id="minval" name="minval" value="<?php echo $thisminval ?>">
-                           </div>
-
-                        </div>
+</div>
                         
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $rfid ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
                </div>
 
@@ -216,13 +212,10 @@ $tabset->close();
                         <div class="card-body">
                            <?php
                            // find the competency field ecord
-   $stmt = $mysqli->prepare("SELECT str, single FROM select_types WHERE stid = ?");
-   $stmt->bind_param("i", $thisstid);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($str, $single);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT str, single FROM select_types WHERE stid = ?");
+   $stmt->execute([$thisstid]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   if ($row) { $str = $row['str']; $single = (int)$row['single']; }
    $listtype = 'Single Selection Field: Use the associated number as the Competency Value for an Exact Value';
    if ($single == 1) {
       $listtype = 'Multiple Selection: Use the associated number as the Competency Value for an Exact Value';
@@ -247,15 +240,13 @@ $tabset->close();
    if ($single < 3) {
       echo "<p>";
       // loop through fields and values
-      $tableset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ");
-      $tableset->bind_param("i", $thisstid);
-      $tableset->execute();
-      $tableset->store_result();
-      $tableset->bind_result($pid, $select_val);
-      while ($tableset->fetch()){
+      $tableset = $pdo->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ");
+      $tableset->execute([$thisstid]);
+      while ($grow = $tableset->fetch(PDO::FETCH_ASSOC)){
+        $pid = (int)$grow['pid'];
+        $select_val = $grow['select_val'];
          echo "($pid) $select_val<br>";
       }
-      $tableset->close();
       echo "</p>";
    }
 
@@ -265,17 +256,8 @@ $tabset->close();
 
                         </div>
                         <div class="card-footer">
-                 
-                        </div>
-                     </div><!-- END card-->
-
-
-                
-               </div>
-
-
-
-            </div>
+</div><!-- END card-->
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -287,11 +269,9 @@ $tabset->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="reportcompetency.php?del=del&amp;rfid=<?php echo $rfid ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

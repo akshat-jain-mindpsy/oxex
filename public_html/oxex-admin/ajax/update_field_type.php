@@ -15,15 +15,15 @@ try {
     sec_session_start();
 
     // Check if the database connection is valid
-    if (!isset($mysqli) || $mysqli->connect_errno) {
-        throw new Exception("Database connection failed: " . ($mysqli ? $mysqli->connect_error : "Connection not established"));
+    if (!isset($pdo) || !$pdo) {
+        throw new Exception("Database connection failed: Connection not established");
     }
 
     // Get admin type from session
     $admintype = isset($_SESSION['admintype']) ? $_SESSION['admintype'] : '';
 
     // Check login and permissions
-    if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+    if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
         echo json_encode([
             'status' => 'error', 
             'message' => 'Unauthorized access: ' . $admintype
@@ -44,12 +44,11 @@ try {
     }
 
     // Verify the field exists
-    $check_stmt = $mysqli->prepare("SELECT stid, str FROM select_types WHERE stid = ?");
-    $check_stmt->bind_param("i", $field_id);
-    $check_stmt->execute();
-    $result = $check_stmt->get_result();
+    $check_stmt = $pdo->prepare("SELECT stid, str FROM select_types WHERE stid = ?");
+    $check_stmt->execute([$field_id]);
+    $field_data = $check_stmt->fetch(PDO::FETCH_ASSOC);
     
-    if ($result->num_rows === 0) {
+    if (!$field_data) {
         echo json_encode([
             'status' => 'error',
             'message' => 'Field not found: ID=' . $field_id
@@ -57,18 +56,16 @@ try {
         exit;
     }
     
-    $field_data = $result->fetch_assoc();
     $field_name = $field_data['str'];
     
     // Update field type
-    $update_stmt = $mysqli->prepare("UPDATE select_types SET single = ? WHERE stid = ?");
-    $update_stmt->bind_param("ii", $field_type, $field_id);
+    $update_stmt = $pdo->prepare("UPDATE select_types SET single = ? WHERE stid = ?");
     
-    if (!$update_stmt->execute()) {
-        throw new Exception("Failed to update field type: " . $mysqli->error);
+    if (!$update_stmt->execute([$field_type, $field_id])) {
+        throw new Exception("Failed to update field type: " . $update_stmt->errorInfo()[2]);
     }
     
-    if ($mysqli->affected_rows === 0) {
+    if ($update_stmt->rowCount() === 0) {
         echo json_encode([
             'status' => 'warning',
             'message' => 'No changes made - field type already set to: ' . $field_type
@@ -79,18 +76,15 @@ try {
     // Handle options for select fields (type 0 or 1)
     if ($field_type == 0 || $field_type == 1) {
         // Check if field already has options
-        $options_query = $mysqli->prepare("SELECT COUNT(*) as option_count FROM select_gen WHERE stid = ?");
-        $options_query->bind_param("i", $field_id);
-        $options_query->execute();
-        $options_result = $options_query->get_result();
-        $option_data = $options_result->fetch_assoc();
+        $options_query = $pdo->prepare("SELECT COUNT(*) as option_count FROM select_gen WHERE stid = ?");
+        $options_query->execute([$field_id]);
+        $option_count = $options_query->fetchColumn();
         
         // If no options and field is now a select type, add a default option
-        if ($option_data['option_count'] == 0) {
+        if ($option_count == 0) {
             $default_option = "Option 1";
-            $insert_stmt = $mysqli->prepare("INSERT INTO select_gen (stid, select_val) VALUES (?, ?)");
-            $insert_stmt->bind_param("is", $field_id, $default_option);
-            $insert_stmt->execute();
+            $insert_stmt = $pdo->prepare("INSERT INTO select_gen (stid, select_val) VALUES (?, ?)");
+            $insert_stmt->execute([$field_id, $default_option]);
         }
     }
     
@@ -112,7 +106,7 @@ try {
     ]);
 }
 
-if (isset($mysqli)) {
-    $mysqli->close();
+if (isset($pdo)) {
+    $pdo = null;
 }
 ?> 

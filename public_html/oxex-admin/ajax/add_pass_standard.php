@@ -5,7 +5,7 @@ sec_session_start();
 include '../incl/sess.php';
 
 // Only allow authorized admins
-if (login_check($mysqli) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) {
+if (login_check($pdo) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) {
     header('HTTP/1.1 403 Forbidden');
     echo json_encode(['status' => 'error', 'message' => 'Not authorized.']);
     exit;
@@ -67,12 +67,9 @@ if (empty($standard_name) || $tbid === 0 || empty($requirement_type)) {
 
 // If a parent is provided, ensure parent exists and is in the same table
 if (!is_null($parent_standard_id)) {
-    $parent_stmt = $mysqli->prepare("SELECT tbid FROM pass_standards WHERE psid = ?");
-    $parent_stmt->bind_param("i", $parent_standard_id);
-    $parent_stmt->execute();
-    $parent_res = $parent_stmt->get_result();
-    $parent_row = $parent_res->fetch_assoc();
-    $parent_stmt->close();
+    $parent_stmt = $supabase_pdo->prepare("SELECT tbid FROM pass_standards WHERE psid = ?");
+    $parent_stmt->execute([$parent_standard_id]);
+    $parent_row = $parent_stmt->fetch(PDO::FETCH_ASSOC);
     if (!$parent_row) {
         $response['message'] = 'Selected parent standard does not exist.';
         echo json_encode($response);
@@ -92,37 +89,29 @@ $sql = "INSERT INTO pass_standards
             (standard_name, tbid, stid, requirement_type, required_value, field_value, parent_standard_id, is_active, who_by, date_added) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-if ($stmt = $mysqli->prepare($sql)) {
-    // Types: s i i s i s i i s i
-    $stmt->bind_param("siisisisisi", 
-        $standard_name,
-        $tbid,
-        $stid,
-        $requirement_type,
-        $required_value,
-        $field_value,
-        $parent_standard_id,
-        $is_active,
-        $usrkey,
-        $date_added
-    );
-    
-    if ($stmt->execute()) {
-        if ($stmt->affected_rows > 0) {
-            $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'New pass standard added successfully.'];
-            $response['status'] = 'success';
-            $response['message'] = 'New pass standard added successfully.';
-            $response['new_id'] = $stmt->insert_id;
-        } else {
-            $response['message'] = 'Failed to add the new standard. No rows were affected.';
-        }
+$stmt = $supabase_pdo->prepare($sql);
+if ($stmt->execute([
+    $standard_name,
+    $tbid,
+    $stid,
+    $requirement_type,
+    $required_value,
+    $field_value,
+    $parent_standard_id,
+    $is_active,
+    $usrkey,
+    $date_added
+])) {
+    if ($stmt->rowCount() > 0) {
+        $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'New pass standard added successfully.'];
+        $response['status'] = 'success';
+        $response['message'] = 'New pass standard added successfully.';
+        $response['new_id'] = $supabase_pdo->lastInsertId();
     } else {
-        $response['message'] = 'Database execution failed: ' . $stmt->error;
+        $response['message'] = 'Failed to add the new standard. No rows were affected.';
     }
-    $stmt->close();
 } else {
-    $response['message'] = 'Database prepare statement failed: ' . $mysqli->error;
+    $response['message'] = 'Database execution failed.';
 }
 
-$mysqli->close();
 echo json_encode($response); 

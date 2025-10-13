@@ -38,14 +38,10 @@ if ($done == 'date' ) {# if from new data button
     while (!$numids == 0) {
       // make unique 32 digit hex string
       $logkey = substr(md5(rand()), 0, 32);   
-      $stmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE logkey = ? LIMIT 1");
-      $stmt->bind_param('s', $logkey);
-      $stmt->execute();
-      $stmt->store_result();
-      $stmt->bind_result($tlogid);
-      $stmt->fetch();
-      $numids = $stmt->num_rows;
-      $stmt->close();
+      $stmt = $pdo->prepare("SELECT tlogid FROM trainee_log WHERE logkey = ? LIMIT 1");
+      $stmt->execute([$logkey]);
+      $numids = $stmt->rowCount();
+      $stmt->closeCursor();
     }
 }
 
@@ -71,71 +67,60 @@ if ($table == 'table'){# if from table
 
 
 // has this trainee entered data for this $logkey already?
-$vids = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND tbid = ? AND logkey = ?");
-$vids->bind_param("sis", $trainkey, $tbid, $logkey);
-$vids->execute();
-$vids->store_result();
-$modifylog = $vids->num_rows;
-$vids->close();
+$vids = $pdo->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND tbid = ? AND logkey = ?");
+$vids->execute([$trainkey, $tbid, $logkey]);
+$modifylog = $vids->rowCount();
+$vids->closeCursor();
 //echo "trainkey $trainkey | tbid $tbid | logdate $logdate | modifylog $modifylog";
 
 if ($done == 'done' && $table != 'table') {
   $logkey = isset($_POST['logkey']) ? $_POST['logkey'] : ''; # unique ID for data set
   if ($modifylog > 0) {
   // we're overwriting data so delete the old data for this user/tab/date
-    $stmt = $mysqli->prepare("DELETE FROM trainee_log WHERE trainkey = ? AND tbid = ? AND logkey = ?");
-    $stmt->bind_param("sis", $trainkey, $tbid, $logkey); 
-    $stmt->execute();
-    $stmt->close();
+    $stmt = $pdo->prepare("DELETE FROM trainee_log WHERE trainkey = ? AND tbid = ? AND logkey = ?");
+    $stmt->execute([$trainkey, $tbid, $logkey]); 
+    $stmt->closeCursor();
   } 
         
   // receive logbook data
-  $tableset = $mysqli->prepare("SELECT stid FROM tab_fields WHERE tbid = ? AND sort_order != ? ORDER BY sort_order ASC");
-  $tableset->bind_param("ii", $tbid, $value0); 
-  $tableset->execute();
-  $tableset->store_result();
-  $tableset->bind_result($stid);
-  while ($tableset->fetch()){
+  $tableset = $pdo->prepare("SELECT stid FROM tab_fields WHERE tbid = ? AND sort_order != ? ORDER BY sort_order ASC");
+  $tableset->execute([$tbid, $value0]); 
+  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+    $stid = $row['stid'];
     $posmarker = 'stid'.$stid;
     // what sort of data are we expecting?
     // 0=single select, 1=allow multiple, 2 = text, 3 = date, 4=numeric (0.1) 5=numeric(int), 6=time
-    $stmt = $mysqli->prepare("SELECT single FROM select_types WHERE stid = ?");
-    $stmt->bind_param("i", $stid);
-    $stmt->execute();
-    $stmt->store_result();
-    $stmt->bind_result($single);
-    $stmt->fetch();
-    $stmt->close();
+    $stmt = $pdo->prepare("SELECT single FROM select_types WHERE stid = ?");
+    $stmt->execute([$stid]);
+    $single = $stmt->fetchColumn();
+    $stmt->closeCursor();
     if ($single == 0) {
       // store select value
       $logvalue = isset($_POST[$posmarker]) ? $_POST[$posmarker] : 0;
         // insert new value
-      $insert_stmt = $mysqli->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-      $insert_stmt->bind_param("siiisiis", $trainkey, $tbid, $stid, $logvalue, $valueblank, $logdate, $today, $logkey);
-      $insert_stmt->execute();
-      $newid = $insert_stmt->insert_id;
-      $insert_stmt->close();
+      $insert_stmt = $pdo->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+      $insert_stmt->execute([$trainkey, $tbid, $stid, $logvalue, $valueblank, $logdate, $today, $logkey]);
+      $newid = $pdo->lastInsertId();
+      $insert_stmt->closeCursor();
     }
     if ($single == 1 && (isset($_POST[$posmarker]))) {
       // will be array, step through values
         foreach(($_POST[$posmarker]) as $mval) {
           // insert new value
-          $insert_stmt = $mysqli->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-          $insert_stmt->bind_param("siiisiis", $trainkey, $tbid, $stid, $mval, $valueblank, $logdate, $today, $logkey);
-          $insert_stmt->execute();
-          $newid = $insert_stmt->insert_id;
-          $insert_stmt->close();
+          $insert_stmt = $pdo->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+          $insert_stmt->execute([$trainkey, $tbid, $stid, $mval, $valueblank, $logdate, $today, $logkey]);
+          $newid = $pdo->lastInsertId();
+          $insert_stmt->closeCursor();
         }
     }
     if ($single == 2 || $single == 4 || $single == 5 || $single == 6) {
       // expect text or numeric or hr:min input
       $logvalue = isset($_POST[$posmarker]) ? $_POST[$posmarker] : '';
       // insert new value
-      $insert_stmt = $mysqli->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-      $insert_stmt->bind_param("siiisiis", $trainkey, $tbid, $stid, $value0, $logvalue, $logdate, $today, $logkey);
-      $insert_stmt->execute();
-      $newid = $insert_stmt->insert_id;
-      $insert_stmt->close();
+      $insert_stmt = $pdo->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+      $insert_stmt->execute([$trainkey, $tbid, $stid, $value0, $logvalue, $logdate, $today, $logkey]);
+      $newid = $pdo->lastInsertId();
+      $insert_stmt->closeCursor();
     }
     if ($single == 3) {
       // convert dd-mm-yyyy date to yyyymmdd
@@ -147,33 +132,29 @@ if ($done == 'done' && $table != 'table') {
       $logvalue = $fromyyyy.$frommm.$fromddd;
 
       // insert new value
-      $insert_stmt = $mysqli->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-      $insert_stmt->bind_param("siiisiis", $trainkey, $tbid, $stid, $value0, $logvalue, $logdate, $today, $logkey);
-      $insert_stmt->execute();
-      $newid = $insert_stmt->insert_id;
-      $insert_stmt->close();
+      $insert_stmt = $pdo->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+      $insert_stmt->execute([$trainkey, $tbid, $stid, $value0, $logvalue, $logdate, $today, $logkey]);
+      $newid = $pdo->lastInsertId();
+      $insert_stmt->closeCursor();
     }
   }
-  $tableset->close();
+  $tableset->closeCursor();
 
   $modifylog = 1; # either way, there is now data for this date
 }
 
 // which Table is this and is this user entitled to it
-$stmt = $mysqli->prepare("SELECT tab_name, tab_notes FROM tabs_tbl WHERE tbid = ?");
-$stmt->bind_param("i", $tbid);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($tab_name, $tab_notes);
-$stmt->fetch();
-$stmt->close();
+$stmt = $pdo->prepare("SELECT tab_name, tab_notes FROM tabs_tbl WHERE tbid = ?");
+$stmt->execute([$tbid]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+$tab_name = $row['tab_name'];
+$tab_notes = $row['tab_notes'];
+$stmt->closeCursor();
 
-$vids = $mysqli->prepare("SELECT ttid FROM trainee_tab_link ttl JOIN tabs_tbl tt ON ttl.tbid = tt.tbid WHERE ttl.tbid = ? AND ttl.trainkey = ? AND tt.isvis = 1");
-$vids->bind_param("is", $tbid, $trainkey);
-$vids->execute();
-$vids->store_result();
-$numlinks = $vids->num_rows;
-$vids->close();
+$vids = $pdo->prepare("SELECT ttid FROM trainee_tab_link ttl JOIN tabs_tbl tt ON ttl.tbid = tt.tbid WHERE ttl.tbid = ? AND ttl.trainkey = ? AND tt.isvis = 1");
+$vids->execute([$tbid, $trainkey]);
+$numlinks = $vids->rowCount();
+$vids->closeCursor();
 
 ?><!doctype html>
 <html lang="en">
@@ -186,7 +167,7 @@ $vids->close();
     <link rel="stylesheet" href="//code.jquery.com/ui/1.13.1/themes/base/jquery-ui.css">
   </head>
   <?php
-    if (login_check($mysqli) != false) {
+    if (login_check($pdo) != false) {
       // logged in only!
     ?>
   <body>
@@ -293,16 +274,15 @@ $vids->close();
                   <?php
                   // loop through first 8 fields for the chosen table and get field name 
                   // omit data type 'multiple'
-                  $tableset = $mysqli->prepare("SELECT tab_fields.stid, select_types.str FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND select_types.single != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC LIMIT 8");
-                  $tableset->bind_param("iii", $tbid, $value0, $value1);
-                  $tableset->execute();
-                  $tableset->store_result();
-                  $tableset->bind_result($stid, $str);
-                  while ($tableset->fetch()){
+                  $tableset = $pdo->prepare("SELECT tab_fields.stid, select_types.str FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND select_types.single != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC LIMIT 8");
+                  $tableset->execute([$tbid, $value0, $value1]);
+                  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                    $stid = $row['stid'];
+                    $str = $row['str'];
                     // output the field names
                     echo "<th>$str</th>";
                   }
-                  $tableset->close();
+                  $tableset->closeCursor();
                   ?>
                 </tr>
               </thead>
@@ -313,32 +293,29 @@ $vids->close();
 
                     // define 'set' as a date
                     // then get any results entered for the $stid for that date
-                  $dataset = $mysqli->prepare("SELECT date_added, logkey FROM trainee_log WHERE trainkey = ? AND tbid = ? AND date_added >= ? AND date_added <= ? GROUP BY logkey ORDER BY date_added DESC ");
-                  $dataset->bind_param("siii", $trainkey, $tbid, $valueyearstart, $valueyearend); 
-                  $dataset->execute();
-                  $dataset->store_result();
-                  $dataset->bind_result($date_added, $tablelogkey);
-                  while ($dataset->fetch()){
+                  $dataset = $pdo->prepare("SELECT date_added, logkey FROM trainee_log WHERE trainkey = ? AND tbid = ? AND date_added >= ? AND date_added <= ? GROUP BY logkey ORDER BY date_added DESC ");
+                  $dataset->execute([$trainkey, $tbid, $valueyearstart, $valueyearend]); 
+                  while ($row = $dataset->fetch(PDO::FETCH_ASSOC)){
+                    $date_added = $row['date_added'];
+                    $tablelogkey = $row['logkey'];
                     $exlogdate = strtotime($date_added);
                     $exlogdate = date("d-m-Y", $exlogdate);
                     // loop through chosen fields
                     echo "<tr>";
                     $ctr = 0; # a counter to know the first column
                     // loop through same fields as the <th> cells
-                    $tableset = $mysqli->prepare("SELECT tab_fields.stid, select_types.single FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND select_types.single != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC LIMIT 8");
-                    $tableset->bind_param("iii", $tbid, $value0, $value1);
-                    $tableset->execute();
-                    $tableset->store_result();
-                    $tableset->bind_result($stid, $single);
-                    while ($tableset->fetch()){
+                    $tableset = $pdo->prepare("SELECT tab_fields.stid, select_types.single FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND select_types.single != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC LIMIT 8");
+                    $tableset->execute([$tbid, $value0, $value1]);
+                    while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                      $stid = $row['stid'];
+                      $single = $row['single'];
                       // get data for ecah in tuen
-                      $stmt = $mysqli->prepare("SELECT pid, select_val FROM trainee_log WHERE trainkey = ? AND tbid = ? AND stid = ? AND logkey = ?");
-                      $stmt->bind_param("siis", $trainkey, $tbid, $stid, $tablelogkey);
-                      $stmt->execute();
-                      $stmt->store_result();
-                      $stmt->bind_result($expid, $exselect_val);
-                      $stmt->fetch();
-                      $stmt->close();
+                      $stmt = $pdo->prepare("SELECT pid, select_val FROM trainee_log WHERE trainkey = ? AND tbid = ? AND stid = ? AND logkey = ?");
+                      $stmt->execute([$trainkey, $tbid, $stid, $tablelogkey]);
+                      $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                      $expid = $row['pid'];
+                      $exselect_val = $row['select_val'];
+                      $stmt->closeCursor();
                       // format data according to data type
                       // 0=single select, 2 = text, 3 = date, 4=numeric (0.1) 5=numeric(int)
                       if ($single == 2 || $single == 4 || $single == 5 || $single == 6) {
@@ -357,13 +334,10 @@ $vids->close();
                       }
                       if ($single == 0) {
                         // fetch the select menu value for $pid
-                        $stmt = $mysqli->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
-                        $stmt->bind_param("i", $expid);
-                        $stmt->execute();
-                        $stmt->store_result();
-                        $stmt->bind_result($exselect_val);
-                        $stmt->fetch();
-                        $stmt->close();
+                        $stmt = $pdo->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
+                        $stmt->execute([$expid]);
+                        $exselect_val = $stmt->fetchColumn();
+                        $stmt->closeCursor();
                         echo "<td>$exselect_val</td>\n";
                       }
                       if ($single == 3) {
@@ -373,11 +347,11 @@ $vids->close();
                       }
                       $ctr++; # increment counter
                     }
-                    $tableset->close();
+                    $tableset->closeCursor();
                     echo "</tr>";
                       
                   }
-                  $dataset->close();
+                  $dataset->closeCursor();
                 ?>
               </tbody>
             </table>
@@ -411,28 +385,24 @@ $vids->close();
         <div class="row">
           <?php
           // loop through fields in order
-          $tableset = $mysqli->prepare("SELECT stid FROM tab_fields WHERE tbid = ? AND sort_order != ? ORDER BY sort_order ASC");
-          $tableset->bind_param("ii", $tbid, $value0); 
-          $tableset->execute();
-          $tableset->store_result();
-          $tableset->bind_result($stid);
-          while ($tableset->fetch()){
+          $tableset = $pdo->prepare("SELECT stid FROM tab_fields WHERE tbid = ? AND sort_order != ? ORDER BY sort_order ASC");
+          $tableset->execute([$tbid, $value0]); 
+          while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+            $stid = $row['stid'];
             // get field name
-            $stmt = $mysqli->prepare("SELECT str, single FROM select_types WHERE stid = ?");
-            $stmt->bind_param("i", $stid);
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($str, $single);
-            $stmt->fetch();
-            $stmt->close();
+            $stmt = $pdo->prepare("SELECT str, single FROM select_types WHERE stid = ?");
+            $stmt->execute([$stid]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $str = $row['str'];
+            $single = $row['single'];
+            $stmt->closeCursor();
             // get existing values (with a twist if there are multiple vales)
-            $stmt = $mysqli->prepare("SELECT pid, select_val FROM trainee_log WHERE trainkey = ? AND tbid = ? AND stid = ? AND logkey = ?");
-            $stmt->bind_param("siis", $trainkey, $tbid, $stid, $logkey);
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($expid, $exlogvalue);
-            $stmt->fetch();
-            $stmt->close();
+            $stmt = $pdo->prepare("SELECT pid, select_val FROM trainee_log WHERE trainkey = ? AND tbid = ? AND stid = ? AND logkey = ?");
+            $stmt->execute([$trainkey, $tbid, $stid, $logkey]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $expid = $row['pid'];
+            $exlogvalue = $row['select_val'];
+            $stmt->closeCursor();
             echo "<div class=\"col-xs-12 col-sm-6 col-md-4 col-xl-3 mb-3 px-3\">";
             echo "<div class=\"form-group\">";
             // what type of input
@@ -440,12 +410,11 @@ $vids->close();
               // *single* select menu: loop through select values
               echo "<label for=\"stid$stid\">$str</label>";
               echo "<select class=\"form-control\" id=\"stid$stid\" name=\"stid$stid\">";
-              $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ");
-              $fieldset->bind_param("i", $stid);
-              $fieldset->execute();
-              $fieldset->store_result();
-              $fieldset->bind_result($pid, $select_val);
-              while ($fieldset->fetch()){
+              $fieldset = $pdo->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ");
+              $fieldset->execute([$stid]);
+              while ($row = $fieldset->fetch(PDO::FETCH_ASSOC)){
+                $pid = $row['pid'];
+                $select_val = $row['select_val'];
                 if ($pid == $expid) {
                   $selected = 'selected';
                 } else {
@@ -453,7 +422,7 @@ $vids->close();
                 }
                 echo "<option value=\"$pid\" $selected>$select_val</option>";
               }
-              $fieldset->close();
+              $fieldset->closeCursor();
               echo "</select>";
             }
             if ($single == 1) {
@@ -461,24 +430,20 @@ $vids->close();
               // for old values, need to build array
               $exarr = array();
               // The twist: loop through existing values
-              $fieldset = $mysqli->prepare("SELECT pid FROM trainee_log WHERE trainkey = ? AND tbid = ? AND stid = ? AND date_added = ?");
-              $fieldset->bind_param("siii", $trainkey, $tbid, $stid, $logdate);
-              $fieldset->execute();
-              $fieldset->store_result();
-              $fieldset->bind_result($expid);
-              while ($fieldset->fetch()){
-                array_push($exarr, $expid); # add to array for checking in select
+              $fieldset = $pdo->prepare("SELECT pid FROM trainee_log WHERE trainkey = ? AND tbid = ? AND stid = ? AND date_added = ?");
+              $fieldset->execute([$trainkey, $tbid, $stid, $logdate]);
+              while ($row = $fieldset->fetch(PDO::FETCH_ASSOC)){
+                array_push($exarr, $row['pid']); # add to array for checking in select
               }
-              $fieldset->close();
+              $fieldset->closeCursor();
               
               echo "<label for=\"stid$stid\">$str</label>";
               echo "<select class=\"form-control\" id=\"stid$stid\" name=\"stid".$stid."[]\" multiple>";
-              $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ");
-              $fieldset->bind_param("i", $stid);
-              $fieldset->execute();
-              $fieldset->store_result();
-              $fieldset->bind_result($pid, $select_val);
-              while ($fieldset->fetch()){
+              $fieldset = $pdo->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ");
+              $fieldset->execute([$stid]);
+              while ($row = $fieldset->fetch(PDO::FETCH_ASSOC)){
+                $pid = $row['pid'];
+                $select_val = $row['select_val'];
                 if (in_array($pid, $exarr)) {
                   // if the value is in the array show it as selected
                   $selected = 'selected';
@@ -487,7 +452,7 @@ $vids->close();
                 }
                 echo "<option value=\"$pid\" $selected>$select_val</option>";
               }
-              $fieldset->close();
+              $fieldset->closeCursor();
               echo "</select>";
               //print_r($exarr);
               unset($exarr); # array no longer needed
@@ -530,7 +495,7 @@ $vids->close();
             echo "</div>";
             echo "</div>";
           }
-          $tableset->close();
+          $tableset->closeCursor();
           ?>
         </div>
         <div class="row">
@@ -566,7 +531,7 @@ $vids->close();
     ?>
     <?php include 'incl/footer.php' ?>
     <?php
-    if (login_check($mysqli) != false) {
+    if (login_check($pdo) != false) {
       include 'incl/glossary.php';
     }
     ?>

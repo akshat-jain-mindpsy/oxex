@@ -7,7 +7,7 @@ include '../incl/sess.php';
 header('Content-Type: application/json');
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
       $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
     echo json_encode(['status' => 'error', 'message' => 'Access denied']);
@@ -28,12 +28,12 @@ if ($section_id <= 0) {
 
 try {
     // Get section details
-    $section_stmt = $mysqli->prepare("
+    $section_stmt = $supabase_pdo->prepare("
         SELECT 
             fs.section_id, 
             fs.section_name, 
             fs.section_description,
-            GROUP_CONCAT(DISTINCT stl.tbid) AS table_ids
+            STRING_AGG(DISTINCT stl.tbid::text, ',') AS table_ids
         FROM 
             field_sections fs
         LEFT JOIN 
@@ -43,20 +43,16 @@ try {
         GROUP BY 
             fs.section_id, fs.section_name, fs.section_description
     ");
-    $section_stmt->bind_param("ii", $table_id, $section_id);
-    $section_stmt->execute();
-    $section_result = $section_stmt->get_result();
+    $section_stmt->execute([$table_id, $section_id]);
+    $section = $section_stmt->fetch(PDO::FETCH_ASSOC);
     
-    if ($section_result->num_rows === 0) {
+    if (!$section) {
         echo json_encode([
             'status' => 'error', 
             'message' => 'Section not found'
         ]);
         exit;
     }
-    
-    $section = $section_result->fetch_assoc();
-    $section_stmt->close();
     
     echo json_encode([
         'status' => 'success',
@@ -72,7 +68,5 @@ try {
         'message' => 'Failed to retrieve section details: ' . $e->getMessage()
     ]);
 }
-
-$mysqli->close();
 exit;
 ?> 

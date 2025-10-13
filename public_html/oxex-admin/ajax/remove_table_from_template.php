@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Check user permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     http_response_code(403); // Forbidden
     die(json_encode(['status' => 'error', 'message' => 'Unauthorized access']));
 }
@@ -35,17 +35,16 @@ if ($template_id <= 0 || $table_id <= 0) {
 // Remove the table and all its fields from the template
 try {
     // Start transaction
-    $mysqli->begin_transaction();
+    $supabase_pdo->beginTransaction();
     
     // Remove all fields for this table from the template
-    $remove_fields = $mysqli->prepare("DELETE FROM csv_template_columns WHERE template_id = ? AND table_id = ?");
-    $remove_fields->bind_param("ii", $template_id, $table_id);
-    $remove_fields->execute();
+    $remove_fields = $supabase_pdo->prepare("DELETE FROM csv_template_columns WHERE template_id = ? AND table_id = ?");
+    $remove_fields->execute([$template_id, $table_id]);
     
-    $rows_affected = $remove_fields->affected_rows;
+    $rows_affected = $remove_fields->rowCount();
     
     // Commit the transaction
-    $mysqli->commit();
+    $supabase_pdo->commit();
     
     echo json_encode([
         'status' => 'success', 
@@ -55,9 +54,9 @@ try {
     
 } catch (Exception $e) {
     // Rollback on error
-    $mysqli->rollback();
+    if ($supabase_pdo->inTransaction()) {
+        $supabase_pdo->rollBack();
+    }
     error_log("Error removing table from template: " . $e->getMessage());
     echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
-}
-
-$mysqli->close(); 
+} 

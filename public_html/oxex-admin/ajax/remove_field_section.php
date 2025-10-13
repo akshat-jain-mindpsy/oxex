@@ -7,7 +7,7 @@ sec_session_start();
 include '../incl/sess.php';
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
       $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
     echo json_encode(['status' => 'error', 'message' => 'Unauthorized access']);
@@ -31,59 +31,47 @@ if($field_id <= 0 || $table_id <= 0) {
 
 try {
     // Start transaction
-    $mysqli->begin_transaction();
+    $supabase_pdo->beginTransaction();
     
     // Get current section ID before removing
-    $get_section = $mysqli->prepare("SELECT section_id FROM select_types WHERE stid = ?");
-    $get_section->bind_param("i", $field_id);
-    $get_section->execute();
-    $section_result = $get_section->get_result();
-    $section_id = null;
-    
-    if($row = $section_result->fetch_assoc()) {
-        $section_id = $row['section_id'];
-    }
-    $get_section->close();
+    $get_section = $supabase_pdo->prepare("SELECT section_id FROM select_types WHERE stid = ?");
+    $get_section->execute([$field_id]);
+    $row = $get_section->fetch(PDO::FETCH_ASSOC);
+    $section_id = $row ? $row['section_id'] : null;
     
     // Update the field to remove its section assignment
-    $update_field = $mysqli->prepare("UPDATE select_types SET section_id = NULL WHERE stid = ?");
-    $update_field->bind_param("i", $field_id);
-    $update_field->execute();
-    $field_updated = $update_field->affected_rows > 0;
-    $update_field->close();
+    $update_field = $supabase_pdo->prepare("UPDATE select_types SET section_id = NULL WHERE stid = ?");
+    $update_field->execute([$field_id]);
+    $field_updated = $update_field->rowCount() > 0;
     
     // Check if there are any other fields in this section for this table
     $check_fields = null;
     $other_fields_exist = false;
     
     if($section_id) {
-        $check_fields = $mysqli->prepare("
+        $check_fields = $supabase_pdo->prepare("
             SELECT COUNT(*) as field_count 
             FROM select_types st
             JOIN tab_fields tf ON st.stid = tf.stid
             WHERE st.section_id = ? AND tf.tbid = ?
         ");
-        $check_fields->bind_param("ii", $section_id, $table_id);
-        $check_fields->execute();
-        $fields_result = $check_fields->get_result();
+        $check_fields->execute([$section_id, $table_id]);
+        $fields_row = $check_fields->fetch(PDO::FETCH_ASSOC);
         
-        if($fields_row = $fields_result->fetch_assoc()) {
+        if($fields_row) {
             $other_fields_exist = (int)$fields_row['field_count'] > 0;
         }
-        $check_fields->close();
         
         // Only remove section_table_link if no other fields are using this section in this table
         if(!$other_fields_exist) {
-            $remove_link = $mysqli->prepare("DELETE FROM section_table_link WHERE section_id = ? AND tbid = ?");
-            $remove_link->bind_param("ii", $section_id, $table_id);
-            $remove_link->execute();
-            $link_removed = $remove_link->affected_rows > 0;
-            $remove_link->close();
+            $remove_link = $supabase_pdo->prepare("DELETE FROM section_table_link WHERE section_id = ? AND tbid = ?");
+            $remove_link->execute([$section_id, $table_id]);
+            $link_removed = $remove_link->rowCount() > 0;
         }
     }
     
     // Commit transaction
-    $mysqli->commit();
+    $supabase_pdo->commit();
     
     // Respond with success
     if($field_updated) {
@@ -110,7 +98,9 @@ try {
     }
 } catch (Exception $e) {
     // Rollback on error
-    $mysqli->rollback();
+    if ($supabase_pdo->inTransaction()) {
+        $supabase_pdo->rollBack();
+    }
     
     echo json_encode([
         'status' => 'error',
@@ -118,6 +108,4 @@ try {
         'error_code' => $e->getCode()
     ]);
 }
-
-$mysqli->close();
 ?> 

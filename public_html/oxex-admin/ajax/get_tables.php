@@ -1,16 +1,11 @@
 <?php
 header('Content-Type: application/json');
 
-// Include necessary configuration and database connection
-require_once('../config.php');
-
-// Check user authentication and permissions
-session_start();
-if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_type']) || $_SESSION['user_type'] !== 'admin') {
-    http_response_code(403);
-    echo json_encode(['error' => 'Unauthorized access']);
-    exit;
-}
+// Load Postgres/Supabase config and shared session/auth bootstrap
+include_once __DIR__ . '/../../OXEXfolder/config.php';
+include_once __DIR__ . '/../../OXEXfolder/u_functions.php';
+sec_session_start();
+include_once __DIR__ . '/../incl/sess.php';
 
 try {
     // Prepare and execute query to fetch tables

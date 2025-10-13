@@ -60,15 +60,25 @@ if (!is_array($section_fields)) {
     exit();
 }
 
+// Initialize PDO connection
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if (!$pdo) {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'Database connection not available'
+    ]);
+    exit();
+}
+
 // Validate section_id if it's not null
 if ($section_id !== null) {
     // Check if the section exists in field_sections
-    $check_section = $mysqli->prepare("SELECT section_id FROM field_sections WHERE section_id = ?");
-    $check_section->bind_param("i", $section_id);
-    $check_section->execute();
-    $check_section->store_result();
+    $check_section = $pdo->prepare("SELECT section_id FROM field_sections WHERE section_id = ?");
+    $check_section->execute([$section_id]);
+    $row = $check_section->fetch(PDO::FETCH_ASSOC);
     
-    if ($check_section->num_rows === 0) {
+    if (!$row) {
         header('Content-Type: application/json');
         echo json_encode([
             'status' => 'error',
@@ -76,20 +86,18 @@ if ($section_id !== null) {
         ]);
         exit();
     }
-    $check_section->close();
 }
 
 // Start transaction
-$mysqli->begin_transaction();
+$pdo->beginTransaction();
 
 try {
     // First, remove the field from its current section (if any)
-    $delete_stmt = $mysqli->prepare("
+    $delete_stmt = $pdo->prepare("
         DELETE FROM section_table_link 
         WHERE stid = ? AND tbid = ?
     ");
-    $delete_stmt->bind_param("ii", $field_id, $table_id);
-    $delete_stmt->execute();
+    $delete_stmt->execute([$field_id, $table_id]);
     
     // If the field is being assigned to a section
     if ($section_id !== null) {
@@ -105,47 +113,43 @@ try {
         }
         
         // Insert the field into the section
-        $insert_stmt = $mysqli->prepare("
+        $insert_stmt = $pdo->prepare("
             INSERT INTO section_table_link 
             (section_id, tbid, stid, display_order) 
             VALUES (?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE display_order = VALUES(display_order)
         ");
-        $insert_stmt->bind_param("iiii", $section_id, $table_id, $field_id, $order);
-        $insert_stmt->execute();
+        $insert_stmt->execute([$section_id, $table_id, $field_id, $order]);
         
         // Update the display order for other fields in the section
         foreach ($section_fields as $field) {
             if ($field['fieldId'] != $field_id) {
-                $update_order_stmt = $mysqli->prepare("
+                $update_order_stmt = $pdo->prepare("
                     INSERT INTO section_table_link 
                     (section_id, tbid, stid, display_order) 
                     VALUES (?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE display_order = VALUES(display_order)
                 ");
-                $update_order_stmt->bind_param("iiii", $section_id, $table_id, $field['fieldId'], $field['order']);
-                $update_order_stmt->execute();
+                $update_order_stmt->execute([$section_id, $table_id, $field['fieldId'], $field['order']]);
             }
         }
         
         // Update the field's section_id in select_types as a fallback
-        $update_stmt = $mysqli->prepare("
+        $update_stmt = $pdo->prepare("
             UPDATE select_types 
             SET section_id = ? 
             WHERE stid = ?
         ");
-        $update_stmt->bind_param("ii", $section_id, $field_id);
-        $update_stmt->execute();
+        $update_stmt->execute([$section_id, $field_id]);
     } else {
         // Field is moved to unsectioned area
         // Update the field's section_id in select_types to NULL
-        $update_stmt = $mysqli->prepare("
+        $update_stmt = $pdo->prepare("
             UPDATE select_types 
             SET section_id = NULL 
             WHERE stid = ?
         ");
-        $update_stmt->bind_param("i", $field_id);
-        $update_stmt->execute();
+        $update_stmt->execute([$field_id]);
         
         // Update the sort_order in tab_fields based on the new position
         $order = 0;
@@ -157,18 +161,17 @@ try {
         }
         
         if ($order > 0) {
-            $update_order_stmt = $mysqli->prepare("
+            $update_order_stmt = $pdo->prepare("
                 UPDATE tab_fields 
                 SET sort_order = ? 
                 WHERE stid = ? AND tbid = ?
             ");
-            $update_order_stmt->bind_param("iii", $order, $field_id, $table_id);
-            $update_order_stmt->execute();
+            $update_order_stmt->execute([$order, $field_id, $table_id]);
         }
     }
     
     // Commit the transaction
-    $mysqli->commit();
+    $pdo->commit();
     
     // Return success
     header('Content-Type: application/json');
@@ -179,7 +182,9 @@ try {
     exit();
 } catch (Exception $e) {
     // Rollback the transaction
-    $mysqli->rollback();
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollback();
+    }
     
     // Log the error for debugging
     error_log("Error in update_field_section_order.php: " . $e->getMessage());

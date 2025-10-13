@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "FAQs";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Page content";
 $listurl = "faqs.php"; # where the delete script is found
 $listname = "FAQS";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,27 +32,36 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  
   $which = isset($_POST['which']) ? $_POST['which'] : 0;
     $which = (int)$which;
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
-    $sort_order = (int)$sort_order;
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
+    $$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order;
   $fq = isset($_POST['fq']) ? $_POST['fq'] : '';
   $fa = isset($_POST['fa']) ? $_POST['fa'] : '';
   
   // Update record
-  $stmt = $mysqli->prepare("UPDATE faq_tbl SET fq = ?, sort_order = ?, fa = ? WHERE fid = ?"); 
-  $stmt->bind_param("sisi", $fq, $sort_order, $fa, $which);
-  $stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $stmt->close();
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("UPDATE faq_tbl SET fq = ?, sort_order = ?, fa = ? WHERE fid = ?"); 
+    $stmt->execute([$fq, $$value0 = 0; // Default value for sort_order
+$subtitle = "which]);
+  }
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT fq, sort_order, fa FROM faq_tbl WHERE fid =  ? ");
-$stmt->bind_param("i", $which); 
-$stmt->bind_result($fq, $sort_order, $fa);
-$stmt->execute();
-$stmt->fetch();
-$stmt->close();
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $stmt = $pdo->prepare("SELECT fq, sort_order, fa FROM faq_tbl WHERE fid = ? ");
+  $stmt->execute([$which]); 
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($row) {
+    $fq = $row['fq'];
+    $$value0 = 0; // Default value for sort_order
+$subtitle = "row['sort_order'];
+    $fa = $row['fa'];
+  }
+}
 // whatever the record name is
   $changename = " this FAQ";
 ?>
@@ -66,7 +78,8 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -83,7 +96,8 @@ $stmt->close();
                            </div>
                            <div class="form-group">
                               <label class="col-form-label" for="sort_order">Sort order</label>
-                              <input class="form-control" type="number" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
+                              <input class="form-control" type="number" id="$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
                            </div>
                            <div class="form-group">
                               <label class="col-form-label" for="fa">Answer *</label>
@@ -95,11 +109,9 @@ $stmt->close();
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -111,11 +123,9 @@ $stmt->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

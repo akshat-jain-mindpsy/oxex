@@ -11,30 +11,25 @@ $today = date("YmjHi");#YYYYMMDDHHSS
 $timestamp = time();
 $expired = strtotime('+24 hour', $timestamp);
 $valid_attampt = 1;
-$token  = $mysqli->real_escape_string($_GET['t']);
+$token  = isset($_GET['t']) ? $_GET['t'] : '';
 //$reset_salt included
 $token_check = hash('sha512', $token.$reset_salt);
 
-$stmt = $mysqli->prepare("SELECT usrkey, timesent, timeexp, invalidated FROM reset_tbl WHERE tokenhash = ? LIMIT 1");
-$stmt->bind_param('s', $token_check);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($usrkey, $timesent, $timeexp, $invalidated);
-$stmt->fetch();
-$numrows = $stmt->num_rows;
-$stmt->close();
+$stmt = $pdo->prepare("SELECT usrkey, timesent, timeexp, invalidated FROM reset_tbl WHERE tokenhash = ? LIMIT 1");
+$stmt->execute([$token_check]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+$usrkey = $row ? $row['usrkey'] : null;
+$timesent = $row ? $row['timesent'] : null;
+$timeexp = $row ? $row['timeexp'] : null;
+$invalidated = $row ? (int)$row['invalidated'] : null;
+$numrows = $row ? 1 : 0;
 
 // Check if this is a trainee reset token by looking up the usrkey in trainee_tbl
 $is_trainee_token = false;
 if ($numrows == 1 && $usrkey) {
-  $trainee_check = $mysqli->prepare("SELECT tid FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
-  $trainee_check->bind_param('s', $usrkey);
-  $trainee_check->execute();
-  $trainee_check->store_result();
-  $trainee_check->bind_result($tid);
-  $trainee_check->fetch();
-  $is_trainee_token = ($trainee_check->num_rows == 1);
-  $trainee_check->close();
+  $trainee_check = $pdo->prepare("SELECT tid FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+  $trainee_check->execute([$usrkey]);
+  $is_trainee_token = $trainee_check->rowCount() == 1;
   
   // If this is a trainee token, redirect to regular reset page
   if ($is_trainee_token) {
@@ -65,10 +60,8 @@ if ($valid_attampt == 1) {
   $used = 1;
   $err_msg = $err_msg.' ';
   // set record to say it's now been used
-  $stmt = $mysqli->prepare("UPDATE reset_tbl SET invalidated = ? WHERE usrkey = ?"); 
-  $stmt->bind_param("is", $used, $usrkey);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("UPDATE reset_tbl SET invalidated = ? WHERE usrkey = ?"); 
+  $stmt->execute([$used, $usrkey]);
 }
 ?><!DOCTYPE html>
 <html lang="en">

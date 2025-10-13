@@ -12,27 +12,23 @@ $date = isset($_POST['date']) ? $_POST['date'] : 0; # the date
 $trainee = isset($_POST['trainee']) ? $_POST['trainee'] : ''; # who
 	$trainee = preg_replace('/[^\p{Latin}\d\s\p{P}]/u', '', $trainee);
 // only allowed one task per day:
-$vids = $mysqli->prepare("SELECT tsid FROM timesheet WHERE trainkey = ? AND taskdate = ? ");
-$vids->bind_param("si", $trainee, $date);
-$vids->execute();
-$vids->store_result();
-$numlinks = $vids->num_rows;
-$vids->close();
-if ($numlinks == 0) {
-	// create a timesheet entry for this person, this task on this date
-	$insert_stmt = $mysqli->prepare("INSERT INTO timesheet (trainkey, dtid, taskdate) VALUES (?, ?, ?)");
-	$insert_stmt->bind_param("sii", $trainee, $id, $date);
-	$insert_stmt->execute();
-	$newid = $insert_stmt->insert_id;
-	$insert_stmt->close();
-	// count how many of this task for this trainee for this year
-	// for updating tak qtys in attendance.php
-	$vids = $mysqli->prepare("SELECT tsid FROM timesheet WHERE trainkey = ? AND dtid = ? AND taskdate >= ? AND taskdate <= ?");
-	$vids->bind_param("siii", $trainee, $id, $valueyearstart, $valueyearend);
-	$vids->execute();
-	$vids->store_result();
-	$numtasks = $vids->num_rows;
-	$vids->close();
+try {
+    global $supabase_pdo;
+    $stmtCheck = $supabase_pdo->prepare('select tsid from timesheet where trainkey = ? and taskdate = ?');
+    $stmtCheck->execute([$trainee, $date]);
+    $numlinks = count($stmtCheck->fetchAll(PDO::FETCH_ASSOC));
+    if ($numlinks == 0) {
+        // create a timesheet entry for this person, this task on this date
+        $insertStmt = $supabase_pdo->prepare('insert into timesheet (trainkey, dtid, taskdate) values (?, ?, ?)');
+        $insertStmt->execute([$trainee, $id, $date]);
+        // count how many of this task for this trainee for this year
+        // for updating tak qtys in attendance.php
+        $stmtCount = $supabase_pdo->prepare('select tsid from timesheet where trainkey = ? and dtid = ? and taskdate >= ? and taskdate <= ?');
+        $stmtCount->execute([$trainee, $id, $valueyearstart, $valueyearend]);
+        $numtasks = count($stmtCount->fetchAll(PDO::FETCH_ASSOC));
+    }
+} catch (Throwable $e) {
+    error_log('addevent PDO error: ' . $e->getMessage());
 }
 
 echo "{";

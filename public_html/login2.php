@@ -6,7 +6,7 @@ sec_session_start();
 if(isset($_POST['ee'], $_POST['pp'])) { 
    $email = $_POST['ee'];
    $password = $_POST['pp'];
-   if(login($email, $password, $mysqli) == true) {
+   if(login($email, $password) == true) {
       header('Location: account.php');
       exit();
    } else {

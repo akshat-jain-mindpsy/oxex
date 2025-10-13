@@ -13,7 +13,8 @@ ini_set('error_log', '../error_log');
 error_log("AJAX Add Field Request: " . print_r($_POST, true));
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true)) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+if(!(login_check($pdo) == true)) {
     error_log("Authentication failed in ajax_add_table_field.php");
     echo json_encode([
         'status' => 'error', 
@@ -26,7 +27,8 @@ try {
     // Validate inputs with extensive logging
     $tbid = isset($_POST['which']) ? (int)$_POST['which'] : 0;
     $stid = isset($_POST['stid']) ? (int)$_POST['stid'] : 0;
-    $sort_order = isset($_POST['sort_order']) ? (int)$_POST['sort_order'] : 1;
+    $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 1;
 
     error_log("Processing field add - TBID: $tbid, STID: $stid, Sort Order: $sort_order");
 
@@ -40,28 +42,33 @@ try {
     }
 
     // Check if field already exists in this table
-    $check_stmt = $mysqli->prepare("SELECT COUNT(*) FROM tab_fields WHERE tbid = ? AND stid = ?");
-    $check_stmt->bind_param("ii", $tbid, $stid);
-    $check_stmt->execute();
-    $check_stmt->bind_result($existing_count);
-    $check_stmt->fetch();
-    $check_stmt->close();
+    if ($usingSupabase) {
+        $check_stmt = $supabase_pdo->prepare("SELECT COUNT(*) FROM tab_fields WHERE tbid = ? AND stid = ?");
+        $check_stmt->execute([$tbid, $stid]);
+        $existing_count = (int)$check_stmt->fetchColumn();
+    } else {
+        $existing_count = 0;
+    }
 
     if ($existing_count > 0) {
         throw new Exception("Field already exists in this table");
     }
 
     // Fetch field details
-    $field_stmt = $mysqli->prepare("
-        SELECT str, single 
-        FROM select_types 
-        WHERE stid = ?
-    ");
-    $field_stmt->bind_param("i", $stid);
-    $field_stmt->execute();
-    $field_stmt->bind_result($str, $single);
-    $field_stmt->fetch();
-    $field_stmt->close();
+    if ($usingSupabase) {
+        $field_stmt = $supabase_pdo->prepare("
+            SELECT str, single 
+            FROM select_types 
+            WHERE stid = ?
+        ");
+        $field_stmt->execute([$stid]);
+        $row = $field_stmt->fetch(PDO::FETCH_ASSOC);
+        $str = $row ? $row['str'] : '';
+        $single = $row ? (int)$row['single'] : 0;
+    } else {
+        $str = '';
+        $single = 0;
+    }
 
     if (empty($str)) {
         throw new Exception("Field name not found for STID: $stid");
@@ -80,17 +87,15 @@ try {
     $listtype = $fieldTypes[$single] ?? 'Unknown';
 
     // Insert new field 
-    $insert_stmt = $mysqli->prepare("
-        INSERT INTO tab_fields (tbid, stid, sort_order) 
-        VALUES (?, ?, ?)
-    ");
-    $insert_stmt->bind_param("iii", $tbid, $stid, $sort_order);
-
-    if (!$insert_stmt->execute()) {
-        throw new Exception("Insert failed: " . $insert_stmt->error);
+    if ($usingSupabase) {
+        $insert_stmt = $supabase_pdo->prepare("
+            INSERT INTO tab_fields (tbid, stid, sort_order) 
+            VALUES (?, ?, ?)
+        ");
+        if (!$insert_stmt->execute([$tbid, $stid, $sort_order])) {
+            throw new Exception("Insert failed");
+        }
     }
-    
-    $insert_stmt->close();
 
     // Success response
     error_log("Field added successfully - TBID: $tbid, STID: $stid, Field Name: $str");
@@ -103,7 +108,8 @@ try {
         'str' => $str,
         'single' => $single,
         'listtype' => $listtype,
-        'sort_order' => $sort_order
+        '$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order
     ]);
 
 } catch (Exception $e) {
@@ -114,4 +120,4 @@ try {
     ]);
 }
 
-$mysqli->close();
+// PDO connection is automatically closed

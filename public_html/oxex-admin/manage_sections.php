@@ -3,9 +3,10 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Check authorization
-if (!(login_check($mysqli) == true && 
+if (!(login_check($pdo) == true && 
      in_array($admintype, ['AT', 'DV']))) {
     echo json_encode([
         'status' => 'error',
@@ -29,28 +30,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     // Start transaction
-    $mysqli->begin_transaction();
+    $supabase_pdo->beginTransaction();
     
     try {
         switch ($action) {
             case 'add_section':
                 $section_name = isset($_POST['section_name']) ? trim($_POST['section_name']) : '';
-                $sort_order = isset($_POST['sort_order']) ? (int)$_POST['sort_order'] : 0;
+                $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
                 
                 if (empty($section_name)) {
                     throw new Exception("Section name cannot be empty");
                 }
                 
                 // Insert new section
-                $insert_stmt = $mysqli->prepare("
+                $insert_stmt = $supabase_pdo->prepare("
                     INSERT INTO table_sections (tbid, section_name, sort_order) 
                     VALUES (?, ?, ?)
                 ");
-                $insert_stmt->bind_param("isi", $tbid, $section_name, $sort_order);
-                $insert_stmt->execute();
-                $section_id = $insert_stmt->insert_id;
+                $insert_stmt->execute([$tbid, $section_name, $sort_order]);
+                $section_id = $supabase_pdo->lastInsertId();
                 
-                $mysqli->commit();
+                $supabase_pdo->commit();
                 
                 echo json_encode([
                     'status' => 'success',
@@ -73,15 +74,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 // Update section
-                $update_stmt = $mysqli->prepare("
+                $update_stmt = $supabase_pdo->prepare("
                     UPDATE table_sections 
                     SET section_name = ? 
                     WHERE id = ? AND tbid = ?
                 ");
-                $update_stmt->bind_param("sii", $section_name, $section_id, $tbid);
-                $update_stmt->execute();
+                $update_stmt->execute([$section_name, $section_id, $tbid]);
                 
-                $mysqli->commit();
+                $supabase_pdo->commit();
                 
                 echo json_encode([
                     'status' => 'success',
@@ -97,23 +97,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 // Delete section
-                $delete_stmt = $mysqli->prepare("
+                $delete_stmt = $supabase_pdo->prepare("
                     DELETE FROM table_sections 
                     WHERE id = ? AND tbid = ?
                 ");
-                $delete_stmt->bind_param("ii", $section_id, $tbid);
-                $delete_stmt->execute();
+                $delete_stmt->execute([$section_id, $tbid]);
                 
                 // Reset section_id for fields in this section
-                $reset_stmt = $mysqli->prepare("
+                $reset_stmt = $supabase_pdo->prepare("
                     UPDATE tab_fields 
                     SET section_id = 0 
                     WHERE section_id = ? AND tbid = ?
                 ");
-                $reset_stmt->bind_param("ii", $section_id, $tbid);
-                $reset_stmt->execute();
+                $reset_stmt->execute([$section_id, $tbid]);
                 
-                $mysqli->commit();
+                $supabase_pdo->commit();
                 
                 echo json_encode([
                     'status' => 'success',
@@ -129,19 +127,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 // Update section order
-                $update_stmt = $mysqli->prepare("
+                $update_stmt = $supabase_pdo->prepare("
                     UPDATE table_sections 
                     SET sort_order = ? 
                     WHERE id = ? AND tbid = ?
                 ");
                 
                 foreach ($sections as $index => $section_id) {
-                    $sort_order = $index + 1;
-                    $update_stmt->bind_param("iii", $sort_order, $section_id, $tbid);
-                    $update_stmt->execute();
+                    $$value0 = 0; // Default value for sort_order
+$subtitle = "index + 1;
+                    $update_stmt->execute([$$value0 = 0; // Default value for sort_order
+$subtitle = "tbid]);
                 }
                 
-                $mysqli->commit();
+                $supabase_pdo->commit();
                 
                 echo json_encode([
                     'status' => 'success',
@@ -158,15 +157,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 
                 // Update field's section
-                $update_stmt = $mysqli->prepare("
+                $update_stmt = $supabase_pdo->prepare("
                     UPDATE tab_fields 
                     SET section_id = ? 
                     WHERE stid = ? AND tbid = ?
                 ");
-                $update_stmt->bind_param("iii", $section_id, $field_id, $tbid);
-                $update_stmt->execute();
+                $update_stmt->execute([$section_id, $field_id, $tbid]);
                 
-                $mysqli->commit();
+                $supabase_pdo->commit();
                 
                 echo json_encode([
                     'status' => 'success',
@@ -179,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } catch (Exception $e) {
         // Rollback on error
-        $mysqli->rollback();
+        $supabase_pdo->rollback();
         
         echo json_encode([
             'status' => 'error',
@@ -192,7 +190,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // If not an AJAX request, show the sections management UI
 $pagetitle = "Manage Sections";
-$tbid = isset($_GET['tbid']) ? (int)$_GET['tbid'] : 0;
+
+// Set variables needed by adminjs.php
+$whichDocModal = 3; // Tables section
+$value0 = 0; // Default value for $value0 = 0; // Default value for sort_order
+$subtitle = "_GET['tbid'] : 0;
 
 // Validate table ID
 if ($tbid <= 0) {
@@ -201,12 +203,12 @@ if ($tbid <= 0) {
 }
 
 // Get table name
-$table_stmt = $mysqli->prepare("SELECT str FROM select_types WHERE stid = ?");
-$table_stmt->bind_param("i", $tbid);
-$table_stmt->execute();
-$table_stmt->bind_result($table_name);
-$table_stmt->fetch();
-$table_stmt->close();
+$table_stmt = $supabase_pdo->prepare("SELECT str FROM select_types WHERE stid = ?");
+$table_stmt->execute([$tbid]);
+$row = $table_stmt->fetch(PDO::FETCH_ASSOC);
+if ($row) {
+    $table_name = $row['str'];
+}
 ?>
 
 <!DOCTYPE html>
@@ -288,8 +290,7 @@ $table_stmt->close();
                                         <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#addSectionModal">
                                             <i class="fa fa-plus"></i> Add New Section
                                         </button>
-                                    </div>
-                                </div>
+</div>
                                 <div class="card-body">
                                     <div class="row">
                                         <div class="col-md-8">
@@ -297,17 +298,15 @@ $table_stmt->close();
                                             <div id="sections-container">
                                                 <?php
                                                 // Get sections for this table
-                                                $sections_stmt = $mysqli->prepare("
+                                                $sections_stmt = $supabase_pdo->prepare("
                                                     SELECT id, section_name, sort_order 
                                                     FROM table_sections 
                                                     WHERE tbid = ? 
                                                     ORDER BY sort_order ASC
                                                 ");
-                                                $sections_stmt->bind_param("i", $tbid);
-                                                $sections_stmt->execute();
-                                                $sections_result = $sections_stmt->get_result();
+                                                $sections_stmt->execute([$tbid]);
                                                 
-                                                while ($section = $sections_result->fetch_assoc()) {
+                                                while ($section = $sections_stmt->fetch(PDO::FETCH_ASSOC)) {
                                                     echo '<div class="section-card" data-section-id="' . $section['id'] . '">';
                                                     echo '<div class="section-header d-flex justify-content-between align-items-center">';
                                                     echo '<h5 class="mb-0"><i class="fa fa-bars mr-2"></i> ' . htmlspecialchars($section['section_name']) . '</h5>';
@@ -325,18 +324,16 @@ $table_stmt->close();
                                                     echo '<div class="fields-container" data-section-id="' . $section['id'] . '">';
                                                     
                                                     // Get fields for this section
-                                                    $fields_stmt = $mysqli->prepare("
+                                                    $fields_stmt = $supabase_pdo->prepare("
                                                         SELECT tab_fields.stid, select_types.str 
                                                         FROM tab_fields 
                                                         JOIN select_types ON tab_fields.stid = select_types.stid 
                                                         WHERE tab_fields.tbid = ? AND tab_fields.section_id = ? 
                                                         ORDER BY tab_fields.sort_order ASC
                                                     ");
-                                                    $fields_stmt->bind_param("ii", $tbid, $section['id']);
-                                                    $fields_stmt->execute();
-                                                    $fields_result = $fields_stmt->get_result();
+                                                    $fields_stmt->execute([$tbid, $section['id']]);
                                                     
-                                                    while ($field = $fields_result->fetch_assoc()) {
+                                                    while ($field = $fields_stmt->fetch(PDO::FETCH_ASSOC)) {
                                                         echo '<div class="field-item d-flex justify-content-between align-items-center" data-field-id="' . $field['stid'] . '">';
                                                         echo '<span><i class="fa fa-arrows-alt mr-2"></i> ' . htmlspecialchars($field['str']) . '</span>';
                                                         echo '</div>';
@@ -346,11 +343,8 @@ $table_stmt->close();
                                                     echo '</div>';
                                                     echo '</div>';
                                                 }
-                                                
-                                                $sections_stmt->close();
                                                 ?>
-                                            </div>
-                                        </div>
+</div>
                                         
                                         <div class="col-md-4">
                                             <div class="card">
@@ -361,35 +355,26 @@ $table_stmt->close();
                                                     <div id="unassigned-fields" class="fields-container" data-section-id="0">
                                                         <?php
                                                         // Get unassigned fields
-                                                        $unassigned_stmt = $mysqli->prepare("
+                                                        $unassigned_stmt = $supabase_pdo->prepare("
                                                             SELECT tab_fields.stid, select_types.str 
                                                             FROM tab_fields 
                                                             JOIN select_types ON tab_fields.stid = select_types.stid 
                                                             WHERE tab_fields.tbid = ? AND (tab_fields.section_id = 0 OR tab_fields.section_id IS NULL) 
                                                             ORDER BY tab_fields.sort_order ASC
                                                         ");
-                                                        $unassigned_stmt->bind_param("i", $tbid);
-                                                        $unassigned_stmt->execute();
-                                                        $unassigned_result = $unassigned_stmt->get_result();
+                                                        $unassigned_stmt->execute([$tbid]);
                                                         
-                                                        while ($field = $unassigned_result->fetch_assoc()) {
+                                                        while ($field = $unassigned_stmt->fetch(PDO::FETCH_ASSOC)) {
                                                             echo '<div class="field-item d-flex justify-content-between align-items-center" data-field-id="' . $field['stid'] . '">';
                                                             echo '<span><i class="fa fa-arrows-alt mr-2"></i> ' . htmlspecialchars($field['str']) . '</span>';
                                                             echo '</div>';
                                                         }
-                                                        
-                                                        $unassigned_stmt->close();
                                                         ?>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+</div>
+</div>
+</div>
+</div>
+</div>
             </div>
         </section>
     </div>
@@ -409,15 +394,13 @@ $table_stmt->close();
                         <div class="form-group">
                             <label for="section_name">Section Name</label>
                             <input type="text" class="form-control" id="section_name" name="section_name" required>
-                        </div>
-                    </div>
+</div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                         <button type="submit" class="btn btn-primary">Add Section</button>
                     </div>
                 </form>
-            </div>
-        </div>
+</div>
     </div>
     
     <!-- Edit Section Modal -->
@@ -436,15 +419,13 @@ $table_stmt->close();
                         <div class="form-group">
                             <label for="edit_section_name">Section Name</label>
                             <input type="text" class="form-control" id="edit_section_name" name="section_name" required>
-                        </div>
-                    </div>
+</div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                         <button type="submit" class="btn btn-primary">Save Changes</button>
                     </div>
                 </form>
-            </div>
-        </div>
+</div>
     </div>
     
     <?php include 'incl/adminjs.php' ?>
@@ -587,12 +568,10 @@ $table_stmt->close();
                                             <button type="button" class="btn btn-sm btn-danger delete-section" data-section-id="${response.section_id}">
                                                 <i class="fa fa-trash"></i>
                                             </button>
-                                        </div>
-                                    </div>
+</div>
                                     <div class="section-body">
                                         <div class="fields-container" data-section-id="${response.section_id}">
-                                        </div>
-                                    </div>
+</div>
                                 </div>
                             `;
                             

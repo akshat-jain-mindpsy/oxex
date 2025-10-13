@@ -3,10 +3,13 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Global Data";
+
+setAdminVars(0); // Dashboard section
 $subtitle = " ";
 $listname = "Global";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -59,21 +62,23 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
     $recorder_email = isset($_POST['recorder_email']) ? $_POST['recorder_email'] : '';
     
   // Update record
-  $stmt = $mysqli->prepare("UPDATE sys_global SET days_fwd = ?, last_date = ?, next_date = ?, recorder_email = ?, recorder_time = ? WHERE sgid = ?"); 
-  $stmt->bind_param("iiisii", $days_fwd, $datefrom, $dateto, $recorder_email, $recorder_time, $value1);
-  $stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $stmt->close();
+  $stmt = $pdo->prepare("UPDATE sys_global SET days_fwd = ?, last_date = ?, next_date = ?, recorder_email = ?, recorder_time = ? WHERE sgid = ?"); 
+  $stmt->execute([$days_fwd, $datefrom, $dateto, $recorder_email, $recorder_time, $value1]);
+  //printf("[%d] %s\n", $pdo->errorCode(), $pdo->errorInfo()[2]);
+  $stmt->closeCursor();
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT days_fwd, last_date, next_date, recorder_email, recorder_time FROM sys_global WHERE sgid =  ? ");
-$stmt->bind_param("i", $value1); 
-$stmt->bind_result($days_fwd, $last_date, $next_date, $recorder_email, $recorder_time);
-$stmt->execute();
-$stmt->fetch();
-$stmt->close();
+$stmt = $pdo->prepare("SELECT days_fwd, last_date, next_date, recorder_email, recorder_time FROM sys_global WHERE sgid =  ? ");
+$stmt->execute([$value1]); 
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+$days_fwd = $row['days_fwd'];
+$last_date = $row['last_date'];
+$next_date = $row['next_date'];
+$recorder_email = $row['recorder_email'];
+$recorder_time = $row['recorder_time'];
+$stmt->closeCursor();
 $dispdatelast = strtotime($last_date);
 $dispdatenext = strtotime($next_date);
 ?>
@@ -120,19 +125,14 @@ $dispdatenext = strtotime($next_date);
                           <div class="form-group">
                               <label class="col-form-label" for="recorder_email">Reminder Email Recipient</label>
                               <input class="form-control" type="text" id="recorder_email" name="recorder_email" value="<?php echo $recorder_email ?>" required>
-                           </div>
-                           
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-               
-            </div>
+</div>
 
          </div>
       </section>

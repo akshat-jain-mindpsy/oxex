@@ -3,9 +3,11 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Admin";
+
 $subtitle = "Admin users";
-if(login_check($mysqli) == true && ($admintype == 'AT'|| $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT'|| $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -36,14 +38,15 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM who_there WHERE whid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
-    // show message when deleting, not refreshing
-    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("DELETE FROM who_there WHERE whid = ? LIMIT 1");
+    $stmt->execute([$which]);
+    if ($stmt->rowCount() > 0) {
+      // show message when deleting, not refreshing
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+    }
   }
-  $stmt->close();
 }
 ?>
 <?PHP
@@ -87,29 +90,28 @@ if ($newadmin == 'newadmin') {
   */
 
   // create a usrkey for them
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if (!$pdo) {
+    echo "<p>Error: No database connection available.</p>";
+    exit();
+  }
+  
   $numids = 1;
   while (!$numids == 0) {
     // make 32 digit hex string
     $usrkey = substr(md5(rand()), 0, 32);   
-    $stmt = $mysqli->prepare("SELECT whid FROM who_there WHERE usrkey = ? LIMIT 1");
-    $stmt->bind_param('s', $usrkey);
-    $stmt->execute();
-    $stmt->store_result();
-    $stmt->bind_result($whid);
-    $stmt->fetch();
-    $numids = $stmt->num_rows;
-    $stmt->close();
+    $stmt = $pdo->prepare("SELECT whid FROM who_there WHERE usrkey = ? LIMIT 1");
+    $stmt->execute([$usrkey]);
+    $numids = $stmt->rowCount();
   } 
   $today = date("Ymd");
   
   // write new user record
-  $insert_stmt = $mysqli->prepare("INSERT INTO who_there (password, salt, email, realname, usrkey, admintype, startdate, isdev, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("ssssssiis", $password, $random_salt, $email, $realname, $usrkey, $admintype, $today, $isdev, $photo);
-  $insert_stmt->execute();
+  $insert_stmt = $pdo->prepare("INSERT INTO who_there (password, salt, email, realname, usrkey, admintype, startdate, isdev, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  $insert_stmt->execute([$password, $random_salt, $email, $realname, $usrkey, $admintype, $today, $isdev, $photo]);
 
   //echo "<p>Admin created for $realname, $email $usrkey</p>";
   //printf("[%d] %s\n", $insert_stmt->errno, $insert_stmt->error);
-  $insert_stmt->close();
 }
 
 ?>
@@ -126,6 +128,7 @@ if ($newadmin == 'newadmin') {
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
+
             </div>
             <?php echo $delalert ?>
             <div class="row">
@@ -143,11 +146,16 @@ if ($newadmin == 'newadmin') {
                            </thead>
                            <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT whid, realname, email, admintype, lastlogin FROM who_there ");
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($whid, $realname, $email, $table_admintype, $lastlogin);
-while ($tableset->fetch()){   
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $tableset = $pdo->prepare("SELECT whid, realname, email, admintype, lastlogin FROM who_there ");
+  $tableset->execute();
+  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+    $whid = $row['whid'];
+    $realname = $row['realname'];
+    $email = $row['email'];
+    $table_admintype = $row['admintype'];
+    $lastlogin = $row['lastlogin'];   
 
    if ($table_admintype == "AT") {
     $adminDesc = "Full Admin Control";
@@ -188,14 +196,12 @@ while ($tableset->fetch()){
 </tr>
  <?php
 }
- }
-$numrows = $tableset->num_rows;
-$tableset->close();
+  }
+}
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -243,17 +249,13 @@ $tableset->close();
                            </select> 
                           <input type="hidden" name="newadmin" value="newadmin">
                           <span class="form-text">Passwords are 'hashed' and cannot be extracted from the database. Make a note of the password you're creating now ready to send to the new administrator. This page does *not* email login details to new users.</span>
-                        </div>
-
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

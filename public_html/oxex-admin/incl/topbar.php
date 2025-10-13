@@ -25,12 +25,18 @@ $adminphoto = $adminphoto ?? 'default.jpg';
          <!-- START Messages menu-->
          <?php 
          // how many unread messages?
-         $vids = $mysqli->prepare("SELECT amid FROM admin_msg WHERE usrkey_to = ? AND isread = ?");
-         $vids->bind_param("si", $usrkey, $value0);
-         $vids->execute();
-         $vids->store_result();
-         $nummsg = $vids->num_rows;
-         $vids->close();
+         $value0 = 0; // 0 = unread messages
+         $isdev = $isdev ?? 0; // Default to 0 if not set
+         $statuslabel = $statuslabel ?? "bg-gray"; // Default status label
+         try {
+             $vids = $pdo->prepare("SELECT amid FROM admin_msg WHERE usrkey_to = ? AND isread = ?");
+             $vids->execute([$usrkey, $value0]);
+             $rows = $vids->fetchAll(PDO::FETCH_ASSOC);
+             $nummsg = count($rows);
+         } catch (Exception $e) {
+             error_log("Error fetching unread messages: " . $e->getMessage());
+             $nummsg = 0;
+         }
          ?>
          <li class="nav-item dropdown dropdown-list"><a class="nav-link dropdown-toggle dropdown-toggle-nocaret" href="#" data-toggle="dropdown"><em class="fas fa-envelope"></em><span class="badge badge-danger"><?php echo $nummsg ?></span></a><!-- START Dropdown menu-->
             <div class="dropdown-menu dropdown-menu-right animated bounceIn">
@@ -40,58 +46,67 @@ $adminphoto = $adminphoto ?? 'default.jpg';
                   $now = time();
                   // list 3 recent unread messages
                   if ($nummsg > 0) {
-                     $tableset = $mysqli->prepare("SELECT usrkey_from, date_sent, msg FROM admin_msg WHERE usrkey_to = ? AND isread = ? ORDER BY date_sent DESC LIMIT 3");
-                     $tableset->bind_param("si", $usrkey, $value0);
-                     $tableset->execute();
-                     $tableset->store_result();
-                     $tableset->bind_result($usrkey_from, $date_sent, $msg);
-                     while ($tableset->fetch()){
-                        $msg_sm = substr($msg, 0, 80)."...";
-                        // lookup sender
-                        $stmt = $mysqli->prepare("SELECT realname, isonline, lastlogin, photo FROM who_there WHERE usrkey = ?");
-                        $stmt->bind_param("s", $usrkey_from);
-                        $stmt->execute();
-                        $stmt->store_result();
-                        $stmt->bind_result($mailername, $isonline, $lastlogin, $senderphoto);
-                        $stmt->fetch();
-                        $stmt->close();
-                        if ($mailername == '') {
-                           $mailername = "assets/img/wizard.jpg";
-                        } else {
-                           $mailername = "assets/img/user/$senderphoto";
-                        }
-                        $hoursin = ($now - $lastlogin) / 3600;
-                        $hoursintxt = number_format($hoursin, 1, '.', ','). 'h';
-                        if ($hoursin > 14400) {
-                           $hoursintxt = 'offline';
-                        }
-                        if ($isdev == 1) {
-                           $hoursintxt = 'Dev';
-                        }
-                        if ($isonline == 1 && $hoursin < 14400) {
-                           $statuslabel = "bg-danger";
-                        }
-                        if ($isonline == 2 && $hoursin < 14400) {
-                           $statuslabel = "bg-success";
-                        }
-                        if ($hoursin > 4) {
-                           $statuslabel = "bg-gray";
-                        }
-                        echo "<div class=\"dropdown-item\">";
-                        echo "   <div class=\"list-group\">";
-                        echo "      <div class=\"list-group-item list-group-item-action\">";
-                        echo "         <div class=\"media\">";
-                        echo "            <div class=\"align-self-start mr-2\"><img class=\"media-object rounded\" style=\"width: 48px; height: 48px;\" src=\"$mailername\" alt=\"Image\"></div>";
-                        echo "            <div class=\"media-body clearfix\"><small class=\"float-right\">$hoursintxt</small><strong class=\"media-heading text-primary\"><span class=\"p-1 rounded d-inline-block $statuslabel mr-2\"></span><span>$sendername</span></strong>
+                     try {
+                         $tableset = $pdo->prepare("SELECT usrkey_from, date_sent, msg FROM admin_msg WHERE usrkey_to = ? AND isread = ? ORDER BY date_sent DESC LIMIT 3");
+                         $tableset->execute([$usrkey, $value0]);
+                         $messages = $tableset->fetchAll(PDO::FETCH_ASSOC);
+                         
+                         foreach ($messages as $message) {
+                             $usrkey_from = $message['usrkey_from'];
+                             $date_sent = $message['date_sent'];
+                             $msg = $message['msg'];
+                             $msg_sm = substr($msg, 0, 80)."...";
+                             
+                             // lookup sender
+                             $stmt = $pdo->prepare("SELECT realname, isonline, lastlogin, photo FROM who_there WHERE usrkey = ?");
+                             $stmt->execute([$usrkey_from]);
+                             $sender = $stmt->fetch(PDO::FETCH_ASSOC);
+                             
+                             if ($sender) {
+                                 $mailername = $sender['realname'];
+                                 $isonline = $sender['isonline'];
+                                 $lastlogin = $sender['lastlogin'];
+                                 $senderphoto = $sender['photo'];
+                             }
+                             
+                             if ($mailername == '') {
+                                 $mailername = "assets/img/wizard.jpg";
+                             } else {
+                                 $mailername = "assets/img/user/$senderphoto";
+                             }
+                             $hoursin = ($now - $lastlogin) / 3600;
+                             $hoursintxt = number_format($hoursin, 1, '.', ','). 'h';
+                             if ($hoursin > 14400) {
+                                 $hoursintxt = 'offline';
+                             }
+                             if ($isdev == 1) {
+                                 $hoursintxt = 'Dev';
+                             }
+                             if ($isonline == 1 && $hoursin < 14400) {
+                                 $statuslabel = "bg-danger";
+                             }
+                             if ($isonline == 2 && $hoursin < 14400) {
+                                 $statuslabel = "bg-success";
+                             }
+                             if ($hoursin > 4) {
+                                 $statuslabel = "bg-gray";
+                             }
+                             echo "<div class=\"dropdown-item\">";
+                             echo "   <div class=\"list-group\">";
+                             echo "      <div class=\"list-group-item list-group-item-action\">";
+                             echo "         <div class=\"media\">";
+                             echo "            <div class=\"align-self-start mr-2\"><img class=\"media-object rounded\" style=\"width: 48px; height: 48px;\" src=\"$mailername\" alt=\"Image\"></div>";
+                             echo "            <div class=\"media-body clearfix\"><small class=\"float-right\">$hoursintxt</small><strong class=\"media-heading text-primary\"><span class=\"p-1 rounded d-inline-block $statuslabel mr-2\"></span><span>$mailername</span></strong>
                                        <p class=\"mb-sm\"><small>$msg_sm</small></p>";
-                        echo "            </div>";
-                        echo "         </div>";
-                        echo "      </div>";
-                        echo "   </div>";
-                        echo "</div>";
+                             echo "            </div>";
+                             echo "         </div>";
+                             echo "      </div>";
+                             echo "   </div>";
+                             echo "</div>";
+                         }
+                     } catch (Exception $e) {
+                         error_log("Error fetching messages: " . $e->getMessage());
                      }
-                     $numrows = $tableset->num_rows;
-                     $tableset->close();
                   }
                   ?>
                </div>
@@ -104,18 +119,21 @@ $adminphoto = $adminphoto ?? 'default.jpg';
                      </div>
                      <?php 
                      // list all recipients; not developers, and not self
-                     $tableset = $mysqli->prepare("SELECT whid, realname FROM who_there WHERE isdev = ? AND usrkey != ? ");
-                     $tableset->bind_param("is", $value0, $usrkey);
-                     $tableset->execute();
-                     $tableset->store_result();
-                     $tableset->bind_result($msgwhid, $msgrealname);
-                     while ($tableset->fetch()){
-                        echo "<div class=\"form-check\">\r
-                        <input class=\"form-check-input\" id=\"msgEmail$msgwhid\" type=\"checkbox\" value=\"$msgwhid\">\r<label class=\"form-check-label\" for=\"msgEmail$msgwhid\">$msgrealname</label>\r";
-                     
-                     echo "</div>\r";
+                     try {
+                         $tableset = $pdo->prepare("SELECT whid, realname FROM who_there WHERE isdev = ? AND usrkey != ? ");
+                         $tableset->execute([$value0, $usrkey]);
+                         $recipients = $tableset->fetchAll(PDO::FETCH_ASSOC);
+                         
+                         foreach ($recipients as $recipient) {
+                             $msgwhid = $recipient['whid'];
+                             $msgrealname = $recipient['realname'];
+                             echo "<div class=\"form-check\">\r
+                             <input class=\"form-check-input\" id=\"msgEmail$msgwhid\" type=\"checkbox\" value=\"$msgwhid\">\r<label class=\"form-check-label\" for=\"msgEmail$msgwhid\">$msgrealname</label>\r";
+                             echo "</div>\r";
+                         }
+                     } catch (Exception $e) {
+                         error_log("Error fetching recipients: " . $e->getMessage());
                      }
-                     $tableset->close();
                      ?>
                      
                      <div class="form-group">
@@ -130,10 +148,10 @@ $adminphoto = $adminphoto ?? 'default.jpg';
             </div><!-- END Dropdown menu-->
          </li>
          <!-- START User menu-->
-         <li class="nav-item dropdown"><a class="nav-link dropdown-toggle dropdown-toggle-nocaret" href="#" data-toggle="dropdown"><em class="fas fa-user"></em></a><!-- START Dropdown menu-->
-            <div class="dropdown-menu dropdown-menu-right animated bounceIn">
+         <li class="nav-item dropdown"><a class="nav-link dropdown-toggle dropdown-toggle-nocaret" href="#" data-toggle="dropdown" id="userDropdownToggle"><em class="fas fa-user"></em></a><!-- START Dropdown menu-->
+            <div class="dropdown-menu dropdown-menu-right animated bounceIn" id="userDropdownMenu">
                <div class="dropdown-item"><a href="adminusersdetail.php?user=<?php echo $usrkey ?>">Profile</a></div>
-               <div class="dropdown-item"><a href="logout.php">Logout</a></div>
+               <div class="dropdown-item"><a href="logout.php" id="logoutLink">Logout</a></div>
             </div><!-- END Dropdown menu-->
          </li>
          <!-- START Offsidebar button-->

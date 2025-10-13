@@ -8,7 +8,7 @@ include '../incl/sess.php';
 error_log("Move fields request received: " . json_encode($_POST));
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
       $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
     header('Content-Type: application/json');
@@ -30,7 +30,7 @@ if (empty($field_ids) || !$section_id || !$table_id) {
 }
 
 try {
-    $mysqli->begin_transaction();
+    $supabase_pdo->beginTransaction();
     
     $success_count = 0;
     $error_count = 0;
@@ -42,21 +42,19 @@ try {
         
         // Update the section_id for this field in select_types table
         $update_query = "UPDATE select_types SET section_id = ? WHERE stid = ?";
-        $stmt = $mysqli->prepare($update_query);
-        $stmt->bind_param("ii", $section_id, $field_id);
+        $stmt = $supabase_pdo->prepare($update_query);
         
-        if ($stmt->execute()) {
+        if ($stmt->execute([$section_id, $field_id])) {
             $success_count++;
             error_log("Successfully updated field $field_id");
         } else {
             $error_count++;
-            error_log("Failed to update field $field_id: " . $stmt->error);
+            error_log("Failed to update field $field_id");
         }
-        $stmt->close();
     }
     
     if ($error_count == 0) {
-        $mysqli->commit();
+        $supabase_pdo->commit();
         
         $message = $success_count == 1 ? 
             "1 field moved successfully" : 
@@ -69,7 +67,7 @@ try {
             'moved_count' => $success_count
         ]);
     } else {
-        $mysqli->rollback();
+        $supabase_pdo->rollBack();
         
         header('Content-Type: application/json');
         echo json_encode([
@@ -79,7 +77,7 @@ try {
     }
     
 } catch (Exception $e) {
-    $mysqli->rollback();
+    $supabase_pdo->rollBack();
     
     header('Content-Type: application/json');
     echo json_encode([

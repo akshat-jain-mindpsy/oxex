@@ -3,9 +3,11 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Composite Searches";
+
 $subtitle = "Composite Search";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,15 +29,15 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM compositesearch WHERE csid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
-    // show message when deleting, not refreshing
-    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("DELETE FROM compositesearch WHERE csid = ? LIMIT 1");
+    $stmt->execute([$which]);
+    if ($stmt->rowCount() > 0) {
+      // show message when deleting, not refreshing
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+    }
   }
-  $stmt->close();
-
 }
 
 
@@ -46,36 +48,31 @@ if ($newadmin == 'newadmin') {
   $pid3 = isset($_POST['pid3']) ? $_POST['pid3'] : 0;
   $target = isset($_POST['target']) ? $_POST['target'] : 0;
   $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
+  
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if (!$pdo) {
+    echo "<p>Error: No database connection available.</p>";
+    exit();
+  }
+  
   // find $stid1 and $stid
-   $stmt = $mysqli->prepare("SELECT stid FROM select_gen WHERE pid = ?");
-   $stmt->bind_param("i", $pid1);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($stid1);
-   $stmt->fetch();
-   $stmt->close();
-   $stmt = $mysqli->prepare("SELECT stid FROM select_gen WHERE pid = ?");
-   $stmt->bind_param("i", $pid2);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($stid2);
-   $stmt->fetch();
-   $stmt->close();
-   $stmt = $mysqli->prepare("SELECT stid FROM select_gen WHERE pid = ?");
-   $stmt->bind_param("i", $pid3);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($stid3);
-   $stmt->fetch();
-   $stmt->close();
+  $stmt = $pdo->prepare("SELECT stid FROM select_gen WHERE pid = ?");
+  $stmt->execute([$pid1]);
+  $stid1 = $stmt->fetchColumn();
+  
+  $stmt = $pdo->prepare("SELECT stid FROM select_gen WHERE pid = ?");
+  $stmt->execute([$pid2]);
+  $stid2 = $stmt->fetchColumn();
+  
+  $stmt = $pdo->prepare("SELECT stid FROM select_gen WHERE pid = ?");
+  $stmt->execute([$pid3]);
+  $stid3 = $stmt->fetchColumn();
   
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO compositesearch (csname, stid1, pid1, stid2, pid2, stid3, pid3, sort_order, target, who_by, date_added, date_modified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("siiiiiiissii", $csname, $stid1, $pid1, $stid2, $pid2, $stid3, $pid3, $sort_order, $target, $usrkey, $today, $today);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  $insert_stmt = $pdo->prepare("INSERT INTO compositesearch (csname, stid1, pid1, stid2, pid2, stid3, pid3, sort_order, target, who_by, date_added, date_modified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  $insert_stmt->execute([$csname, $stid1, $pid1, $stid2, $pid2, $stid3, $pid3, $sort_order, $target, $adminname, date("Y-m-d H:i:s"), date("Y-m-d H:i:s")]);
+  //printf("[%d] %s\n", $pdo->errorInfo());
+  $newid = $pdo->lastInsertId();
   // target could be decimal
   
 }
@@ -93,6 +90,7 @@ if ($newadmin == 'newadmin') {
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
+
             </div>
             <?php echo $delalert ?>
             <div class="row">
@@ -107,11 +105,14 @@ if ($newadmin == 'newadmin') {
                            </thead>
                            <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT csid, csname, sort_order FROM compositesearch ");
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($csid, $csname, $sort_order);
-while ($tableset->fetch()){
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $tableset = $pdo->prepare("SELECT csid, csname, sort_order FROM compositesearch ");
+  $tableset->execute();
+  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+    $csid = $row['csid'];
+    $csname = $row['csname'];
+    $sort_order = $row['sort_order'];
    if ($sort_order == 0) {
       $sorttxt = '<div class="badge badge-danger">Not displayed</div>';
    } else {
@@ -124,14 +125,12 @@ while ($tableset->fetch()){
    <td><?php echo $sorttxt ?></td>
 </tr>
  <?php
- }
-$numrows = $tableset->num_rows;
-$tableset->close();
+  }
+}
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -160,16 +159,19 @@ $tableset->close();
                                  // 'select_types' says the name of the field
                                  echo "<option value=\"0\" selected";
                                  echo ">No Selection</option>";
-                                 $tableset = $mysqli->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
-                                 $tableset->execute();
-                                 $tableset->store_result();
-                                 $tableset->bind_result($pid, $stid, $select_val, $str);
-                                 while ($tableset->fetch()){
-                                 echo "<option value=\"$pid\"";
-                                 echo ">$select_val ($str) ($pid)</option>";
-                                 }
-                                 $numrows = $tableset->num_rows;
-                                 $tableset->close();                                   
+                                 $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+                                 if ($pdo) {
+                                   $tableset = $pdo->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
+                                   $tableset->execute();
+                                   while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+                                     $pid = $row['pid'];
+                                     $stid = $row['stid'];
+                                     $select_val = $row['select_val'];
+                                     $str = $row['str'];
+                                     echo "<option value=\"$pid\"";
+                                     echo ">$select_val ($str) ($pid)</option>";
+                                   }
+                                 }                                   
                                   ?>
                               </select>
                               </div>
@@ -183,16 +185,19 @@ $tableset->close();
                                  // 'select_types' says the name of the field
                                  echo "<option value=\"0\" selected";
                                  echo ">No Selection</option>";
-                                 $tableset = $mysqli->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
-                                 $tableset->execute();
-                                 $tableset->store_result();
-                                 $tableset->bind_result($pid, $stid, $select_val, $str);
-                                 while ($tableset->fetch()){
-                                 echo "<option value=\"$pid\"";
-                                 echo ">$select_val ($str) ($pid)</option>";
-                                 }
-                                 $numrows = $tableset->num_rows;
-                                 $tableset->close();                                   
+                                 $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+                                 if ($pdo) {
+                                   $tableset = $pdo->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
+                                   $tableset->execute();
+                                   while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+                                     $pid = $row['pid'];
+                                     $stid = $row['stid'];
+                                     $select_val = $row['select_val'];
+                                     $str = $row['str'];
+                                     echo "<option value=\"$pid\"";
+                                     echo ">$select_val ($str) ($pid)</option>";
+                                   }
+                                 }                                   
                                   ?>
                               </select>
                               </div>
@@ -206,20 +211,22 @@ $tableset->close();
                                  // 'select_types' says the name of the field
                                  echo "<option value=\"0\" selected";
                                  echo ">No Selection</option>";
-                                 $tableset = $mysqli->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
-                                 $tableset->execute();
-                                 $tableset->store_result();
-                                 $tableset->bind_result($pid, $stid, $select_val, $str);
-                                 while ($tableset->fetch()){
-                                 echo "<option value=\"$pid\"";
-                                 echo ">$select_val ($str) ($pid)</option>";
-                                 }
-                                 $numrows = $tableset->num_rows;
-                                 $tableset->close();                                   
+                                 $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+                                 if ($pdo) {
+                                   $tableset = $pdo->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
+                                   $tableset->execute();
+                                   while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+                                     $pid = $row['pid'];
+                                     $stid = $row['stid'];
+                                     $select_val = $row['select_val'];
+                                     $str = $row['str'];
+                                     echo "<option value=\"$pid\"";
+                                     echo ">$select_val ($str) ($pid)</option>";
+                                   }
+                                 }                                   
                                   ?>
                               </select>
-                              </div>
-                            </div>
+</div>
                             <div class="row">
                               <div class="col form-group">
                                  <label class="col-form-label" for="target">Target Hours (decimal or integer)</label>
@@ -227,18 +234,16 @@ $tableset->close();
                               </div>
                               <div class="col form-group">
                                  <label class="col-form-label" for="sort_order">Sort order</label>
-                                 <input class="form-control" type="number" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
-                              </div>
-                            </div>
+                                 <input class="form-control" type="number" id="$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
+</div>
                         </div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

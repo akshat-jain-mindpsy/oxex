@@ -16,8 +16,8 @@ try {
     $stats_logger = new StatsLogger();
     
     // Check permissions
-    if (!login_check($mysqli) || !($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
-        error_log("BABCP Grouping API - Unauthorized access. Login check: " . (login_check($mysqli) ? 'true' : 'false') . ", Admin type: " . ($admintype ?? 'not set'));
+    if (!login_check($pdo) || !($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+        error_log("BABCP Grouping API - Unauthorized access. Login check: " . (login_check($pdo) ? 'true' : 'false') . ", Admin type: " . ($admintype ?? 'not set'));
         echo json_encode([
             'status' => 'error',
             'message' => 'Unauthorized access'
@@ -159,14 +159,13 @@ try {
             // Get overview statistics with logging
             $query_start = microtime(true);
             $total_trainees_query = "SELECT COUNT(*) as total FROM trainee_tbl t WHERE 1=1 $course_condition $group_condition $babcp_condition_simple $additional_conditions";
-            $stmt = $mysqli->prepare($total_trainees_query);
+            $stmt = $supabase_pdo->prepare($total_trainees_query);
             if (!empty($all_basic_params)) {
-                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
+                $stmt->execute($all_basic_params);
+            } else {
+                $stmt->execute();
             }
-            $stmt->execute();
-            $stmt->bind_result($total_trainees);
-            $stmt->fetch();
-            $stmt->close();
+            $total_trainees = $stmt->fetchColumn();
             $query_end = microtime(true);
             $stats_logger->logQuery($total_trainees_query, $course_params, round(($query_end - $query_start) * 1000, 2));
             
@@ -174,26 +173,21 @@ try {
             $query_start = microtime(true);
             $active_trainees_query = "SELECT COUNT(*) as active FROM trainee_tbl t WHERE t.last_used >= ? $course_condition $group_condition $babcp_condition_simple $additional_conditions";
             $thirty_days_ago = date('Ymd', strtotime('-30 days'));
-            $stmt = $mysqli->prepare($active_trainees_query);
+            $stmt = $supabase_pdo->prepare($active_trainees_query);
             if (!empty($all_basic_params)) {
-                $stmt->bind_param("i" . $all_basic_param_types, $thirty_days_ago, ...$all_basic_params);
+                $stmt->execute(array_merge([$thirty_days_ago], $all_basic_params));
             } else {
-                $stmt->bind_param("i", $thirty_days_ago);
+                $stmt->execute([$thirty_days_ago]);
             }
-            $stmt->execute();
-            $stmt->bind_result($active_trainees);
-            $stmt->fetch();
-            $stmt->close();
+            $active_trainees = $stmt->fetchColumn();
             $query_end = microtime(true);
             $stats_logger->logQuery($active_trainees_query, array_merge([$thirty_days_ago], $course_params), round(($query_end - $query_start) * 1000, 2));
             
             // Get competency count
             $competency_count_query = "SELECT COUNT(*) as count FROM tabs_tbl WHERE isvis = 1";
-            $stmt = $mysqli->prepare($competency_count_query);
+            $stmt = $supabase_pdo->prepare($competency_count_query);
             $stmt->execute();
-            $stmt->bind_result($competency_count);
-            $stmt->fetch();
-            $stmt->close();
+            $competency_count = $stmt->fetchColumn();
             
             $data = [
                 'total_trainees' => $total_trainees,
@@ -206,18 +200,13 @@ try {
         case 'enrollment_trend':
             // Get trainees by year
             $trainees_by_year_query = "SELECT t.year, COUNT(*) as count FROM trainee_tbl t WHERE 1=1 $course_condition $group_condition $babcp_condition_simple $additional_conditions GROUP BY t.year ORDER BY t.year DESC";
-            $stmt = $mysqli->prepare($trainees_by_year_query);
+            $stmt = $supabase_pdo->prepare($trainees_by_year_query);
             if (!empty($all_basic_params)) {
-                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
+                $stmt->execute($all_basic_params);
+            } else {
+                $stmt->execute();
             }
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($year, $count);
-            $year_data = [];
-            while ($stmt->fetch()) {
-                $year_data[] = ['year' => $year, 'count' => $count];
-            }
-            $stmt->close();
+            $year_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $data = $year_data;
             break;
@@ -237,22 +226,13 @@ try {
                 GROUP BY tabs.tbid, tabs.tab_name
                 ORDER BY tabs.sort_order
             ";
-            $stmt = $mysqli->prepare($competency_stats_query);
+            $stmt = $supabase_pdo->prepare($competency_stats_query);
             if (!empty($all_basic_params)) {
-                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
+                $stmt->execute($all_basic_params);
+            } else {
+                $stmt->execute();
             }
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($tab_name, $trainees_with_data, $total_entries);
-            $competency_data = [];
-            while ($stmt->fetch()) {
-                $competency_data[] = [
-                    'tab_name' => $tab_name,
-                    'trainees_with_data' => $trainees_with_data,
-                    'total_entries' => $total_entries
-                ];
-            }
-            $stmt->close();
+            $competency_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $data = $competency_data;
             break;
@@ -271,20 +251,13 @@ try {
                 LIMIT 7
             ";
             $seven_days_ago = strtotime('-7 days');
-            $stmt = $mysqli->prepare($recent_activity_query);
+            $stmt = $supabase_pdo->prepare($recent_activity_query);
             if (!empty($all_basic_params)) {
-                $stmt->bind_param("i" . $all_basic_param_types, $seven_days_ago, ...$all_basic_params);
+                $stmt->execute(array_merge([$seven_days_ago], $all_basic_params));
             } else {
-                $stmt->bind_param("i", $seven_days_ago);
+                $stmt->execute([$seven_days_ago]);
             }
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($activity_date, $entries);
-            $recent_activity = [];
-            while ($stmt->fetch()) {
-                $recent_activity[] = ['date' => $activity_date, 'entries' => $entries];
-            }
-            $stmt->close();
+            $recent_activity = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $data = $recent_activity;
             break;
@@ -302,18 +275,13 @@ try {
                 ORDER BY trainee_count DESC
                 LIMIT 10
             ";
-            $stmt = $mysqli->prepare($supervisor_query);
+            $stmt = $supabase_pdo->prepare($supervisor_query);
             if (!empty($all_basic_params)) {
-                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
+                $stmt->execute($all_basic_params);
+            } else {
+                $stmt->execute();
             }
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($supervisor_name, $trainee_count);
-            $supervisor_data = [];
-            while ($stmt->fetch()) {
-                $supervisor_data[] = ['name' => $supervisor_name, 'count' => $trainee_count];
-            }
-            $stmt->close();
+            $supervisor_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $data = $supervisor_data;
             break;
@@ -334,20 +302,23 @@ try {
                 GROUP BY tabs.tbid, tabs.tab_name
                 ORDER BY tabs.sort_order
             ";
-            $stmt = $mysqli->prepare($pass_fail_query);
+            $stmt = $supabase_pdo->prepare($pass_fail_query);
             if (!empty($all_basic_params)) {
-                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
+                $stmt->execute($all_basic_params);
+            } else {
+                $stmt->execute();
             }
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($tab_name, $passed, $failed, $total_trainees);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             $pass_fail_data = [];
-            while ($stmt->fetch()) {
+            foreach ($rows as $row) {
+                $passed = $row['passed'];
+                $failed = $row['failed'];
+                $total_trainees = $row['total_trainees'];
                 $pass_rate = $total_trainees > 0 ? round(($passed / $total_trainees) * 100, 1) : 0;
                 $fail_rate = $total_trainees > 0 ? round(($failed / $total_trainees) * 100, 1) : 0;
                 
                 $pass_fail_data[] = [
-                    'tab_name' => $tab_name,
+                    'tab_name' => $row['tab_name'],
                     'passed' => $passed,
                     'failed' => $failed,
                     'total_trainees' => $total_trainees,
@@ -355,7 +326,6 @@ try {
                     'fail_rate' => $fail_rate
                 ];
             }
-            $stmt->close();
             
             $data = $pass_fail_data;
             break;
@@ -375,23 +345,16 @@ try {
                 GROUP BY tabs.tbid, tabs.tab_name
                 ORDER BY success_rate ASC
             ";
-            $stmt = $mysqli->prepare($competency_difficulty_query);
+            $stmt = $supabase_pdo->prepare($competency_difficulty_query);
             if (!empty($all_basic_params)) {
-                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
+                $stmt->execute($all_basic_params);
+            } else {
+                $stmt->execute();
             }
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($tab_name, $total_attempts, $successful_attempts, $success_rate);
-            $competency_difficulty = [];
-            while ($stmt->fetch()) {
-                $competency_difficulty[] = [
-                    'tab_name' => $tab_name,
-                    'total_attempts' => $total_attempts,
-                    'successful_attempts' => $successful_attempts,
-                    'success_rate' => round($success_rate, 1)
-                ];
+            $competency_difficulty = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($competency_difficulty as &$row) {
+                $row['success_rate'] = round($row['success_rate'], 1);
             }
-            $stmt->close();
             
             $data = $competency_difficulty;
             break;
@@ -411,20 +374,13 @@ try {
                 LIMIT 12
             ";
             $twelve_months_ago = strtotime('-12 months');
-            $stmt = $mysqli->prepare($monthly_activity_query);
+            $stmt = $supabase_pdo->prepare($monthly_activity_query);
             if (!empty($all_basic_params)) {
-                $stmt->bind_param("i" . $all_basic_param_types, $twelve_months_ago, ...$all_basic_params);
+                $stmt->execute(array_merge([$twelve_months_ago], $all_basic_params));
             } else {
-                $stmt->bind_param("i", $twelve_months_ago);
+                $stmt->execute([$twelve_months_ago]);
             }
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($month, $entries, $active_trainees);
-            $monthly_activity = [];
-            while ($stmt->fetch()) {
-                $monthly_activity[] = ['month' => $month, 'entries' => $entries, 'active_trainees' => $active_trainees];
-            }
-            $stmt->close();
+            $monthly_activity = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $data = $monthly_activity;
             break;
@@ -454,23 +410,17 @@ try {
                 ORDER BY avg_completion_rate DESC
                 LIMIT 10
             ";
-            $stmt = $mysqli->prepare($supervisor_performance_query);
+            $stmt = $supabase_pdo->prepare($supervisor_performance_query);
             if (!empty($all_basic_params)) {
-                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
+                $stmt->execute($all_basic_params);
+            } else {
+                $stmt->execute();
             }
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($supervisor_name, $trainee_count, $avg_entries, $avg_completion_rate);
-            $supervisor_performance = [];
-            while ($stmt->fetch()) {
-                $supervisor_performance[] = [
-                    'name' => $supervisor_name,
-                    'trainee_count' => $trainee_count,
-                    'avg_entries' => round($avg_entries, 1),
-                    'avg_completion_rate' => round($avg_completion_rate, 1)
-                ];
+            $supervisor_performance = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($supervisor_performance as &$row) {
+                $row['avg_entries'] = round($row['avg_entries'], 1);
+                $row['avg_completion_rate'] = round($row['avg_completion_rate'], 1);
             }
-            $stmt->close();
             
             $data = $supervisor_performance;
             break;
@@ -510,26 +460,13 @@ try {
                 GROUP BY t.trainkey, t.name
                 ORDER BY t.name
             ";
-            $stmt = $mysqli->prepare($babcp_case_analysis_query);
+            $stmt = $supabase_pdo->prepare($babcp_case_analysis_query);
             if (!empty($all_basic_params)) {
-                $stmt->bind_param($all_basic_param_types, ...$all_basic_params);
+                $stmt->execute($all_basic_params);
+            } else {
+                $stmt->execute();
             }
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($trainkey, $trainee_name, $total_cases, $babcp_training_cases, $supervised_cases, $cbt_cases, $cases_with_5plus_sessions);
-            $babcp_case_analysis = [];
-            while ($stmt->fetch()) {
-                $babcp_case_analysis[] = [
-                    'trainkey' => $trainkey,
-                    'trainee_name' => $trainee_name,
-                    'total_cases' => $total_cases,
-                    'babcp_training_cases' => $babcp_training_cases,
-                    'supervised_cases' => $supervised_cases,
-                    'cbt_cases' => $cbt_cases,
-                    'cases_with_5plus_sessions' => $cases_with_5plus_sessions
-                ];
-            }
-            $stmt->close();
+            $babcp_case_analysis = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $data = $babcp_case_analysis;
             break;
@@ -552,12 +489,12 @@ try {
             try {
                 $test_query = "SELECT COUNT(*) as total FROM trainee_log WHERE stid IN (18, 20)";
                 error_log("BABCP Grouping API - Executing test query: " . $test_query);
-                $test_result = $mysqli->query($test_query);
+                $test_result = $supabase_pdo->query($test_query);
                 if ($test_result) {
-                    $test_row = $test_result->fetch_assoc();
+                    $test_row = $test_result->fetch(PDO::FETCH_ASSOC);
                     error_log("BABCP Grouping API - Test query result: " . $test_row['total']);
                 } else {
-                    error_log("BABCP Grouping API - Test query failed: " . $mysqli->error);
+                    error_log("BABCP Grouping API - Test query failed");
                 }
             } catch (Exception $e) {
                 error_log("BABCP Grouping API - Test query exception: " . $e->getMessage());
@@ -604,38 +541,28 @@ try {
             $all_params = array_merge([$start_date, $end_date], $all_basic_params);
             $stats_logger->logQuery($babcp_grouping_query, $all_params, 0);
             
-            $stmt = $mysqli->prepare($babcp_grouping_query);
+            $stmt = $supabase_pdo->prepare($babcp_grouping_query);
             if (!$stmt) {
-                error_log("BABCP Grouping Query Prepare Error: " . $mysqli->error);
-                $stats_logger->logError("Prepare failed: " . $mysqli->error, "babcp_contact_modality_grouping | params=" . json_encode($all_params));
-                throw new Exception("Query preparation failed: " . $mysqli->error);
+                error_log("BABCP Grouping Query Prepare Error");
+                $stats_logger->logError("Prepare failed", "babcp_contact_modality_grouping | params=" . json_encode($all_params));
+                throw new Exception("Query preparation failed");
             }
             
-            // Bind all parameters: date range + course + group
-            $param_types = 'ii' . $all_basic_param_types;
-            $stmt->bind_param($param_types, $start_date, $end_date, ...$all_basic_params);
-            
             $query_start_time = microtime(true);
-            $execute_result = $stmt->execute();
+            $execute_result = $stmt->execute($all_params);
             if (!$execute_result) {
-                error_log("BABCP Grouping Query Execute Error: " . $stmt->error);
-                $stats_logger->logError("Execute failed: " . $stmt->error, "babcp_contact_modality_grouping | params=" . json_encode($all_params));
-                throw new Exception("Query execution failed: " . $stmt->error);
+                error_log("BABCP Grouping Query Execute Error");
+                $stats_logger->logError("Execute failed", "babcp_contact_modality_grouping | params=" . json_encode($all_params));
+                throw new Exception("Query execution failed");
             }
             $query_duration_ms = round((microtime(true) - $query_start_time) * 1000, 2);
             $stats_logger->logQuery($babcp_grouping_query, $all_params, $query_duration_ms);
             
-            $result = $stmt->get_result();
-            $babcp_grouping_data = [];
-            while ($row = $result->fetch_assoc()) {
-                $babcp_grouping_data[] = [
-                    'contact_type' => $row['contact_type'],
-                    'modality_type' => $row['modality_type'],
-                    'client_count' => (int)$row['client_count'],
-                    'trainee_count' => (int)$row['trainee_count']
-                ];
+            $babcp_grouping_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($babcp_grouping_data as &$row) {
+                $row['client_count'] = (int)$row['client_count'];
+                $row['trainee_count'] = (int)$row['trainee_count'];
             }
-            $stmt->close();
             
             error_log("BABCP Grouping Data Count: " . count($babcp_grouping_data));
             $stats_logger->logQuery('BABCP Grouping Result Count', ['count' => count($babcp_grouping_data)], 0);

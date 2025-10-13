@@ -6,7 +6,7 @@ include '../../OXEXfolder/u_functions.php';
 sec_session_start();
 
 // Check login and permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     echo json_encode([
         'status' => 'error', 
         'message' => 'Unauthorized access'
@@ -42,21 +42,17 @@ try {
         LIMIT 1
     ";
     
-    $stmt = $mysqli->prepare($query);
-    $stmt->bind_param("ii", $field_id, $table_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt = $supabase_pdo->prepare($query);
+    $stmt->execute([$field_id, $table_id]);
+    $field = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    if ($result->num_rows === 0) {
+    if (!$field) {
         echo json_encode([
             'status' => 'error',
             'message' => 'Field not found'
         ]);
         exit;
     }
-    
-    $field = $result->fetch_assoc();
-    $stmt->close();
     
     // Get field options if it's a select field (type 0 or 1)
     $options = [];
@@ -72,16 +68,12 @@ try {
                 select_val ASC
         ";
         
-        $options_stmt = $mysqli->prepare($options_query);
-        $options_stmt->bind_param("i", $field_id);
-        $options_stmt->execute();
-        $options_result = $options_stmt->get_result();
+        $options_stmt = $supabase_pdo->prepare($options_query);
+        $options_stmt->execute([$field_id]);
         
-        while ($option = $options_result->fetch_assoc()) {
+        while ($option = $options_stmt->fetch(PDO::FETCH_ASSOC)) {
             $options[] = $option['option_text'];
         }
-        
-        $options_stmt->close();
     }
     
     echo json_encode([
@@ -99,5 +91,5 @@ try {
     ]);
 }
 
-$mysqli->close();
+// PDO connection is managed by config.php
 ?> 

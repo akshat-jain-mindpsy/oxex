@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Events";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Page content";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,14 +32,15 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AD' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM links_tbl WHERE lid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
-    // show message when deleting, not refreshing
-    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("DELETE FROM links_tbl WHERE lid = ? LIMIT 1");
+    $stmt->execute([$which]);
+    if ($stmt->rowCount() > 0) {
+      // show message when deleting, not refreshing
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+    }
   }
-  $stmt->close();
 }
 
 if ($newadmin == 'newadmin') {
@@ -76,12 +80,12 @@ if ($newadmin == 'newadmin') {
     }
 
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO events_tbl (e_title, date_start, date_end, date_text, e_loc, e_txt, e_url, e_link, isdev) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("siisssssi", $e_title, $datefrom, $dateto, $date_text, $e_loc, $e_txt, $e_url, $e_link, $isdev);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();  
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $insert_stmt = $pdo->prepare("INSERT INTO events_tbl (e_title, date_start, date_end, date_text, e_loc, e_txt, e_url, e_link, isdev) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $insert_stmt->execute([$e_title, $datefrom, $dateto, $date_text, $e_loc, $e_txt, $e_url, $e_link, $isdev]);
+    $newid = $pdo->lastInsertId();
+  }  
 }
 $todaydisp = strtotime($today); # default 'to' date for datepicker
 ?>
@@ -98,7 +102,8 @@ $todaydisp = strtotime($today); # default 'to' date for datepicker
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New <?php echo $subtitle ?></a></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
             <?php echo $delalert ?>
             <div class="row">
                <div class="col-xl-12">
@@ -114,11 +119,16 @@ $todaydisp = strtotime($today); # default 'to' date for datepicker
                            </thead>
                            <tbody>
 <?PHP
-$stmt = $mysqli->prepare("SELECT eid, e_title, date_start, date_end, e_loc FROM events_tbl");
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $stmt = $pdo->prepare("SELECT eid, e_title, date_start, date_end, e_loc FROM events_tbl");
   $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($eid, $e_title, $date_start, $date_end, $e_loc);
-  while ($stmt->fetch()){
+  while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $eid = $row['eid'];
+    $e_title = $row['e_title'];
+    $date_start = $row['date_start'];
+    $date_end = $row['date_end'];
+    $e_loc = $row['e_loc'];
     $date_start = strtotime($date_start);
     $date_end = strtotime($date_end);
     if ($sort_order == 0) {
@@ -133,14 +143,12 @@ $stmt = $mysqli->prepare("SELECT eid, e_title, date_start, date_end, e_loc FROM 
 
 </tr>
  <?php
- }
-$numrows = $stmt->num_rows;
-$stmt->close();
+  }
+}
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -194,17 +202,14 @@ $stmt->close();
                                   <option value="1">Dev only</option>
                                   <option selected="selected" value="0">Public</option>
                                 </select>
-                             </div>
-                          </div>
+</div>
                         </div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

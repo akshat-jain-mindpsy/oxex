@@ -76,10 +76,9 @@ ini_set('max_execution_time', 300);
 
  if ($result == true)
  {
-	$stmt = $mysqli->prepare("UPDATE events_tbl SET eventlogo = ? WHERE ID = ?"); 
-	$stmt->bind_param("si", $actualname, $which);
-	$stmt->execute();
-	$stmt->close();
+	$stmt = $pdo->prepare("UPDATE events_tbl SET eventlogo = ? WHERE ID = ?"); 
+	$stmt->execute([$actualname, $which]);
+	$stmt->closeCursor();
 		echo "<p><a href=\"performancedetail.php?which=$which&amp;delicon=delicon&amp;photo=$whevattid\"<span class=\"btn btn-danger\"> <i class=\"fa fa-times-circle\"></i> Delete Image</span></a></p>";
 		echo "<p><img src=\"../performances/$actualname\" width=\"200px\"></p>";
 		echo '<p>&nbsp;</p><hr>';

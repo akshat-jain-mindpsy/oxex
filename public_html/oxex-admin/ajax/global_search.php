@@ -1,10 +1,13 @@
 <?php
+// Disable error display to prevent JSON corruption
+error_reporting(0);
+ini_set('display_errors', 0);
+
 header('Content-Type: application/json');
 
-include '../../OXEXfolder/config.php';
-include '../../OXEXfolder/u_functions.php';
+include __DIR__ . '/../../OXEXfolder/config.php';
+include __DIR__ . '/../../OXEXfolder/u_functions.php';
 sec_session_start();
-include '../incl/sess.php';
 
 // Enhanced logging function
 function logSearchError($message, $query = null) {
@@ -13,21 +16,11 @@ function logSearchError($message, $query = null) {
 }
 
 // Utility function to safely execute a query
-function safeExecuteQuery($mysqli, $query, $params = [], $paramTypes = '') {
+function safeExecuteQuery($pdo, $query, $params = []) {
     try {
-        $stmt = $mysqli->prepare($query);
-        
-        if (!empty($params)) {
-            $bindParams = array_merge([$paramTypes], $params);
-            $bindParamRefs = [];
-            foreach ($bindParams as $key => $value) {
-                $bindParamRefs[$key] = &$bindParams[$key];
-            }
-            call_user_func_array([$stmt, 'bind_param'], $bindParamRefs);
-        }
-        
-        $stmt->execute();
-        return $stmt->get_result();
+        $stmt = $pdo->prepare($query);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
         logSearchError("Query execution failed: " . $e->getMessage());
         return false;
@@ -35,7 +28,7 @@ function safeExecuteQuery($mysqli, $query, $params = [], $paramTypes = '') {
 }
 
 // Search function for tables
-function searchTables($mysqli, $searchTerm) {
+function searchTables($pdo, $searchTerm) {
     $query = "
         SELECT 
             t.tbid AS id, 
@@ -65,11 +58,11 @@ function searchTables($mysqli, $searchTerm) {
         $searchTerm, $searchTerm
     ];
     
-    $result = safeExecuteQuery($mysqli, $query, $params, 'ssss');
+    $result = safeExecuteQuery($pdo, $query, $params);
     
     $tableResults = [];
     if ($result) {
-        while ($row = $result->fetch_assoc()) {
+        foreach ($result as $row) {
             $tableResults[] = [
                 'id' => $row['id'],
                 'title' => $row['title'],
@@ -85,7 +78,7 @@ function searchTables($mysqli, $searchTerm) {
 }
 
 // Search function for categories
-function searchFields($mysqli, $searchTerm) {
+function searchFields($pdo, $searchTerm) {
     $query = "
         SELECT 
             st.stid AS id,
@@ -114,11 +107,11 @@ function searchFields($mysqli, $searchTerm) {
     
     $params = [$searchTerm, $searchTerm];
     
-    $result = safeExecuteQuery($mysqli, $query, $params, 'ss');
+    $result = safeExecuteQuery($pdo, $query, $params);
     
     $fieldResults = [];
     if ($result) {
-        while ($row = $result->fetch_assoc()) {
+        foreach ($result as $row) {
             $fieldResults[] = [
                 'id' => $row['id'],
                 'title' => $row['title'],
@@ -134,7 +127,7 @@ function searchFields($mysqli, $searchTerm) {
 }
 
 // Search function for category values
-function searchFieldValues($mysqli, $searchTerm) {
+function searchFieldValues($pdo, $searchTerm) {
     $query = "
         SELECT 
             sg.pid AS id,
@@ -163,11 +156,11 @@ function searchFieldValues($mysqli, $searchTerm) {
     
     $params = [$searchTerm, $searchTerm, $searchTerm, $searchTerm];
     
-    $result = safeExecuteQuery($mysqli, $query, $params, 'ssss');
+    $result = safeExecuteQuery($pdo, $query, $params);
     
     $fieldValueResults = [];
     if ($result) {
-        while ($row = $result->fetch_assoc()) {
+        foreach ($result as $row) {
             $fieldValueResults[] = [
                 'id' => $row['id'],
                 'title' => $row['title'],
@@ -183,7 +176,7 @@ function searchFieldValues($mysqli, $searchTerm) {
 }
 
 // Search function for sections
-function searchSections($mysqli, $searchTerm) {
+function searchSections($pdo, $searchTerm) {
     $query = "
         SELECT 
             fs.section_id AS id,
@@ -216,11 +209,11 @@ function searchSections($mysqli, $searchTerm) {
     
     $params = [$searchTerm, $searchTerm, $searchTerm, $searchTerm];
     
-    $result = safeExecuteQuery($mysqli, $query, $params, 'ssss');
+    $result = safeExecuteQuery($pdo, $query, $params);
     
     $sectionResults = [];
     if ($result) {
-        while ($row = $result->fetch_assoc()) {
+        foreach ($result as $row) {
             $sectionResults[] = [
                 'id' => $row['id'],
                 'title' => $row['title'],
@@ -236,11 +229,16 @@ function searchSections($mysqli, $searchTerm) {
 }
 
 // Search function for documentation
-function searchDocumentation($mysqli, $searchTerm) {
-    // Check if documentation table exists
-    $checkTable = $mysqli->query("SHOW TABLES LIKE 'documentation'")->num_rows;
-    
-    if ($checkTable == 0) {
+function searchDocumentation($pdo, $searchTerm) {
+    // Check if documentation table exists (PostgreSQL syntax)
+    try {
+        $checkTable = $pdo->query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'documentation')")->fetchColumn();
+        
+        if (!$checkTable) {
+            return [];
+        }
+    } catch (Exception $e) {
+        // If table doesn't exist, return empty results
         return [];
     }
     
@@ -270,11 +268,11 @@ function searchDocumentation($mysqli, $searchTerm) {
     
     $params = [$searchTerm, $searchTerm, $searchTerm, $searchTerm];
     
-    $result = safeExecuteQuery($mysqli, $query, $params, 'ssss');
+    $result = safeExecuteQuery($pdo, $query, $params);
     
     $docResults = [];
     if ($result) {
-        while ($row = $result->fetch_assoc()) {
+        foreach ($result as $row) {
             $docResults[] = [
                 'id' => $row['id'],
                 'title' => $row['title'],
@@ -290,11 +288,15 @@ function searchDocumentation($mysqli, $searchTerm) {
 }
 
 // Search function for trainees
-function searchTrainees($mysqli, $searchTerm) {
-    // Check if trainee table exists
-    $checkTable = $mysqli->query("SHOW TABLES LIKE 'trainee_tbl'")->num_rows;
-    
-    if ($checkTable == 0) {
+function searchTrainees($pdo, $searchTerm) {
+    // Check if trainee table exists (PostgreSQL syntax)
+    try {
+        $checkTable = $pdo->query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'trainee_tbl')")->fetchColumn();
+        
+        if (!$checkTable) {
+            return [];
+        }
+    } catch (Exception $e) {
         return [];
     }
     
@@ -326,11 +328,11 @@ function searchTrainees($mysqli, $searchTerm) {
     
     $params = [$searchTerm, $searchTerm, $searchTerm, $searchTerm];
     
-    $result = safeExecuteQuery($mysqli, $query, $params, 'ssss');
+    $result = safeExecuteQuery($pdo, $query, $params);
     
     $traineeResults = [];
     if ($result) {
-        while ($row = $result->fetch_assoc()) {
+        foreach ($result as $row) {
             $traineeResults[] = [
                 'id' => $row['id'],
                 'title' => $row['title'],
@@ -346,11 +348,15 @@ function searchTrainees($mysqli, $searchTerm) {
 }
 
 // Search function for trainee groups
-function searchTraineeGroups($mysqli, $searchTerm) {
-    // Check if trainee_group table exists
-    $checkTable = $mysqli->query("SHOW TABLES LIKE 'trainee_group'")->num_rows;
-    
-    if ($checkTable == 0) {
+function searchTraineeGroups($pdo, $searchTerm) {
+    // Check if trainee_group table exists (PostgreSQL syntax)
+    try {
+        $checkTable = $pdo->query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'trainee_group')")->fetchColumn();
+        
+        if (!$checkTable) {
+            return [];
+        }
+    } catch (Exception $e) {
         return [];
     }
     
@@ -380,11 +386,11 @@ function searchTraineeGroups($mysqli, $searchTerm) {
     
     $params = [$searchTerm, $searchTerm, $searchTerm, $searchTerm];
     
-    $result = safeExecuteQuery($mysqli, $query, $params, 'ssss');
+    $result = safeExecuteQuery($pdo, $query, $params);
     
     $groupResults = [];
     if ($result) {
-        while ($row = $result->fetch_assoc()) {
+        foreach ($result as $row) {
             $groupResults[] = [
                 'id' => $row['id'],
                 'title' => $row['title'],
@@ -400,11 +406,15 @@ function searchTraineeGroups($mysqli, $searchTerm) {
 }
 
 // Search function for admin users
-function searchAdminUsers($mysqli, $searchTerm) {
-    // Check if who_there table exists
-    $checkTable = $mysqli->query("SHOW TABLES LIKE 'who_there'")->num_rows;
-    
-    if ($checkTable == 0) {
+function searchAdminUsers($pdo, $searchTerm) {
+    // Check if who_there table exists (PostgreSQL syntax)
+    try {
+        $checkTable = $pdo->query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'who_there')")->fetchColumn();
+        
+        if (!$checkTable) {
+            return [];
+        }
+    } catch (Exception $e) {
         return [];
     }
     
@@ -436,11 +446,11 @@ function searchAdminUsers($mysqli, $searchTerm) {
     
     $params = [$searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm];
     
-    $result = safeExecuteQuery($mysqli, $query, $params, 'ssssss');
+    $result = safeExecuteQuery($pdo, $query, $params);
     
     $adminResults = [];
     if ($result) {
-        while ($row = $result->fetch_assoc()) {
+        foreach ($result as $row) {
             $adminResults[] = [
                 'id' => $row['id'],
                 'title' => $row['title'],
@@ -456,11 +466,15 @@ function searchAdminUsers($mysqli, $searchTerm) {
 }
 
 // Search function for blog posts
-function searchBlogPosts($mysqli, $searchTerm) {
-    // Check if blog table exists
-    $checkTable = $mysqli->query("SHOW TABLES LIKE 'semantic_blog'")->num_rows;
-    
-    if ($checkTable == 0) {
+function searchBlogPosts($pdo, $searchTerm) {
+    // Check if blog table exists (PostgreSQL syntax)
+    try {
+        $checkTable = $pdo->query("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'semantic_blog')")->fetchColumn();
+        
+        if (!$checkTable) {
+            return [];
+        }
+    } catch (Exception $e) {
         return [];
     }
     
@@ -490,11 +504,11 @@ function searchBlogPosts($mysqli, $searchTerm) {
     
     $params = [$searchTerm, $searchTerm, $searchTerm, $searchTerm];
     
-    $result = safeExecuteQuery($mysqli, $query, $params, 'ssss');
+    $result = safeExecuteQuery($pdo, $query, $params);
     
     $blogResults = [];
     if ($result) {
-        while ($row = $result->fetch_assoc()) {
+        foreach ($result as $row) {
             $blogResults[] = [
                 'id' => $row['id'],
                 'title' => $row['title'],
@@ -510,9 +524,10 @@ function searchBlogPosts($mysqli, $searchTerm) {
 }
 
 // Main search function
-function globalSearch($mysqli, $query) {
+function globalSearch($pdo, $query) {
     // Check login and permissions
-    if (!login_check($mysqli) || !in_array($GLOBALS['admintype'], ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+    $admintype = isset($_SESSION['admintype']) ? $_SESSION['admintype'] : '';
+    if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
         return [
             'status' => 'error', 
             'message' => 'Unauthorized access'
@@ -528,19 +543,19 @@ function globalSearch($mysqli, $query) {
     }
 
     try {
-        $searchTerm = '%' . $mysqli->real_escape_string($query) . '%';
+        $searchTerm = '%' . $query . '%';
         
         // Perform searches across different tables
         $results = array_merge(
-            searchTables($mysqli, $searchTerm),
-            searchFields($mysqli, $searchTerm),
-            searchFieldValues($mysqli, $searchTerm),
-            searchSections($mysqli, $searchTerm),
-            searchDocumentation($mysqli, $searchTerm),
-            searchTrainees($mysqli, $searchTerm),
-            searchTraineeGroups($mysqli, $searchTerm),
-            searchAdminUsers($mysqli, $searchTerm),
-            searchBlogPosts($mysqli, $searchTerm)
+            searchTables($pdo, $searchTerm),
+            searchFields($pdo, $searchTerm),
+            searchFieldValues($pdo, $searchTerm),
+            searchSections($pdo, $searchTerm),
+            searchDocumentation($pdo, $searchTerm),
+            searchTrainees($pdo, $searchTerm),
+            searchTraineeGroups($pdo, $searchTerm),
+            searchAdminUsers($pdo, $searchTerm),
+            searchBlogPosts($pdo, $searchTerm)
         );
 
         // Sort results by relevance
@@ -570,7 +585,7 @@ function globalSearch($mysqli, $query) {
 // Handle the search request
 try {
     $query = isset($_POST['query']) ? trim($_POST['query']) : '';
-    $searchResults = globalSearch($mysqli, $query);
+    $searchResults = globalSearch($pdo, $query);
     echo json_encode($searchResults);
 } catch (Exception $e) {
     logSearchError($e->getMessage());
@@ -580,5 +595,5 @@ try {
     ]);
 }
 
-$mysqli->close();
+// PDO connection is automatically closed
 ?> 

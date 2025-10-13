@@ -3,6 +3,7 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Trainee Group Stats";
 $subtitle = "Stats";
 $listurl = "subsets.php";
@@ -15,7 +16,7 @@ $value60 = 60;
 $dispcolorarr = array();
 $dispborderarr = array();
 
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -38,13 +39,16 @@ $which = isset($_GET['which']) ? $_GET['which'] : '';
 
 
 //Which group?
-$stmt = $mysqli->prepare("SELECT subset, description, date_added, date_modified FROM subset_tbl WHERE setkey = ?");
-$stmt->bind_param("s", $group);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($subset, $description, $date_added, $date_modified);
-$stmt->fetch();
-$stmt->close();
+$stmt = $pdo->prepare("SELECT subset, description, date_added, date_modified FROM subset_tbl WHERE setkey = ?");
+$stmt->execute([$group]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+if ($row) {
+  $subset = $row['subset'];
+  $description = $row['description'];
+  $date_added = $row['date_added'];
+  $date_modified = $row['date_modified'];
+}
+$stmt->closeCursor();
 $date_added = strtotime($date_added);
 $date_modified = strtotime($date_modified);
 
@@ -84,20 +88,17 @@ $dateend = $end.'1231';
 
 <?php
 // main loop through trainees in this group
-$groupset = $mysqli->prepare("SELECT trainkey FROM subset_link_tbl WHERE setkey = ?");
-$groupset->bind_param("s", $group);
-$groupset->execute();
-$groupset->store_result();
-$groupset->bind_result($trainkey);
-while ($groupset->fetch()){
+$groupset = $pdo->prepare("SELECT trainkey FROM subset_link_tbl WHERE setkey = ?");
+$groupset->execute([$group]);
+while ($row = $groupset->fetch(PDO::FETCH_ASSOC)){
+   $trainkey = $row['trainkey'];
    // who is the Trainee?
-   $troopstmt = $mysqli->prepare("SELECT name, year FROM trainee_tbl WHERE trainkey = ?");
-   $troopstmt->bind_param("s", $trainkey);
-   $troopstmt->execute();
-   $troopstmt->store_result();
-   $troopstmt->bind_result($name, $cohort);
-   $troopstmt->fetch();
-   $troopstmt->close();
+   $troopstmt = $pdo->prepare("SELECT name, year FROM trainee_tbl WHERE trainkey = ?");
+   $troopstmt->execute([$trainkey]);
+   $trainee = $troopstmt->fetch(PDO::FETCH_ASSOC);
+   $name = $trainee['name'];
+   $cohort = $trainee['year'];
+   $troopstmt->closeCursor();
 
 ?>
             <div class="row mt-5" id="reports">
@@ -113,12 +114,11 @@ while ($groupset->fetch()){
                // Create divs for graphs from report manager
                // All have IDs that align with equivalent javascript
                // first loop through Tables (that are agreed for thsi Trainee)
-               $tableset = $mysqli->prepare("SELECT tabs_tbl.tbid, tabs_tbl.tab_name FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid AND tabs_tbl.isvis = 1 ORDER BY tabs_tbl.sort_order");
-               $tableset->bind_param("s", $trainkey);
-               $tableset->execute();
-               $tableset->store_result();
-               $tableset->bind_result($thistbid, $tab_name);
-               while ($tableset->fetch()){
+               $tableset = $pdo->prepare("SELECT tabs_tbl.tbid, tabs_tbl.tab_name FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid AND tabs_tbl.isvis = 1 ORDER BY tabs_tbl.sort_order");
+               $tableset->execute([$trainkey]);
+               while ($table = $tableset->fetch(PDO::FETCH_ASSOC)){
+                  $thistbid = $table['tbid'];
+                  $tab_name = $table['tab_name'];
                   array_push($namarr, $tab_name);
                   // put table name as heading if changed
                   /*
@@ -127,12 +127,14 @@ while ($groupset->fetch()){
                   }*/
 
 
-                  $reportset = $mysqli->prepare("SELECT rmid, report_title, valtype, situation, stid FROM report_manager WHERE tbid = ? ORDER BY sort_order");
-                  $reportset->bind_param("i", $thistbid);
-                  $reportset->execute();
-                  $reportset->store_result();
-                  $reportset->bind_result($rmid, $report_title, $valtype, $situation, $stid);
-                  while ($reportset->fetch()){
+                  $reportset = $pdo->prepare("SELECT rmid, report_title, valtype, situation, stid FROM report_manager WHERE tbid = ? ORDER BY sort_order");
+                  $reportset->execute([$thistbid]);
+                  while ($report = $reportset->fetch(PDO::FETCH_ASSOC)){
+                     $rmid = $report['rmid'];
+                     $report_title = $report['report_title'];
+                     $valtype = $report['valtype'];
+                     $situation = $report['situation'];
+                     $stid = $report['stid'];
                      $allreports++; # count No. of reports
 
 // START data collect
@@ -144,51 +146,45 @@ while ($groupset->fetch()){
                      if ($valtype == 0) { # Exact values
                         // loop through this report's data requirements held in valuea
                         // and get the matching field name (valuea = pid)
-                        $dataset = $mysqli->prepare("SELECT select_gen.select_val, report_data.valuea FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
-                        $dataset->bind_param("i", $rmid); 
-                        $dataset->execute();
-                        $dataset->store_result();
-                        $dataset->bind_result($select_val, $valuea);
-                        while ($dataset->fetch()){
+                        $dataset = $pdo->prepare("SELECT select_gen.select_val, report_data.valuea FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
+                        $dataset->execute([$rmid]); 
+                        while ($data = $dataset->fetch(PDO::FETCH_ASSOC)){
+                           $select_val = $data['select_val'];
+                           $valuea = $data['valuea'];
                            array_push($valarr,$valuea); # the id's to look for in Trainee's data
                         }
-                        $dataset->close();
+                        $dataset->closeCursor();
                         // find how many of each type for this trainee and push value to array
                         foreach ($valarr as $valueA) {
-                           $vids = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ? AND date_added >= ? AND date_added <= ?"); 
-                           $vids->bind_param("siiii", $trainkey, $stid, $valueA, $datestart, $dateend);
-                           $vids->execute();
-                           $vids->store_result();
-                           $numages = $vids->num_rows;
-                           $vids->close();
+                           $vids = $pdo->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ? AND date_added >= ? AND date_added <= ?"); 
+                           $vids->execute([$trainkey, $stid, $valueA, $datestart, $dateend]);
+                           $numages = $vids->rowCount();
+                           $vids->closeCursor();
                            array_push($ansarr, $numages);
                         }
                         
                      }
                      if ($valtype == 1) { #range of values
-                        $dataset = $mysqli->prepare("SELECT valuea, valueb FROM report_data WHERE rmid = ? ORDER BY rdid");
-                        $dataset->bind_param("i", $rmid); 
-                        $dataset->execute();
-                        $dataset->store_result();
-                        $dataset->bind_result($valuea, $valueb);
-                        while ($dataset->fetch()){
+                        $dataset = $pdo->prepare("SELECT valuea, valueb FROM report_data WHERE rmid = ? ORDER BY rdid");
+                        $dataset->execute([$rmid]); 
+                        while ($data = $dataset->fetch(PDO::FETCH_ASSOC)){
+                           $valuea = $data['valuea'];
+                           $valueb = $data['valueb'];
                            $select_val = "$valuea - $valueb";
                            array_push($valarr,$valuea); # the 'from' value to search data
                            array_push($valBarr,$valueb); # the 'to' value to search data
                         }
-                        $dataset->close();
+                        $dataset->closeCursor();
                         // find how many of each type for this trainee and push value to array
                         $x = 0;
                         foreach ($valarr as $valueA) {
                            // find same key for vlueB
                            $valueB = $valBarr[$x];
 
-                           $vids = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND stid = ? AND select_val >= ? AND select_val <= ? AND date_added >= ? AND date_added <= ?"); 
-                           $vids->bind_param("sisiii", $trainkey, $stid, $valueA, $valueB, $datestart, $dateend);
-                           $vids->execute();
-                           $vids->store_result();
-                           $numages = $vids->num_rows;
-                           $vids->close();
+                           $vids = $pdo->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND stid = ? AND select_val >= ? AND select_val <= ? AND date_added >= ? AND date_added <= ?"); 
+                           $vids->execute([$trainkey, $stid, $valueA, $valueB, $datestart, $dateend]);
+                           $numages = $vids->rowCount();
+                           $vids->closeCursor();
                            array_push($ansarr, $numages);
                            $x++;
                         }
@@ -199,38 +195,33 @@ while ($groupset->fetch()){
                         // 
                         // loop through this report's data requirements held in valuea
                         // and get the matching field name (valuea = pid)
-                        $dataset = $mysqli->prepare("SELECT select_gen.select_val, report_data.valuea, report_data.valueb FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
-                        $dataset->bind_param("i", $rmid); 
-                        $dataset->execute();
-                        $dataset->store_result();
-                        $dataset->bind_result($select_val, $valuea, $valueb);
-                        while ($dataset->fetch()){
+                        $dataset = $pdo->prepare("SELECT select_gen.select_val, report_data.valuea, report_data.valueb FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
+                        $dataset->execute([$rmid]); 
+                        while ($data = $dataset->fetch(PDO::FETCH_ASSOC)){
+                           $select_val = $data['select_val'];
+                           $valuea = $data['valuea'];
+                           $valueb = $data['valueb'];
                            $valuea = intval($valuea);
                            array_push($valarr,$valuea); # the stid's to look for in Trainee's data
                         }
-                        $dataset->close();
+                        $dataset->closeCursor();
 
                         // loop through each stid in trainee's data matching array pid
                         $tothrs = 0;
                         foreach ($valarr as $valueA) {
-                           $hrsset = $mysqli->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ? AND date_added >= ? AND date_added <= ?");
-                           $hrsset->bind_param("siiii", $trainkey, $stid, $valueA, $datestart, $dateend);
-                           $hrsset->execute();
-                           $hrsset->store_result();
-                           $hrsset->bind_result($logkey);
-                           while ($hrsset->fetch()){
+                           $hrsset = $pdo->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ? AND date_added >= ? AND date_added <= ?");
+                           $hrsset->execute([$trainkey, $stid, $valueA, $datestart, $dateend]);
+                           while ($log = $hrsset->fetch(PDO::FETCH_ASSOC)){
+                              $logkey = $log['logkey'];
                               $hours = '';
                               // we'll use the logkey to find the hours for the same session
                               //echo "logkey $logkey ($trainkey, $stid, $valueA, $datestart, $dateend)<br>";
                               // for each, find number of hours for the same logkey
                               // // looking for stid = 60
-                              $stmt = $mysqli->prepare("SELECT select_val FROM trainee_log WHERE logkey = ? AND stid = ?");
-                              $stmt->bind_param("si", $logkey, $value60);
-                              $stmt->execute();
-                              $stmt->store_result();
-                              $stmt->bind_result($hours);
-                              $stmt->fetch();
-                              $stmt->close();
+                              $stmt = $pdo->prepare("SELECT select_val FROM trainee_log WHERE logkey = ? AND stid = ?");
+                              $stmt->execute([$logkey, $value60]);
+                              $hours = $stmt->fetchColumn();
+                              $stmt->closeCursor();
                               //echo "| $hours | ";
                               // data is in HH:mm format
                               if ($hours > 0) {
@@ -241,8 +232,8 @@ while ($groupset->fetch()){
                               }
                               
                            }
-                           $numrows = $hrsset->num_rows;
-                           $hrsset->close();
+                           $numrows = $hrsset->rowCount();
+                           $hrsset->closeCursor();
                            //echo "valueA $valueA - numrows $numrows";
 
                            array_push($ansarr, $hours);
@@ -269,7 +260,7 @@ while ($groupset->fetch()){
                      unset($valBarr);
                      
                   }
-                  $reportset->close();
+                  $reportset->closeCursor();
                   $prevtabname = $tab_name;
                   
                   array_push($resarr, $allreports); # how many for this table
@@ -277,7 +268,7 @@ while ($groupset->fetch()){
                   $allpass = 0;
                   $allreports = 0;
                }
-               $tableset->close();
+               $tableset->closeCursor();
                ?>
                
             </div>
@@ -324,12 +315,11 @@ while ($groupset->fetch()){
                   echo "</table>";
 
                   ?>
-               </div>
-            </div>
+</div>
 <?php
 // main loop through trainees in this group
 }
-$groupset->close();
+$groupset->closeCursor();
 ?>
 
 
@@ -338,7 +328,7 @@ $groupset->close();
       </section>
 
    </div>
-   <?php include 'incl/adminjslite.php' ?>
+   <?php include 'incl/adminjs.php' ?>
    <script>
    $(document).ready(function() {
       $('#maintable').dataTable( {

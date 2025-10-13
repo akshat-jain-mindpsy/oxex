@@ -12,7 +12,7 @@ include_once __DIR__ . '/../incl/sess.php';
 error_log("get_field_options.php called");
 
 // Check login and permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     echo json_encode([
         'status' => 'error', 
         'message' => 'Unauthorized access'
@@ -52,19 +52,8 @@ if ($field_id <= 0) {
 
 try {
     // First check if field_options column exists
-    $check_column = $mysqli->query("SHOW COLUMNS FROM select_types LIKE 'field_options'");
-    if ($check_column === false) {
-        // SQL query failed - likely a more serious database issue
-        $response = [
-            'status' => 'error',
-            'message' => 'Database error: ' . $mysqli->error,
-            'redirect' => '../db_update.php?tbid=' . $field_id
-        ];
-        echo json_encode($response);
-        exit;
-    }
-    
-    $column_exists = $check_column->num_rows > 0;
+    $check_column = $supabase_pdo->query("SELECT column_name FROM information_schema.columns WHERE table_name = 'select_types' AND column_name = 'field_options'");
+    $column_exists = $check_column->rowCount() > 0;
     
     if (!$column_exists) {
         // Column doesn't exist yet, redirect to the database update page
@@ -79,19 +68,15 @@ try {
     
     // Get the field details and options
     $query = "SELECT stid, str, single, field_options FROM select_types WHERE stid = ? LIMIT 1";
-    $stmt = $mysqli->prepare($query);
-    $stmt->bind_param("i", $field_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt = $supabase_pdo->prepare($query);
+    $stmt->execute([$field_id]);
+    $field = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    if ($result->num_rows === 0) {
+    if (!$field) {
         $response['message'] = 'Field not found';
         echo json_encode($response);
         exit;
     }
-    
-    $field = $result->fetch_assoc();
-    $stmt->close();
     
     // Check if field is a select type (0 = single, 1 = multi-select)
     if ($field['single'] != 0 && $field['single'] != 1) {
@@ -106,26 +91,21 @@ try {
     if (empty($options)) {
         // Get options from select_gen table (as in listtypedetail.php)
         $options_query = "SELECT pid, select_val FROM select_gen WHERE stid = ? ORDER BY select_val";
-        $opt_stmt = $mysqli->prepare($options_query);
-        $opt_stmt->bind_param("i", $field_id);
-        $opt_stmt->execute();
-        $options_result = $opt_stmt->get_result();
+        $opt_stmt = $supabase_pdo->prepare($options_query);
+        $opt_stmt->execute([$field_id]);
+        $options_result = $opt_stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        if ($options_result->num_rows > 0) {
+        if (count($options_result) > 0) {
             $option_values = [];
-            while ($option = $options_result->fetch_assoc()) {
+            foreach ($options_result as $option) {
                 $option_values[] = $option['select_val'];
             }
             $options = implode('|', $option_values);
             
             // Update the field_options column for future use
-            $update = $mysqli->prepare("UPDATE select_types SET field_options = ? WHERE stid = ?");
-            $update->bind_param("si", $options, $field_id);
-            $update->execute();
-            $update->close();
+            $update = $supabase_pdo->prepare("UPDATE select_types SET field_options = ? WHERE stid = ?");
+            $update->execute([$options, $field_id]);
         }
-        
-        $opt_stmt->close();
     }
     
     // Return field options

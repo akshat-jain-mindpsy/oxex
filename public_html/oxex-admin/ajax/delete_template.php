@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Check user permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     http_response_code(403); // Forbidden
     die(json_encode(['status' => 'error', 'message' => 'Unauthorized access']));
 }
@@ -32,43 +32,39 @@ if ($template_id <= 0) {
 }
 
 // Check if template exists
-$check_template = $mysqli->prepare("SELECT id, template_name FROM csv_templates WHERE id = ?");
-$check_template->bind_param("i", $template_id);
-$check_template->execute();
-$template_result = $check_template->get_result();
+$check_template = $supabase_pdo->prepare("SELECT id, template_name FROM csv_templates WHERE id = ?");
+$check_template->execute([$template_id]);
+$template_row = $check_template->fetch(PDO::FETCH_ASSOC);
 
-if ($template_result->num_rows === 0) {
+if (!$template_row) {
     die(json_encode(['status' => 'error', 'message' => 'Template not found']));
 }
 
-$template = $template_result->fetch_assoc();
-$template_name = $template['template_name'];
+$template_name = $template_row['template_name'];
 
 // Begin transaction for safe deletion
-$mysqli->begin_transaction();
+$supabase_pdo->beginTransaction();
 
 try {
     // First, delete all columns associated with this template
-    $delete_columns = $mysqli->prepare("DELETE FROM csv_template_columns WHERE template_id = ?");
-    $delete_columns->bind_param("i", $template_id);
-    $delete_columns->execute();
+    $delete_columns = $supabase_pdo->prepare("DELETE FROM csv_template_columns WHERE template_id = ?");
+    $delete_columns->execute([$template_id]);
     
     // Log how many columns were deleted
-    $columns_deleted = $delete_columns->affected_rows;
+    $columns_deleted = $delete_columns->rowCount();
     
     // Then delete the template itself
-    $delete_template = $mysqli->prepare("DELETE FROM csv_templates WHERE id = ?");
-    $delete_template->bind_param("i", $template_id);
-    $delete_template->execute();
+    $delete_template = $supabase_pdo->prepare("DELETE FROM csv_templates WHERE id = ?");
+    $delete_template->execute([$template_id]);
     
-    if ($delete_template->affected_rows === 0) {
+    if ($delete_template->rowCount() === 0) {
         // Rollback if template deletion failed
-        $mysqli->rollback();
+        $supabase_pdo->rollBack();
         die(json_encode(['status' => 'error', 'message' => 'Failed to delete template']));
     }
     
     // Commit transaction if everything worked
-    $mysqli->commit();
+    $supabase_pdo->commit();
     
     echo json_encode([
         'status' => 'success', 
@@ -77,10 +73,10 @@ try {
     
 } catch (Exception $e) {
     // Rollback on any error
-    $mysqli->rollback();
+    if ($supabase_pdo->inTransaction()) {
+        $supabase_pdo->rollBack();
+    }
     error_log("Error deleting template: " . $e->getMessage());
     echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
 }
-
-$mysqli->close();
 ?> 

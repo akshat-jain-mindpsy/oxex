@@ -1,6 +1,9 @@
 <?PHP
 include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
+
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
 $valueblank = '';
 $value0 = 0;
 $value1 = 1;
@@ -77,10 +80,10 @@ ini_set('max_execution_time', 300);
  if ($result == true )
  {
    // update db and remove any webp/avif files for previous jpeg
-	$stmt = $mysqli->prepare("UPDATE pages_tbl SET image = ?, webp = ?, avif = ? WHERE pid = ?"); 
-	$stmt->bind_param("sssi", $actualname, $valueblank, $valueblank, $which);
-	$stmt->execute();
-	$stmt->close();
+	if ($usingSupabase) {
+		$stmt = $supabase_pdo->prepare("UPDATE pages_tbl SET image = ?, webp = ?, avif = ? WHERE pid = ?"); 
+		$stmt->execute([$actualname, $valueblank, $valueblank, $which]);
+	}
 		echo "<p><a href=\"pagedetail.php?which=$which&amp;delicon=delicon\"<span class=\"btn btn-danger\"> <i class=\"fa fa-times-circle\"></i> Delete Image</span></a></p>";
 		echo "<p><img src=\"../banner/$actualname\" width=\"300px\"></p>";
 		echo '<p>&nbsp;</p><hr>';

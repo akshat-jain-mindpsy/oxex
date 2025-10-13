@@ -5,6 +5,9 @@ sec_session_start();
 check_session_timeout();
 include 'incl/sess.php';
 
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+$pdo = $usingSupabase ? $supabase_pdo : null;
+
 // Get trainee information
 $name = '';
 $competencySummary = null;
@@ -14,7 +17,7 @@ $competencyEvaluator = null;
 $enableCompetencyEvaluation = false;
 
 // Only initialize competency evaluator if user is logged in and feature is enabled
-if ($enableCompetencyEvaluation && login_check($mysqli) && isset($trainkey) && !empty($trainkey)) {
+if ($enableCompetencyEvaluation && login_check($pdo) && isset($trainkey) && !empty($trainkey)) {
     try {
         // Include the CompetencyEvaluator for pass/fail status
         $competencyEvaluatorPath = 'OXEXfolder/CompetencyEvaluator.php';
@@ -22,7 +25,7 @@ if ($enableCompetencyEvaluation && login_check($mysqli) && isset($trainkey) && !
             require_once $competencyEvaluatorPath;
             
             // Initialize the CompetencyEvaluator
-            $competencyEvaluator = new CompetencyEvaluator($mysqli);
+            $competencyEvaluator = new CompetencyEvaluator($pdo);
             
             // Get competency summary for the trainee
             $competencySummary = $competencyEvaluator->getCompetencySummary($trainkey);
@@ -40,14 +43,13 @@ if ($enableCompetencyEvaluation && login_check($mysqli) && isset($trainkey) && !
             ];
         }
         
-        // Get trainee name
-        $trainee_stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
-        if ($trainee_stmt) {
-            $trainee_stmt->bind_param("s", $trainkey);
-            $trainee_stmt->execute();
-            $trainee_stmt->bind_result($name);
-            $trainee_stmt->fetch();
-            $trainee_stmt->close();
+        // Get trainee name (PDO)
+        if ($pdo) {
+            $trainee_stmt = $pdo->prepare('select name from trainee_tbl where trainkey = ? limit 1');
+            $trainee_stmt->execute([$trainkey]);
+            if ($row = $trainee_stmt->fetch(PDO::FETCH_ASSOC)) {
+                $name = $row['name'] ?? $name;
+            }
         }
     } catch (Exception $e) {
         // Log error but don't break the page
@@ -185,7 +187,15 @@ $selectedTab = isset($_GET['tab']) ? $_GET['tab'] : $defaultTab; // Use the defa
 
 // Fetch table details for graph data sources
 $tables_query = "SELECT tbid, tab_name FROM tabs_tbl WHERE isvis = 1 ORDER BY sort_order ASC";
-$tables_result = $mysqli->query($tables_query);
+$tables_rows = [];
+if ($usingSupabase) {
+    try {
+        $stmt = $supabase_pdo->query('select tbid, tab_name from tabs_tbl where isvis = 1 order by sort_order asc');
+        while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) { $tables_rows[] = $r; }
+    } catch (Throwable $e) {
+        error_log('account-graphs tables load failed (Supabase): ' . $e->getMessage());
+    }
+}
 
 ?><!doctype html>
 <html lang="en">
@@ -347,7 +357,7 @@ $tables_result = $mysqli->query($tables_query);
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
   </head>
   <?php
-    if (login_check($mysqli) != false) {
+    if (login_check($pdo) != false) {
       // logged in only!
     ?>
   <body>
@@ -509,14 +519,23 @@ $tables_result = $mysqli->query($tables_query);
                         <select class="form-control" id="customDataSource" name="data_source">
                           <option value="">Select a data source</option>
                           <?php
-                          if ($tables_result && $tables_result->num_rows > 0) {
-                            // Reset the result pointer for reuse
-                            $tables_result->data_seek(0);
-                            while ($table = $tables_result->fetch_assoc()) {
-                              echo '<option value="' . $table['tbid'] . '">' . htmlspecialchars($table['tab_name']) . '</option>' . "\n";
+                          if ($usingSupabase) {
+                            if (!empty($tables_rows)) {
+                              foreach ($tables_rows as $table) {
+                                echo '<option value="' . (int)$table['tbid'] . '">' . htmlspecialchars($table['tab_name']) . '</option>' . "\n";
+                              }
+                            } else {
+                              echo '<option value="">No tables available</option>';
                             }
                           } else {
-                            echo '<option value="">No tables available</option>';
+                            if ($tables_result && $tables_result->num_rows > 0) {
+                              $tables_result->data_seek(0);
+                              while ($table = $tables_result->fetch_assoc()) {
+                                echo '<option value="' . $table['tbid'] . '">' . htmlspecialchars($table['tab_name']) . '</option>' . "\n";
+                              }
+                            } else {
+                              echo '<option value="">No tables available</option>';
+                            }
                           }
                           ?>
                         </select>
@@ -709,18 +728,22 @@ $tables_result = $mysqli->query($tables_query);
 function hasGraphData($ansarr) {
     return !empty($ansarr) && array_sum($ansarr) > 0; // Check if the array is not empty and has non-zero values
 }
-$tableset = $mysqli->prepare("SELECT rcid, colour FROM report_colour ");
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($rcid, $colour);
-while ($tableset->fetch()){
-    $hex = str_replace('#', '', $colour);
-    $length = strlen($hex);
-    $rgbr = hexdec($length == 6 ? substr($hex, 0, 2) : ($length == 3 ? str_repeat(substr($hex, 0, 1), 2) : 0));
-    $rgbg = hexdec($length == 6 ? substr($hex, 2, 2) : ($length == 3 ? str_repeat(substr($hex, 1, 1), 2) : 0));
-    $rgbb = hexdec($length == 6 ? substr($hex, 4, 2) : ($length == 3 ? str_repeat(substr($hex, 2, 1), 2) : 0));
-    array_push($dispcolorarr, "rgba($rgbr, $rgbg, $rgbb, 0.4)");
-    array_push($dispborderarr, "rgba($rgbr, $rgbg, $rgbb, 1)");
+if ($usingSupabase) {
+    try {
+        $stmt = $supabase_pdo->query('select rcid, colour from report_colour');
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $colour = $row['colour'];
+            $hex = str_replace('#', '', $colour);
+            $length = strlen($hex);
+            $rgbr = hexdec($length == 6 ? substr($hex, 0, 2) : ($length == 3 ? str_repeat(substr($hex, 0, 1), 2) : 0));
+            $rgbg = hexdec($length == 6 ? substr($hex, 2, 2) : ($length == 3 ? str_repeat(substr($hex, 1, 1), 2) : 0));
+            $rgbb = hexdec($length == 6 ? substr($hex, 4, 2) : ($length == 3 ? str_repeat(substr($hex, 2, 1), 2) : 0));
+            array_push($dispcolorarr, "rgba($rgbr, $rgbg, $rgbb, 0.4)");
+            array_push($dispborderarr, "rgba($rgbr, $rgbg, $rgbb, 1)");
+        }
+    } catch (Throwable $e) {
+        error_log('account-graphs colours load failed (Supabase): ' . $e->getMessage());
+    }
 }
 
 ?>
@@ -730,7 +753,7 @@ while ($tableset->fetch()){
     </div>
     <?php include 'incl/footer.php' ?>
     <?php
-    if (login_check($mysqli) != false) {
+    if (login_check($pdo) != false) {
       include 'incl/glossary.php';
     }
     ?>

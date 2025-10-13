@@ -6,10 +6,8 @@ include '../OXEXfolder/u_functions.php';
 $position = $_POST['position'];
 $i = 1;
 foreach($position as $k => $v){
-    $stmt = $mysqli->prepare("UPDATE report_manager SET sort_order = ? WHERE rmid = ?"); 
-	$stmt->bind_param("ii", $i, $v);
-	$stmt->execute();
-	$stmt->close();
+	$stmt = $supabase_pdo->prepare("UPDATE report_manager SET sort_order = ? WHERE rmid = ?"); 
+	$stmt->execute([$i, $v]);
 	$i++;
 }
 ?>

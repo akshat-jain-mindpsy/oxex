@@ -21,7 +21,7 @@ $valueyearend = date('Y').'1231';
     <link href="fullcalendar-3.10.5/fullcalendar.css" rel="stylesheet">
   </head>
   <?php
-    if (login_check($mysqli) != false) {
+    if (login_check($pdo) != false) {
       // logged in only!
     ?>
   <body>
@@ -58,19 +58,21 @@ $valueyearend = date('Y').'1231';
             // calender https://fullcalendar.io/docs/external-dragging
             // list the coloured task labels
             // drag  to calender to store in timesheet table
-            $tableset = $mysqli->prepare("SELECT dtid, task, colour, textcolor FROM tasks ");
-            $tableset->execute();
-            $tableset->store_result();
-            $tableset->bind_result($dtid, $task, $colour, $textcolor);
-            while ($tableset->fetch()){
+            try {
+            $taskRows = [];
+            $stmtTasks = $supabase_pdo->query('select dtid, task, colour, textcolor from tasks');
+            while ($row = $stmtTasks->fetch(PDO::FETCH_ASSOC)) { $taskRows[] = $row; }
+            foreach ($taskRows as $row) {
+              $dtid = (int)$row['dtid'];
+              $task = $row['task'];
+              $colour = $row['colour'];
+              $textcolor = (int)$row['textcolor'];
               // how many this year for this trainee
               $numtasks = 0;
-              $vids = $mysqli->prepare("SELECT tsid FROM timesheet WHERE trainkey = ? AND dtid = ? AND taskdate >= ? AND taskdate <= ?");
-              $vids->bind_param("siii", $trainkey, $dtid, $valueyearstart, $valueyearend);
-              $vids->execute();
-              $vids->store_result();
-              $numtasks = $vids->num_rows;
-              $vids->close();
+              $stmtCount = $supabase_pdo->prepare('select count(*) as c from timesheet where trainkey = ? and dtid = ? and taskdate >= ? and taskdate <= ?');
+              $stmtCount->execute([$trainkey, $dtid, $valueyearstart, $valueyearend]);
+              $countRow = $stmtCount->fetch(PDO::FETCH_ASSOC);
+              $numtasks = (int)($countRow['c'] ?? 0);
               if ($textcolor == 1) {
                 $task = "<span class=\"text-white\">$task</span>";
               } else {
@@ -80,7 +82,7 @@ $valueyearend = date('Y').'1231';
               //echo "<div id=\"d$dtid\" class=\"fc-event rounded px-3 py-2 mr-1 mb-2\" style=\"background-color:#$colour\" data-id=\"$dtid\" data-color=\"#$colour\">$task <span class=\"badge badge-dark float-right mr-2\" id=\"taskqty$dtid\">$numtasks</span></div>";
               echo "<div id=\"d$dtid\" class=\"fc-event rounded px-3 py-2 mr-1 mb-2\" style=\"background-color:#$colour\" data-id=\"$dtid\" data-color=\"#$colour\">$task</div>";
             }
-            $tableset->close();
+            } catch (Throwable $e) { error_log('attendance tasks PDO error: ' . $e->getMessage()); }
             ?>
             </div>
             <!--<div id="calendarTrash" class="alert alert-secondary p3-5 px-3 mt-3"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg> Drag Events here to Delete</div>-->
@@ -97,7 +99,7 @@ $valueyearend = date('Y').'1231';
     </div>
     <?php include 'incl/footer.php' ?>
     <?php
-    if (login_check($mysqli) != false) {
+    if (login_check($pdo) != false) {
       include 'incl/glossary.php';
     }
     ?>
@@ -220,29 +222,28 @@ $(function() {
      events: [
       <?php
       // find all tasks for this trainee and show on calendar
-      $tableset = $mysqli->prepare("SELECT timesheet.tsid, timesheet.taskdate, tasks.task, tasks.colour, tasks.textcolor FROM timesheet, tasks WHERE timesheet.trainkey = ?  AND timesheet.dtid = tasks.dtid");
-      $tableset->bind_param("s", $trainkey);
-      $tableset->execute();
-      $tableset->store_result();
-      $tableset->bind_result($tsid, $taskdate, $task, $colour, $textcolor);
-      while ($tableset->fetch()){
-        $taskdate = strtotime($taskdate);
-        $showdate = date('Y-m-d',$taskdate);
-        $writecolor = '#212b32'; # default text
-        if ($textcolor == 1) {
-          $writecolor = '#fff';
+      try {
+        $stmt = $supabase_pdo->prepare('select t.tsid, t.taskdate, s.task, s.colour, s.textcolor from timesheet t join tasks s on t.dtid = s.dtid where t.trainkey = ?');
+        $stmt->execute([$trainkey]);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+          $tsid = $row['tsid'];
+          $taskdate = strtotime($row['taskdate']);
+          $task = $row['task'];
+          $colour = $row['colour'];
+          $textcolor = (int)$row['textcolor'];
+          $showdate = date('Y-m-d', $taskdate);
+          $writecolor = '#212b32'; # default text
+          if ($textcolor == 1) { $writecolor = '#fff'; }
+          echo "{";
+          echo "ID : '$tsid',";
+          echo "title : '$task',";
+          echo "start : '$showdate',";
+          echo "backgroundColor : '#$colour',";
+          echo "borderColor : '#$colour',";
+          echo "textColor : '$writecolor',";
+          echo "},";
         }
-        echo "{";
-        echo "ID : '$tsid',";
-        echo "title : '$task',";
-        echo "start : '$showdate',";
-        echo "backgroundColor : '#$colour',";
-        echo "borderColor : '#$colour',";
-        echo "textColor : '$writecolor',";
-        echo "},";
-      }
-      $numrows = $tableset->num_rows;
-      $tableset->close();
+      } catch (Throwable $e) { error_log('attendance events PDO error: ' . $e->getMessage()); }
       ?>
       ],
   })

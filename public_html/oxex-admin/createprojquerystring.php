@@ -9,14 +9,10 @@ $semantic_url = preg_replace('/[^A-Za-z0-9-]+/', '-', $semantic_title);# replace
   	$semantic_url = substr($semantic_url, 0, 255); # don't want more than 255 chars
   }
   // now look for anything with the same url in semantic_url
-  $stmt = $mysqli->prepare("SELECT pid FROM proj_tbl WHERE semantic_url = ?");
-	$stmt->bind_param("s", $semantic_url);
-	$stmt->execute();
-	$stmt->store_result();
-	$stmt->bind_result($pid);
-	$stmt->fetch();
-	$numrows = $stmt->num_rows;
-	$stmt->close();
+  $stmt = $supabase_pdo->prepare("SELECT pid FROM proj_tbl WHERE semantic_url = ?");
+	$stmt->execute([$semantic_url]);
+	$row = $stmt->fetch(PDO::FETCH_ASSOC);
+	$numrows = $row ? 1 : 0;
 
 echo "Project URL will be: https://www.classicperformanceengineeringclassicperformanceengineering.co.uk/classic/[manufacturer]/".$semantic_url;
 if ($numrows > 0) {

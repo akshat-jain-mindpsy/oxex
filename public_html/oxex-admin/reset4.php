@@ -16,14 +16,11 @@ $valid_confirm_password  = $_POST['confirm_password'];
 $usrkey = $_POST['who'];
 
 // just check there is such a user
-$stmt = $mysqli->prepare("SELECT whid FROM who_there WHERE usrkey = ? LIMIT 1");
-$stmt->bind_param('s', $usrkey);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($tid);
-$stmt->fetch();
-$numrows = $stmt->num_rows;
-$stmt->close();
+$stmt = $pdo->prepare("SELECT whid FROM who_there WHERE usrkey = ? LIMIT 1");
+$stmt->execute([$usrkey]);
+$tid = $stmt->fetchColumn();
+$numrows = ($tid !== false && $tid !== null) ? 1 : 0;
+$stmt->closeCursor();
 
 $page_txt2 = "Your password has been changed. Please note all attempts to change passwords are recorded and reviewed by the administrators for this website.";
 $page_txt4 = "Invalid. Please start again.";
@@ -46,10 +43,9 @@ if ($valid_attampt == 1) {
   $user_password = hash('sha512', $valid_password.$random_salt);
   
   // set record to say it's now been used, remove old text pw
-  $stmt = $mysqli->prepare("UPDATE who_there SET password = ?, salt = ? WHERE usrkey = ?"); 
-  $stmt->bind_param("sss", $user_password, $random_salt, $usrkey);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("UPDATE who_there SET password = ?, salt = ? WHERE usrkey = ?"); 
+  $stmt->execute([$user_password, $random_salt, $usrkey]);
+  $stmt->closeCursor();
 }
 
 ?><!DOCTYPE html>

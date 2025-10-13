@@ -79,10 +79,9 @@ ini_set('max_execution_time', 300);
  if ( $result )
  {
    // update new image and delete any webp/avif
-   $stmt = $mysqli->prepare("UPDATE testimonials SET image = ?, webp = ?, avif = ? WHERE did = ?"); 
-   $stmt->bind_param("sssi", $actualname, $valueblank, $valueblank, $which);
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $pdo->prepare("UPDATE testimonials SET image = ?, webp = ?, avif = ? WHERE did = ?"); 
+   $stmt->execute([$actualname, $valueblank, $valueblank, $which]);
+   $stmt->closeCursor();
 	
 		echo "<p><a href=\"testimonialdetail.php?which=$which&amp;del=delphoto\"<span class=\"btn btn-danger\"> <i class=\"fa fa-times-circle\"></i> Delete Image</span></a></p>";
 		echo "<p><img src=\"../testimonial/$actualname\" width=\"200px\"></p>";

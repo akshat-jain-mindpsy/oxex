@@ -3,11 +3,16 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Glossary";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Admin";
 $listurl = "glossary.php";
 $listname = "Glossary";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -30,10 +35,10 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row
-  $stmt = $mysqli->prepare("DELETE FROM glossary WHERE gid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("DELETE FROM glossary WHERE gid = ? LIMIT 1");
+    $stmt->execute([$which]); 
+  }
 }
 
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  
@@ -42,33 +47,41 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $term = isset($_POST['term']) ? $_POST['term'] : '';
   $description = isset($_POST['description']) ? $_POST['description'] : '';
   // Update record
-  $stmt = $mysqli->prepare("UPDATE glossary SET term = ?, description = ?, who_by = ?, date_modified = ? WHERE gid = ? "); 
-  $stmt->bind_param("sssii", $term, $description, $usrkey, $today, $which);
-  $stmt->execute();
-  $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("UPDATE glossary SET term = ?, description = ?, who_by = ?, date_modified = ? WHERE gid = ? "); 
+    $stmt->execute([$term, $description, $usrkey, $today, $which]);
+  }
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT term, description, who_by, date_added, date_modified FROM glossary WHERE gid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($term, $description, $who_by, $date_added, $date_modified);
-$stmt->fetch();
-$stmt->close();
+if ($usingSupabase) {
+  $stmt = $supabase_pdo->prepare("SELECT term, description, who_by, date_added, date_modified FROM glossary WHERE gid = ?");
+  $stmt->execute([$which]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  $term = $row ? $row['term'] : '';
+  $description = $row ? $row['description'] : '';
+  $who_by = $row ? $row['who_by'] : '';
+  $date_added = $row ? $row['date_added'] : '';
+  $date_modified = $row ? $row['date_modified'] : '';
+} else {
+  $term = '';
+  $description = '';
+  $who_by = '';
+  $date_added = '';
+  $date_modified = '';
+}
 // whatever the record name is
   $changename = "$term";
   $date_added = strtotime($date_added);
   $date_modified = strtotime($date_modified);
   // who changed last?
-  $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $who_by);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($who_by);
-   $stmt->fetch();
-   $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+    $stmt->execute([$who_by]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $who_by = $row ? $row['realname'] : $who_by;
+  }
 ?>
 <body>
    <div class="wrapper">
@@ -83,7 +96,8 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -102,22 +116,17 @@ $stmt->close();
                            <div class="form-group">
                             <label class="col-form-label" for="description">Description</label>
                               <textarea name="description" id="description" class="form-control summernote"><?php echo $description ?></textarea>
-                          </div>
-                        </div>
+</div>
                         
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
                </div>
                <div class="col-xl-4">
-
-
-               </div>
-            </div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -129,11 +138,9 @@ $stmt->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button" onclick="return confirm('Are you sure you want to delete this record and all associated data?')"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

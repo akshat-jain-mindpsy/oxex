@@ -7,30 +7,37 @@ $today = date("YmjHi");#YYYYMMDDHHSS
 $timestamp = time();
 $expired = strtotime('+24 hour', $timestamp);
 $valid_attampt = 1;
-$token  = $mysqli->real_escape_string($_GET['t']);
+$token = $_GET['t'];
 //$reset_salt included
 $token_check = hash('sha512', $token.$reset_salt);
 
-$stmt = $mysqli->prepare("SELECT usrkey, timesent, timeexp, invalidated FROM reset_tbl WHERE tokenhash = ? LIMIT 1");
-$stmt->bind_param('s', $token_check);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($usrkey, $timesent, $timeexp, $invalidated);
-$stmt->fetch();
-$numrows = $stmt->num_rows;
-$stmt->close();
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("SELECT usrkey, timesent, timeexp, invalidated FROM reset_tbl WHERE tokenhash = ? LIMIT 1");
+    $stmt->execute([$token_check]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $usrkey = $row ? $row['usrkey'] : null;
+    $timesent = $row ? $row['timesent'] : null;
+    $timeexp = $row ? $row['timeexp'] : null;
+    $invalidated = $row ? $row['invalidated'] : null;
+    $numrows = $row ? 1 : 0;
+} else {
+    $usrkey = null;
+    $timesent = null;
+    $timeexp = null;
+    $invalidated = null;
+    $numrows = 0;
+}
 
 // Check if this is an admin reset token by looking up the usrkey in who_there table
 $is_admin_token = false;
 if ($numrows == 1 && $usrkey) {
-  $admin_check = $mysqli->prepare("SELECT whid FROM who_there WHERE usrkey = ? LIMIT 1");
-  $admin_check->bind_param('s', $usrkey);
-  $admin_check->execute();
-  $admin_check->store_result();
-  $admin_check->bind_result($whid);
-  $admin_check->fetch();
-  $is_admin_token = ($admin_check->num_rows == 1);
-  $admin_check->close();
+  if ($usingSupabase) {
+    $admin_check = $supabase_pdo->prepare("SELECT whid FROM who_there WHERE usrkey = ? LIMIT 1");
+    $admin_check->execute([$usrkey]);
+    $admin_row = $admin_check->fetch(PDO::FETCH_ASSOC);
+    $is_admin_token = ($admin_row !== false);
+  }
   
   // If this is an admin token, redirect to admin reset page
   if ($is_admin_token) {
@@ -77,10 +84,10 @@ if ($valid_attampt == 1) {
   $used = 1;
   $err_msg = $err_msg.' ';
   // set record to say it's now been used
-  $stmt = $mysqli->prepare("UPDATE reset_tbl SET invalidated = ? WHERE usrkey = ?"); 
-  $stmt->bind_param("is", $used, $usrkey);
-  $stmt->execute();
-  $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("UPDATE reset_tbl SET invalidated = ? WHERE usrkey = ?"); 
+    $stmt->execute([$used, $usrkey]);
+  }
 }
 ?><!doctype html>
 <html lang="en">

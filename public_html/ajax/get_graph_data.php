@@ -16,10 +16,146 @@ try {
     
     // Get trainkey from session
     $trainkey = isset($_SESSION['trainkey']) ? $_SESSION['trainkey'] : null;
-    error_log("Session trainkey: " . ($trainkey ? $trainkey : 'NULL'));
+error_log("Session trainkey: " . ($trainkey ? $trainkey : 'NULL'));
+
+// Prefer Supabase/Postgres if available
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
+if ($usingSupabase) {
+    try {
+        // Auth check
+        if (!$trainkey || !login_check($pdo)) {
+            echo json_encode(['status' => 'error','message' => 'Unauthorized access - please log in']);
+            exit;
+        }
+
+        // Params
+        $table_id = isset($_POST['table_id']) ? (int)$_POST['table_id'] : 0;
+        $field_x = isset($_POST['field_x']) ? (int)$_POST['field_x'] : 0;
+        $field_y = isset($_POST['field_y']) ? (int)$_POST['field_y'] : 0;
+        $chart_type = isset($_POST['chart_type']) ? $_POST['chart_type'] : 'bar';
+        $time_frame = isset($_POST['time_frame']) ? $_POST['time_frame'] : 'all';
+        $trainee_key = isset($_POST['trainee_key']) ? $_POST['trainee_key'] : $trainkey;
+
+        if ($table_id <= 0 || $field_x <= 0 || $field_y <= 0) {
+            echo json_encode(['status' => 'error','message' => 'Invalid parameters']);
+            exit;
+        }
+        if ($trainee_key !== $trainkey) {
+            echo json_encode(['status' => 'error','message' => 'Access denied: You can only view your own data']);
+            exit;
+        }
+
+        // Permission check
+        $perm = $supabase_pdo->prepare('select 1 from trainee_tab_link where trainkey = ? and tbid = ? limit 1');
+        $perm->execute([$trainkey, $table_id]);
+        if (!$perm->fetch(PDO::FETCH_NUM)) {
+            echo json_encode(['status' => 'error','message' => 'You do not have access to this table']);
+            exit;
+        }
+
+        // Date condition
+        $date_condition = '';
+        $date_params = [];
+        $date_range_text = '';
+        switch ($time_frame) {
+            case 'custom':
+                if (empty($_POST['start_date']) || empty($_POST['end_date'])) {
+                    echo json_encode(['status' => 'error','message' => 'Start date and end date are required for custom date range']);
+                    exit;
+                }
+                $start_date = date('Ymd', strtotime($_POST['start_date']));
+                $end_date = date('Ymd', strtotime($_POST['end_date']));
+                if ($start_date > $end_date) {
+                    echo json_encode(['status' => 'error','message' => 'Start date cannot be after end date']);
+                    exit;
+                }
+                $date_condition = ' and tl.date_added >= ? and tl.date_added <= ?';
+                $date_params = [$start_date, $end_date];
+                $date_range_text = 'From: ' . date('M d, Y', strtotime($_POST['start_date'])) . ' To: ' . date('M d, Y', strtotime($_POST['end_date']));
+                break;
+            case 'last30':
+                $start_date = date('Ymd', strtotime('-30 days'));
+                $date_condition = ' and tl.date_added >= ?';
+                $date_params = [$start_date];
+                $date_range_text = 'Last 30 Days';
+                break;
+            case 'last90':
+                $start_date = date('Ymd', strtotime('-90 days'));
+                $date_condition = ' and tl.date_added >= ?';
+                $date_params = [$start_date];
+                $date_range_text = 'Last 90 Days';
+                break;
+            case 'last180':
+                $start_date = date('Ymd', strtotime('-180 days'));
+                $date_condition = ' and tl.date_added >= ?';
+                $date_params = [$start_date];
+                $date_range_text = 'Last 180 Days';
+                break;
+            case 'lastyear':
+                $start_date = date('Ymd', strtotime('-1 year'));
+                $date_condition = ' and tl.date_added >= ?';
+                $date_params = [$start_date];
+                $date_range_text = 'Last Year';
+                break;
+            case 'all':
+            default:
+                $date_condition = '';
+                $date_range_text = 'All Time';
+                break;
+        }
+
+        // Field names
+        $x_field_name = "Field X ($field_x)";
+        $y_field_name = "Field Y ($field_y)";
+        $fx = $supabase_pdo->prepare('select str from select_types where stid = ? limit 1');
+        $fx->execute([$field_x]);
+        if ($r = $fx->fetch(PDO::FETCH_NUM)) { $x_field_name = $r[0]; }
+        $fy = $supabase_pdo->prepare('select str from select_types where stid = ? limit 1');
+        $fy->execute([$field_y]);
+        if ($r = $fy->fetch(PDO::FETCH_NUM)) { $y_field_name = $r[0]; }
+
+        // Simple categorical distribution for field_x
+        $sql = "select coalesce(sg.select_val, tl.select_val, 'Unknown') as category_name, count(*) as count from trainee_log tl left join select_gen sg on tl.pid = sg.pid where tl.trainkey = ? and tl.tbid = ? and tl.stid = ?" . $date_condition . " group by category_name order by count desc, category_name asc";
+        $params = [$trainkey, $table_id, $field_x];
+        $params = array_merge($params, $date_params);
+        $stmt = $supabase_pdo->prepare($sql);
+        $stmt->execute($params);
+        $data = [];
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $data[] = ['label' => $row['category_name'], 'value' => (int)$row['count']];
+        }
+
+        if (empty($data)) {
+            echo json_encode(['status' => 'error','message' => 'No data found for the selected criteria and time period. Try selecting a different time frame or data source.','debug_info' => ['table_id' => $table_id,'field_x' => $field_x,'field_y' => $field_y,'time_frame' => $time_frame,'trainee_key' => $trainkey]]);
+            exit;
+        }
+
+        $labels = array_map(function($i){ return $i['label']; }, $data);
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Data retrieved successfully',
+            'data' => $data,
+            'labels' => $labels,
+            'x_field' => $x_field_name,
+            'y_field' => $y_field_name,
+            'chart_type' => $chart_type,
+            'table_id' => $table_id,
+            'trainee_key' => $trainkey,
+            'time_frame' => $time_frame,
+            'date_range' => $date_range_text,
+            'record_count' => count($data)
+        ]);
+        exit;
+    } catch (Throwable $e) {
+        error_log('Trainee get_graph_data (Supabase) failed: ' . $e->getMessage());
+        echo json_encode(['status' => 'error','message' => 'Server error: ' . $e->getMessage()]);
+        exit;
+    }
+}
     
     // Check login - trainee must be logged in and can only access their own data
-    if (!$trainkey || !login_check($mysqli)) {
+    if (!$trainkey || !login_check($pdo)) {
         echo json_encode([
             'status' => 'error', 
             'message' => 'Unauthorized access - please log in'
@@ -30,14 +166,10 @@ try {
     // Get trainee information
     $trainee_name = '';
     if (isset($trainkey) && !empty($trainkey)) {
-        $trainee_stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
-        if ($trainee_stmt) {
-            $trainee_stmt->bind_param("s", $trainkey);
-            $trainee_stmt->execute();
-            $trainee_stmt->bind_result($trainee_name);
-            $trainee_stmt->fetch();
-            $trainee_stmt->close();
-        }
+        $trainee_stmt = $supabase_pdo->prepare('select name from trainee_tbl where trainkey = ? limit 1');
+        $trainee_stmt->execute([$trainkey]);
+        $row = $trainee_stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) { $trainee_name = $row['name']; }
     }
 
     // If name is still empty, set a default
@@ -82,22 +214,14 @@ try {
     }
     
     // Verify that the current user can access this table
-    $table_permission_stmt = $mysqli->prepare("SELECT 1 FROM trainee_tab_link 
-                                           WHERE trainkey = ? AND tbid = ? 
-                                           LIMIT 1");
-    if ($table_permission_stmt) {
-        $table_permission_stmt->bind_param("si", $trainkey, $table_id);
-        $table_permission_stmt->execute();
-        $table_permission_stmt->store_result();
-        
-        if ($table_permission_stmt->num_rows == 0) {
-            echo json_encode([
-                'status' => 'error',
-                'message' => 'You do not have access to this table'
-            ]);
-            exit;
-        }
-        $table_permission_stmt->close();
+    $table_permission_stmt = $supabase_pdo->prepare('select 1 from trainee_tab_link where trainkey = ? and tbid = ? limit 1');
+    $table_permission_stmt->execute([$trainkey, $table_id]);
+    if (!$table_permission_stmt->fetch(PDO::FETCH_NUM)) {
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'You do not have access to this table'
+        ]);
+        exit;
     }
     
     // Build time range parameters
@@ -177,23 +301,15 @@ try {
     $x_field_name = "Field X ($field_x)";
     $y_field_name = "Field Y ($field_y)";
     
-    $field_x_info = $mysqli->prepare("SELECT str FROM select_types WHERE stid = ?");
-    if ($field_x_info) {
-        $field_x_info->bind_param("i", $field_x);
-        $field_x_info->execute();
-        $field_x_info->bind_result($x_field_name);
-        $field_x_info->fetch();
-        $field_x_info->close();
-    }
+    $field_x_info = $supabase_pdo->prepare('select str from select_types where stid = ?');
+    $field_x_info->execute([$field_x]);
+    $row = $field_x_info->fetch(PDO::FETCH_ASSOC);
+    if ($row) { $x_field_name = $row['str']; }
     
-    $field_y_info = $mysqli->prepare("SELECT str FROM select_types WHERE stid = ?");
-    if ($field_y_info) {
-        $field_y_info->bind_param("i", $field_y);
-        $field_y_info->execute();
-        $field_y_info->bind_result($y_field_name);
-        $field_y_info->fetch();
-        $field_y_info->close();
-    }
+    $field_y_info = $supabase_pdo->prepare('select str from select_types where stid = ?');
+    $field_y_info->execute([$field_y]);
+    $row = $field_y_info->fetch(PDO::FETCH_ASSOC);
+    if ($row) { $y_field_name = $row['str']; }
     
     error_log("Field names - X: $x_field_name, Y: $y_field_name");
     
@@ -223,26 +339,10 @@ try {
     
     error_log("Executing query: $query");
     
-    $stmt = $mysqli->prepare($query);
-    if (!$stmt) {
-        error_log("Query preparation failed: " . $mysqli->error);
-        throw new Exception("Failed to prepare query: " . $mysqli->error);
-    }
+    $stmt = $supabase_pdo->prepare($query);
+    $stmt->execute($final_params);
     
-    // Bind parameters
-    if (!empty($final_params)) {
-        $stmt->bind_param($param_types, ...$final_params);
-    }
-    
-    if (!$stmt->execute()) {
-        error_log("Query execution failed: " . $stmt->error);
-        throw new Exception("Failed to execute query: " . $stmt->error);
-    }
-    
-    $result = $stmt->get_result();
-    $stmt->close();
-    
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $data[] = [
             'label' => $row['category_name'],
             'value' => (int)$row['count']
@@ -259,16 +359,11 @@ try {
         error_log("Final params: " . print_r($final_params, true));
         
         // Check if there's any data in the table at all
-        $debug_query = "SELECT COUNT(*) as total, MIN(date_added) as min_date, MAX(date_added) as max_date FROM trainee_log WHERE trainkey = ? AND tbid = ?";
-        $debug_stmt = $mysqli->prepare($debug_query);
-        if ($debug_stmt) {
-            $debug_stmt->bind_param("si", $trainkey, $table_id);
-            $debug_stmt->execute();
-            $debug_result = $debug_stmt->get_result();
-            $debug_row = $debug_result->fetch_assoc();
-            error_log("Debug - Total records: " . $debug_row['total'] . ", Date range: " . $debug_row['min_date'] . " to " . $debug_row['max_date']);
-            $debug_stmt->close();
-        }
+        $debug_query = "select count(*) as total, min(date_added) as min_date, max(date_added) as max_date from trainee_log where trainkey = ? and tbid = ?";
+        $debug_stmt = $supabase_pdo->prepare($debug_query);
+        $debug_stmt->execute([$trainkey, $table_id]);
+        $debug_row = $debug_stmt->fetch(PDO::FETCH_ASSOC);
+        error_log("Debug - Total records: " . $debug_row['total'] . ", Date range: " . $debug_row['min_date'] . " to " . $debug_row['max_date']);
         
         echo json_encode([
             'status' => 'error',
@@ -313,7 +408,5 @@ try {
     ]);
 }
 
-if (isset($mysqli)) {
-    $mysqli->close();
-}
+// No explicit close needed with PDO
 ?> 

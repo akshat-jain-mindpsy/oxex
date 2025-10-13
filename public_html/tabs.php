@@ -13,7 +13,7 @@ include 'incl/sess.php';
     <?php include 'incl/meta.php' ?>  
   </head>
   <?php
-    if (login_check($mysqli) != false) {
+    if (login_check($pdo) != false) {
       // logged in only!
     ?>
   <body>
@@ -47,18 +47,17 @@ include 'incl/sess.php';
         <div class="row mt-3">
           <?php
           // loop through notes for Tables
-          $tableset = $mysqli->prepare("SELECT tbid, tab_name, tab_notes FROM tabs_tbl WHERE sort_order != ? ORDER BY sort_order");
-          $tableset->bind_param("i", $value0);
-          $tableset->execute();
-          $tableset->store_result();
-          $tableset->bind_result($tbid, $tab_name, $tab_notes);
-          while ($tableset->fetch()){
+          $tableset = $supabase_pdo->prepare('select tbid, tab_name, tab_notes from tabs_tbl where sort_order != ? order by sort_order');
+          $tableset->execute([$value0]);
+          while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+            $tbid = (int)$row['tbid'];
+            $tab_name = $row['tab_name'];
+            $tab_notes = $row['tab_notes'];
             echo "<div class=\"col-xs-12 col-sm-6\">";
             echo "<h3>$tab_name</h3>";
             echo $tab_notes;
             echo "</div>";
           }
-          $tableset->close();
           ?>
           
         </div>
@@ -66,7 +65,7 @@ include 'incl/sess.php';
     </div>
     <?php include 'incl/footer.php' ?>
     <?php
-    if (login_check($mysqli) != false) {
+    if (login_check($pdo) != false) {
       include 'incl/glossary.php';
     }
     ?>

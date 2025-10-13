@@ -4,7 +4,7 @@ include '../../OXEXfolder/u_functions.php';
 sec_session_start();
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'DV'))) {
+if(!(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'DV'))) {
     http_response_code(403);
     echo json_encode(['status' => 'error', 'message' => 'Not authorized']);
     exit();
@@ -34,24 +34,21 @@ try {
 
     // Validate parent standard if provided
     if ($parent_standard_id) {
-        $parent_stmt = $mysqli->prepare("SELECT tbid FROM pass_standards WHERE psid = ?");
-        $parent_stmt->bind_param("i", $parent_standard_id);
-        $parent_stmt->execute();
-        $parent_result = $parent_stmt->get_result();
+        $parent_stmt = $supabase_pdo->prepare("SELECT tbid FROM pass_standards WHERE psid = ?");
+        $parent_stmt->execute([$parent_standard_id]);
+        $parent_row = $parent_stmt->fetch(PDO::FETCH_ASSOC);
         
-        if ($parent_result->num_rows === 0) {
+        if (!$parent_row) {
             throw new Exception('Invalid parent standard selected');
         }
         
-        $parent_data = $parent_result->fetch_assoc();
-        if ($parent_data['tbid'] != $tbid) {
+        if ((int)$parent_row['tbid'] != $tbid) {
             throw new Exception('Parent standard must be from the same table');
         }
-        $parent_stmt->close();
     }
 
     // Start transaction
-    $mysqli->begin_transaction();
+    $supabase_pdo->beginTransaction();
 
     $created_count = 0;
     $errors = [];
@@ -83,34 +80,25 @@ try {
 
         // Check if field belongs to the selected table
         if (!empty($standard['stid'])) {
-            $field_stmt = $mysqli->prepare("
-                SELECT tf.tfid 
-                FROM tab_fields tf 
-                WHERE tf.tbid = ? AND tf.stid = ?
-            ");
-            $field_stmt->bind_param("ii", $tbid, $standard['stid']);
-            $field_stmt->execute();
-            $field_result = $field_stmt->get_result();
+            $field_stmt = $supabase_pdo->prepare("SELECT tf.tfid FROM tab_fields tf WHERE tf.tbid = ? AND tf.stid = ?");
+            $field_stmt->execute([$tbid, $standard['stid']]);
+            $field_row = $field_stmt->fetch(PDO::FETCH_ASSOC);
             
-            if ($field_result->num_rows === 0) {
+            if (!$field_row) {
                 $errors[] = "Selected field does not belong to the selected table in row " . ($index + 1);
-                $field_stmt->close();
                 continue;
             }
-            $field_stmt->close();
         }
 
         // Insert the standard
-        $stmt = $mysqli->prepare("
-            INSERT INTO pass_standards 
-            (standard_name, tbid, stid, requirement_type, required_value, field_value, parent_standard_id, is_active, who_by, date_added) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, UNIX_TIMESTAMP())
-        ");
+        $stmt = $supabase_pdo->prepare(
+            "INSERT INTO pass_standards (standard_name, tbid, stid, requirement_type, required_value, field_value, parent_standard_id, is_active, who_by, date_added) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, EXTRACT(EPOCH FROM NOW()))"
+        );
 
         $stid = !empty($standard['stid']) ? (int)$standard['stid'] : null;
         $field_value = !empty($standard['field_value']) ? $standard['field_value'] : null;
         
-        $stmt->bind_param("siisdsii", 
+        if ($stmt->execute([
             $standard['standard_name'],
             $tbid,
             $stid,
@@ -120,20 +108,16 @@ try {
             $parent_standard_id,
             $is_active,
             $usrkey
-        );
-
-        if ($stmt->execute()) {
+        ])) {
             $created_count++;
         } else {
-            $errors[] = "Failed to create standard '" . $standard['standard_name'] . "': " . $stmt->error;
+            $errors[] = "Failed to create standard '" . $standard['standard_name'] . "'";
         }
-        
-        $stmt->close();
     }
 
     if (!empty($errors)) {
         // Rollback transaction if there were errors
-        $mysqli->rollback();
+        $supabase_pdo->rollBack();
         echo json_encode([
             'status' => 'error', 
             'message' => 'Some standards could not be created: ' . implode('; ', $errors)
@@ -142,7 +126,7 @@ try {
     }
 
     // Commit transaction
-    $mysqli->commit();
+    $supabase_pdo->commit();
 
     // Set success message
     $_SESSION['flash_message'] = [
@@ -154,8 +138,8 @@ try {
 
 } catch (Exception $e) {
     // Rollback transaction on error
-    if ($mysqli->connect_errno === 0) {
-        $mysqli->rollback();
+    if ($supabase_pdo->inTransaction()) {
+        $supabase_pdo->rollBack();
     }
     
     echo json_encode([
@@ -164,8 +148,8 @@ try {
     ]);
 } catch (Error $e) {
     // Rollback transaction on error
-    if ($mysqli->connect_errno === 0) {
-        $mysqli->rollback();
+    if ($supabase_pdo->inTransaction()) {
+        $supabase_pdo->rollBack();
     }
     
     echo json_encode([

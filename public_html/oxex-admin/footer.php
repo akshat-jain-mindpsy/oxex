@@ -3,10 +3,15 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Page Content";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Footer content";
 $listname = "Footer";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -30,21 +35,26 @@ if ($done == "done" && ($admintype == 'AD' || $admintype == 'DV')) {
   $footerr = isset($_POST['footerr']) ? $_POST['footerr'] : '';
   $footertm = isset($_POST['footertm']) ? $_POST['footerm'] : '';
   // Update record
-  $stmt = $mysqli->prepare("UPDATE footer_tbl SET footerl = ?, footerr = ?, footerm = ? WHERE fid = ? "); 
-  $stmt->bind_param("sssi", $footerl, $footerr, $footerm, $value1);
-  $stmt->execute();
-  $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("UPDATE footer_tbl SET footerl = ?, footerr = ?, footerm = ? WHERE fid = ? "); 
+    $stmt->execute([$footerl, $footerr, $footerm, $value1]);
+  }
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT footerl, footerr, footerm FROM footer_tbl WHERE fid = ?");
-$stmt->bind_param("i", $value1);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($footerl, $footerr, $footerm);
-$stmt->fetch();
-$stmt->close();
+if ($usingSupabase) {
+  $stmt = $supabase_pdo->prepare("SELECT footerl, footerr, footerm FROM footer_tbl WHERE fid = ?");
+  $stmt->execute([$value1]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  $footerl = $row ? $row['footerl'] : '';
+  $footerr = $row ? $row['footerr'] : '';
+  $footerm = $row ? $row['footerm'] : '';
+} else {
+  $footerl = '';
+  $footerr = '';
+  $footerm = '';
+}
 // whatever the record name is
   $changename = " the footer text";
 ?>
@@ -85,18 +95,14 @@ $stmt->close();
                           <div class="form-group">
                             <label for="footerr" class="col-form-label">Right-hand Footer Column</label>
                               <textarea rows="6" class="summernote" name="footerr" id="footerr" class="form-control"><?php echo $footerr ?></textarea>
-                          </div>
-
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
 
          </div>
       </section>

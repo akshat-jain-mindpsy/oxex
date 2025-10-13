@@ -10,16 +10,23 @@
       </div>
       <div class="modal-body">
 <?php
-$tableset = $mysqli->prepare("SELECT term, description FROM glossary ");
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($term, $description);
-while ($tableset->fetch()){
-  $description = str_replace("<p>", "<p><strong>$term - </strong> ", $description);
-  echo "<p>$description</p>";
+// Render glossary terms using Supabase/Postgres
+if (isset($supabase_pdo) && $supabase_pdo instanceof PDO) {
+  try {
+    $stmt = $supabase_pdo->query('select term, description from glossary');
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+      $term = $row['term'];
+      $description = $row['description'];
+      $description = str_replace("<p>", "<p><strong>$term - </strong> ", $description);
+      echo "<p>$description</p>";
+    }
+  } catch (Throwable $e) {
+    error_log('Glossary load failed: ' . $e->getMessage());
+    echo '<p class="text-danger">Failed to load glossary.</p>';
+  }
+} else {
+  echo '<p class="text-warning">Database not available.</p>';
 }
-$numrows = $tableset->num_rows;
-$tableset->close();
 ?>
       </div>
       <div class="modal-footer bg-nhsuk-grey-3">

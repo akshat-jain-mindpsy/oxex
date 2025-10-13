@@ -33,7 +33,7 @@ $sections = $_POST['sections'];
 error_log("Received sections to update: " . json_encode($sections));
 
 // Start transaction
-$mysqli->begin_transaction();
+$pdo->beginTransaction();
 
 try {
     // Update section order for each section
@@ -41,18 +41,17 @@ try {
         $section_id = (int)$section_id;
         $order = (int)$order + 1; // Start at 1, not 0
         
-        $update_stmt = $mysqli->prepare("UPDATE field_sections SET section_order = ? WHERE section_id = ?");
-        $update_stmt->bind_param("ii", $order, $section_id);
-        $update_stmt->execute();
+        $update_stmt = $pdo->prepare("UPDATE field_sections SET section_order = ? WHERE section_id = ?");
+        $update_stmt->execute([$order, $section_id]);
         
-        if ($update_stmt->affected_rows < 0) {
+        if ($update_stmt->rowCount() < 0) {
             throw new Exception("Failed to update section order for section ID: $section_id");
         }
-        $update_stmt->close();
+        $update_stmt->closeCursor();
     }
     
     // Commit the transaction
-    $mysqli->commit();
+    $pdo->commit();
     
     // Return success
     error_log("Section order updated successfully for sections: " . json_encode($sections));
@@ -65,7 +64,7 @@ try {
     
 } catch (Exception $e) {
     // Rollback the transaction
-    $mysqli->rollback();
+    $pdo->rollBack();
     
     // Log the error for debugging
     error_log("Error in update_section_order.php: " . $e->getMessage());

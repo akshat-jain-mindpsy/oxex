@@ -19,13 +19,19 @@ $page_txt10 = strip_tags($page_txt10);
 // check valid email
 if (!filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
   $valid_email = strtolower($email);
-  $stmt = $mysqli->prepare("SELECT tid, trainkey FROM trainee_tbl WHERE email = ? ");
-  $stmt->bind_param("s", $valid_email);
-  $stmt->bind_result($tid, $trainkey);
-  $stmt->execute();
-  $stmt->fetch();
-  $numrows = $stmt->num_rows;
-  $stmt->close();
+  $usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("SELECT tid, trainkey FROM trainee_tbl WHERE email = ? ");
+    $stmt->execute([$valid_email]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $tid = $row ? (int)$row['tid'] : 0;
+    $trainkey = $row ? $row['trainkey'] : null;
+    $numrows = $row ? 1 : 0;
+  } else {
+    $tid = 0;
+    $trainkey = null;
+    $numrows = 0;
+  }
 } else {
   $valid_email = "no";
   $validform = 0;
@@ -47,19 +53,26 @@ if ($valid_email != "no") {
   
   // write to reset table
   $pid = 0; // Set pid to 0 as seen in existing records
-  $insert_stmt = $mysqli->prepare("INSERT INTO reset_tbl (pid, usrkey, timesent, timeexp, req_date, tokenhash, tokensalt, invalidated) VALUES (?, ?, ?, ?, ?, ?, ?, ? )");
-    $insert_stmt->bind_param("issssssi", $pid, $trainkey, $timestamp, $expired, $today, $hashed_token, $salt, $invalidated );
-    $insert_stmt->execute();
-    $insert_stmt->close();
+  if ($usingSupabase) {
+    $insert_stmt = $supabase_pdo->prepare("INSERT INTO reset_tbl (pid, usrkey, timesent, timeexp, req_date, tokenhash, tokensalt, invalidated) VALUES (?, ?, ?, ?, ?, ?, ?, ? )");
+    $insert_stmt->execute([$pid, $trainkey, $timestamp, $expired, $today, $hashed_token, $salt, $invalidated]);
+  }
   
   // get email content
-  $stmt = $mysqli->prepare("SELECT email_subject, email_body, email_body2, email_body3 FROM site_emails_tbl WHERE sei = ?");
-  $stmt->bind_param("i", $value1);
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($email_subject, $email_body, $email_body2, $email_body3);
-  $stmt->fetch();
-  $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("SELECT email_subject, email_body, email_body2, email_body3 FROM site_emails_tbl WHERE sei = ?");
+    $stmt->execute([$value1]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $email_subject = $row ? $row['email_subject'] : '';
+    $email_body = $row ? $row['email_body'] : '';
+    $email_body2 = $row ? $row['email_body2'] : '';
+    $email_body3 = $row ? $row['email_body3'] : '';
+  } else {
+    $email_subject = '';
+    $email_body = '';
+    $email_body2 = '';
+    $email_body3 = '';
+  }
   // Build reset link using BASE_URL from .env for security and portability
   $baseUrl = rtrim(getenv('BASE_URL') ?: 'https://www.oxex.co.uk', '/');
   $link = $baseUrl . '/r3.php?t=' . $token;

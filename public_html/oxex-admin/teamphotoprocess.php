@@ -79,10 +79,8 @@ ini_set('max_execution_time', 300);
  if ( $result )
  {
 
-	$stmt = $mysqli->prepare("UPDATE stafflist SET photo = ? WHERE slil = ?"); 
-	$stmt->bind_param("si", $actualname, $which);
-	$stmt->execute();
-	$stmt->close();
+	$stmt = $supabase_pdo->prepare("UPDATE stafflist SET photo = ? WHERE slil = ?"); 
+	$stmt->execute([$actualname, $which]);
 	
 		echo "<p><a href=\"teamdetail.php?which=$which&amp;del=delphoto\"<span class=\"btn btn-danger\"> <i class=\"fa fa-times-circle\"></i> Delete Image</span></a></p>";
 		echo "<p><img src=\"../team/$actualname\" width=\"200px\"></p>";

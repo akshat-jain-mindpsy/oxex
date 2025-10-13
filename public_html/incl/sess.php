@@ -2,6 +2,7 @@
 // include_once __DIR__ . '/../OXEXfolder/config.php';
 // include_once __DIR__ . '/../OXEXfolder/p_functions.php';
 $devtxt = 'TEST # | ';
+$db_backend = 'none';
 $thisdom = "https://www.oxex.co.uk";
 $imgdom = "https://www.oxex.co.uk/";
 $thisIP = "/"; # the domain (e.g. thisdom.co.uk/) if on temp url otherwise blank
@@ -52,47 +53,67 @@ if(isset($_SESSION['trainkey'])) {
 
 error_log("Cleaned thispage value: " . $thispage);
 
-// Now proceed with database query
-$stmt = $mysqli->prepare("SELECT pid, page_name, googleTitle, googleDesc, googleKeywords, bannerTitle, bannerTxt, page_title, page_txt1, page_txt2, page_txt3, page_txt4, page_txt5, page_txt6, page_txt7, page_txt8, page_txt9, page_txt10, page_txt11, page_txt12, image, webp, avif FROM pages_tbl WHERE filename = ?");
 
-if (!$stmt) {
-	error_log("Prepare failed: " . $mysqli->error);
-} else {
-	$stmt->bind_param("s", $thispage);
-	
-	if ($stmt->execute()) {
-		$stmt->store_result();
-		$stmt->bind_result(
-			$page_id, $page_name, $googleTitle, $googleDesc, $googleKeywords, 
-			$bannerTitle, $bannerTxt, $page_title, $page_txt1, $page_txt2, 
-			$page_txt3, $page_txt4, $page_txt5, $page_txt6, $page_txt7, 
-			$page_txt8, $page_txt9, $page_txt10, $page_txt11, $page_txt12, 
-			$image, $webp, $avif
-		);
+// Ensure variables are defined to avoid undefined warnings
+$page_id = $page_name = $googleTitle = $googleDesc = $googleKeywords = $bannerTitle = $bannerTxt = $page_title = '';
+$page_txt1 = $page_txt2 = $page_txt3 = $page_txt4 = $page_txt5 = $page_txt6 = $page_txt7 = $page_txt8 = $page_txt9 = $page_txt10 = $page_txt11 = $page_txt12 = '';
+$image = $webp = $avif = '';
+$footerl = $footerm = $footerr = '';
+$numrows = 0;
 
-		if ($stmt->fetch()) {
-			// Success - page found
+if (isset($supabase_pdo) && $supabase_pdo instanceof PDO) {
+	$db_backend = 'supabase';
+	try {
+		$stmt = $supabase_pdo->prepare("select pid, page_name, \"googleTitle\", \"googleDesc\", \"googleKeywords\", \"bannerTitle\", \"bannerTxt\", \"page_title\", \"page_txt1\", \"page_txt2\", \"page_txt3\", \"page_txt4\", \"page_txt5\", \"page_txt6\", \"page_txt7\", \"page_txt8\", \"page_txt9\", \"page_txt10\", \"page_txt11\", \"page_txt12\", image, webp, avif from pages_tbl where filename = ? limit 1");
+		$stmt->execute([$thispage]);
+		$row = $stmt->fetch(PDO::FETCH_ASSOC);
+		if ($row) {
+			$page_id = $row['pid'] ?? $page_id;
+			$page_name = $row['page_name'] ?? $page_name;
+			$googleTitle = $row['googleTitle'] ?? $googleTitle;
+			$googleDesc = $row['googleDesc'] ?? $googleDesc;
+			$googleKeywords = $row['googleKeywords'] ?? $googleKeywords;
+			$bannerTitle = $row['bannerTitle'] ?? $bannerTitle;
+			$bannerTxt = $row['bannerTxt'] ?? $bannerTxt;
+			$page_title = $row['page_title'] ?? $page_title;
+			$page_txt1 = $row['page_txt1'] ?? $page_txt1;
+			$page_txt2 = $row['page_txt2'] ?? $page_txt2;
+			$page_txt3 = $row['page_txt3'] ?? $page_txt3;
+			$page_txt4 = $row['page_txt4'] ?? $page_txt4;
+			$page_txt5 = $row['page_txt5'] ?? $page_txt5;
+			$page_txt6 = $row['page_txt6'] ?? $page_txt6;
+			$page_txt7 = $row['page_txt7'] ?? $page_txt7;
+			$page_txt8 = $row['page_txt8'] ?? $page_txt8;
+			$page_txt9 = $row['page_txt9'] ?? $page_txt9;
+			$page_txt10 = $row['page_txt10'] ?? $page_txt10;
+			$page_txt11 = $row['page_txt11'] ?? $page_txt11;
+			$page_txt12 = $row['page_txt12'] ?? $page_txt12;
+			$image = $row['image'] ?? $image;
+			$webp = $row['webp'] ?? $webp;
+			$avif = $row['avif'] ?? $avif;
+			$numrows = 1;
 		} else {
-			error_log("No record found for filename = '$thispage'");
+			error_log("No record found for filename = '$thispage' (Supabase)");
 		}
-	} else {
-		error_log("Execute failed: " . $stmt->error);
+	} catch (Throwable $e) {
+		error_log('Supabase pages_tbl query failed: ' . $e->getMessage());
 	}
+
+	try {
+		$stmt = $supabase_pdo->prepare("select footerl, footerm, footerr from footer_tbl where fid = ? limit 1");
+		$stmt->execute([$value1]);
+		$row = $stmt->fetch(PDO::FETCH_ASSOC);
+		if ($row) {
+			$footerl = $row['footerl'] ?? $footerl;
+			$footerm = $row['footerm'] ?? $footerm;
+			$footerr = $row['footerr'] ?? $footerr;
+		}
+	} catch (Throwable $e) {
+		error_log('Supabase footer_tbl query failed: ' . $e->getMessage());
+	}
+} else {
+	error_log('No database connection available: $supabase_pdo is missing');
 }
-
-$numrows = $stmt->num_rows;
-
-$stmt->close();
-
-$stmt = $mysqli->prepare("SELECT footerl, footerm, footerr FROM footer_tbl WHERE fid = ? ");
-$stmt->bind_param("i", $value1);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($footerl, $footerm, $footerr);
-$stmt->fetch();
-
-$numrows = $stmt->num_rows;
-$stmt->close();
 
 
 if ($googleTitle == '') {
@@ -114,3 +135,10 @@ $page_txt5 = str_replace("<img", "<img class=\"img-fluid\"", $page_txt5);
 $page_txt6 = str_replace("<img", "<img class=\"img-fluid\"", $page_txt6);
 
 ?>
+<script>
+(function(){
+try{
+	console.log('[sess.php] DB backend:', <?php echo json_encode($db_backend); ?>, 'Page:', <?php echo json_encode($thispage); ?>);
+}catch(e){}
+})();
+</script>

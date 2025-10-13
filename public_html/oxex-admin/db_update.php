@@ -3,9 +3,10 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'DV'))) {
     header("Location: index.php");
     exit();
@@ -13,28 +14,32 @@ if(!(login_check($mysqli) == true &&
 
 // Page setup
 $pagetitle = "Database Update";
-$updated = false;
+
+// Set variables needed by adminjs.php
+$whichDocModal = 5; // Admin section
+$value0 = 0; // Default value for $value0 = 0; // Default value for sort_order
+$subtitle = "updated = false;
 $messages = [];
 
 // Get table ID from request
 $table_id = isset($_GET['tbid']) ? (int)$_GET['tbid'] : 0;
 
 // Check if field_options column exists
-$check_column = $mysqli->query("SHOW COLUMNS FROM select_types LIKE 'field_options'");
-$column_exists = $check_column && $check_column->num_rows > 0;
+$check_column = $pdo->query("SHOW COLUMNS FROM select_types LIKE 'field_options'");
+$column_exists = $check_column && $check_column->rowCount() > 0;
 
 // Handle update POST request
 if (isset($_POST['update_db']) && $_POST['update_db'] == 'yes') {
     if (!$column_exists) {
         // Add field_options column to select_types table right after single column
-        $add_column = $mysqli->query("ALTER TABLE select_types ADD COLUMN field_options TEXT NULL AFTER single");
+        $add_column = $pdo->query("ALTER TABLE select_types ADD COLUMN field_options TEXT NULL AFTER single");
         
         if ($add_column) {
             $messages[] = "Successfully added field_options column to select_types table.";
             $updated = true;
             $column_exists = true;
         } else {
-            $messages[] = "Error adding field_options column: " . $mysqli->error;
+            $messages[] = "Error adding field_options column: " . $pdo->errorInfo()[2];
         }
     } else {
         $messages[] = "field_options column already exists.";
@@ -46,26 +51,25 @@ if (isset($_POST['migrate_options']) && $_POST['migrate_options'] == 'yes') {
     if ($column_exists) {
         // First get all selection fields (type 0 or 1)
         $query = "SELECT stid, str, single FROM select_types WHERE single IN (0,1)";
-        $result = $mysqli->query($query);
+        $result = $pdo->query($query);
         
         if ($result) {
             $count = 0;
             
             // Get existing options from select_gen table (as seen in listtypedetail.php)
-            while ($field = $result->fetch_assoc()) {
+            while ($field = $result->fetch(PDO::FETCH_ASSOC)) {
                 $field_id = $field['stid'];
                 
                 // Get current options from the select_gen table
                 $options_query = "SELECT pid, select_val FROM select_gen WHERE stid = ? ORDER BY select_val";
-                $stmt = $mysqli->prepare($options_query);
-                $stmt->bind_param("i", $field_id);
-                $stmt->execute();
-                $options_result = $stmt->get_result();
+                $stmt = $pdo->prepare($options_query);
+                $stmt->execute([$field_id]);
+                $options_result = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 
-                if ($options_result->num_rows > 0) {
+                if (count($options_result) > 0) {
                     $options = [];
                     
-                    while ($option = $options_result->fetch_assoc()) {
+                    foreach ($options_result as $option) {
                         $options[] = $option['select_val'];
                     }
                     
@@ -73,23 +77,22 @@ if (isset($_POST['migrate_options']) && $_POST['migrate_options'] == 'yes') {
                     $options_string = implode('|', $options);
                     
                     // Update field with options
-                    $update = $mysqli->prepare("UPDATE select_types SET field_options = ? WHERE stid = ?");
-                    $update->bind_param("si", $options_string, $field_id);
+                    $update = $pdo->prepare("UPDATE select_types SET field_options = ? WHERE stid = ?");
                     
-                    if ($update->execute()) {
+                    if ($update->execute([$options_string, $field_id])) {
                         $count++;
                     }
                     
-                    $update->close();
+                    $update->closeCursor();
                 }
                 
-                $stmt->close();
+                $stmt->closeCursor();
             }
             
             $messages[] = "Migrated options for $count fields from select_gen table.";
             $updated = true;
         } else {
-            $messages[] = "Error querying selection fields: " . $mysqli->error;
+            $messages[] = "Error querying selection fields: " . $pdo->errorInfo()[2];
         }
     } else {
         $messages[] = "field_options column must exist before migrating data.";
@@ -164,12 +167,9 @@ if (isset($_POST['migrate_options']) && $_POST['migrate_options'] == 'yes') {
                            <a href="sheetdetail.php?which=<?php echo $table_id > 0 ? $table_id : 1; ?>" class="btn btn-outline-secondary">
                               Return to Table Detail
                            </a>
-                        </div>
-                     </div>
-                  </div>
-               </div>
-            </div>
-         </div>
+</div>
+</div>
+</div>
       </section>
    </div>
    

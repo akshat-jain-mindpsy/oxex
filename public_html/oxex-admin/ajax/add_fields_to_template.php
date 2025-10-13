@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Check user permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     http_response_code(403); // Forbidden
     die(json_encode(['status' => 'error', 'message' => 'Unauthorized access']));
 }
@@ -34,31 +34,28 @@ if ($template_id <= 0 || $table_id <= 0 || empty($fields)) {
 }
 
 // Check if template exists
-$check_template = $mysqli->prepare("SELECT id FROM csv_templates WHERE id = ?");
-$check_template->bind_param("i", $template_id);
-$check_template->execute();
-$template_result = $check_template->get_result();
+$check_template = $supabase_pdo->prepare("SELECT id FROM csv_templates WHERE id = ?");
+$check_template->execute([$template_id]);
+$template_row = $check_template->fetch(PDO::FETCH_ASSOC);
 
-if ($template_result->num_rows === 0) {
+if (!$template_row) {
     die(json_encode(['status' => 'error', 'message' => 'Template not found']));
 }
 
 // Get the next display order
-$get_max_order = $mysqli->prepare("SELECT MAX(display_order) as max_order FROM csv_template_columns WHERE template_id = ?");
-$get_max_order->bind_param("i", $template_id);
-$get_max_order->execute();
-$order_result = $get_max_order->get_result();
-$order_row = $order_result->fetch_assoc();
-$next_order = ($order_row['max_order'] !== null) ? intval($order_row['max_order']) + 1 : 1;
+$get_max_order = $supabase_pdo->prepare("SELECT MAX(display_order) as max_order FROM csv_template_columns WHERE template_id = ?");
+$get_max_order->execute([$template_id]);
+$order_row = $get_max_order->fetch(PDO::FETCH_ASSOC);
+$next_order = ($order_row && $order_row['max_order'] !== null) ? intval($order_row['max_order']) + 1 : 1;
 
 // Add the fields to the template
 try {
     // Start transaction
-    $mysqli->begin_transaction();
-    
+    $supabase_pdo->beginTransaction();
+
     // Prepare statement for multiple inserts
-    $add_field = $mysqli->prepare("INSERT INTO csv_template_columns (template_id, table_id, field_id, display_order) VALUES (?, ?, ?, ?)");
-    
+    $add_field = $supabase_pdo->prepare("INSERT INTO csv_template_columns (template_id, table_id, field_id, display_order) VALUES (?, ?, ?, ?)");
+
     $fields_added = 0;
     $current_order = $next_order;
     
@@ -66,17 +63,15 @@ try {
         $field_id = intval($field['field_id']);
         
         // Check if field already exists in the template
-        $check_field = $mysqli->prepare("SELECT id FROM csv_template_columns WHERE template_id = ? AND table_id = ? AND field_id = ?");
-        $check_field->bind_param("iii", $template_id, $table_id, $field_id);
-        $check_field->execute();
-        $field_result = $check_field->get_result();
-        
-        if ($field_result->num_rows === 0) {
+        $check_field = $supabase_pdo->prepare("SELECT id FROM csv_template_columns WHERE template_id = ? AND table_id = ? AND field_id = ?");
+        $check_field->execute([$template_id, $table_id, $field_id]);
+        $field_row = $check_field->fetch(PDO::FETCH_ASSOC);
+
+        if (!$field_row) {
             // Add the field
-            $add_field->bind_param("iiii", $template_id, $table_id, $field_id, $current_order);
-            $add_field->execute();
-            
-            if ($add_field->affected_rows > 0) {
+            $add_field->execute([$template_id, $table_id, $field_id, $current_order]);
+
+            if ($add_field->rowCount() > 0) {
                 $fields_added++;
                 $current_order++;
             }
@@ -84,7 +79,7 @@ try {
     }
     
     // Commit transaction
-    $mysqli->commit();
+    $supabase_pdo->commit();
     
     echo json_encode([
         'status' => 'success', 
@@ -94,9 +89,9 @@ try {
     
 } catch (Exception $e) {
     // Rollback on error
-    $mysqli->rollback();
+    if ($supabase_pdo->inTransaction()) {
+        $supabase_pdo->rollBack();
+    }
     error_log("Error adding fields to template: " . $e->getMessage());
     echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
 }
-
-$mysqli->close(); 

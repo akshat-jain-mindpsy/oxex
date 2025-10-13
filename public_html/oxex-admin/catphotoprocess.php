@@ -79,10 +79,11 @@ ini_set('max_execution_time', 300);
  if ( $result )
  {
    // update new logo and delete any webp/avif
-	$stmt = $mysqli->prepare("UPDATE proj_cats SET cat_logo = ?, webp = ?, avif = ? WHERE catid = ?"); 
-	$stmt->bind_param("sssi", $actualname, $valueblank, $valueblank, $which);
-	$stmt->execute();
-	$stmt->close();
+	$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+	if ($pdo) {
+		$stmt = $pdo->prepare("UPDATE proj_cats SET cat_logo = ?, webp = ?, avif = ? WHERE catid = ?"); 
+		$stmt->execute([$actualname, $valueblank, $valueblank, $which]);
+	}
 	
 		echo "<p><a href=\"categorydetail.php?which=$which&amp;del=delphoto\"<span class=\"btn btn-danger\"> <i class=\"fa fa-times-circle\"></i> Delete Image</span></a></p>";
 		echo "<p><img src=\"../logos/$actualname\" width=\"200px\"></p>";

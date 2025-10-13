@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Case Studies";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Case Studies";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,19 +32,15 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AD' || $admintype == 'DV')) {
   // delete any links
-  $stmt = $mysqli->prepare("DELETE FROM proj_link_tbl WHERE pid = ?");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("DELETE FROM proj_link_tbl WHERE pid = ?");
+  $stmt->execute([$which]);
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM proj_tbl WHERE pid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
+  $stmt = $pdo->prepare("DELETE FROM proj_tbl WHERE pid = ? LIMIT 1");
+  $stmt->execute([$which]);
+  if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
   }
-  $stmt->close();
 }
 
 if ($newadmin == 'newadmin') {
@@ -56,7 +55,8 @@ if ($newadmin == 'newadmin') {
   $page_txt6 = isset($_POST['page_txt6']) ? $_POST['page_txt6'] : '';
   $page_txt12 = isset($_POST['page_txt12']) ? $_POST['page_txt12'] : '';
   $proj_vid = isset($_POST['proj_vid']) ? $_POST['proj_vid'] : '';
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
   $google_priority = isset($_POST['google_priority']) ? $_POST['google_priority'] : 0;
 
   // format the string to be used as a URL
@@ -65,14 +65,9 @@ if ($newadmin == 'newadmin') {
   $semantic_url = rtrim($semantic_url, '-');# remove trailing dash
   // look for any titles with the same url in semantic_url
   $semantic_title = $semantic_url; # not used
-  $stmt = $mysqli->prepare("SELECT pid FROM proj_tbl WHERE semantic_url = ?");
-  $stmt->bind_param("s", $semantic_url);
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($pid);
-  $stmt->fetch();
-  $numrows = $stmt->num_rows;
-  $stmt->close();
+  $stmt = $pdo->prepare("SELECT pid FROM proj_tbl WHERE semantic_url = ?");
+  $stmt->execute([$semantic_url]);
+  $numrows = $stmt->rowCount();
 
   $urllen = strlen($semantic_url);
   if ($urllen > 255 && $numrows == 0) {
@@ -86,12 +81,10 @@ if ($newadmin == 'newadmin') {
     $semantic_url = $semantic_url.'-'.$randsuffix;# add suffix to make it different to existing 
   }
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO proj_tbl (catid, proj_vid, sort_order, proj_name, semantic_url, page_title, page_txt1, page_txt2, page_txt3, page_txt4, page_txt5, page_txt6, page_txt12, google_priority, date_added, date_modified, projpdf, pdfthumb) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-  $insert_stmt->bind_param("isisssssssssssiiss", $catid, $proj_vid, $sort_order, $proj_name, $semantic_url, $page_title, $page_txt1, $page_txt2, $page_txt3, $page_txt4, $page_txt5, $page_txt6, $page_txt12, $value0, $today, $today, $valueblank, $valueblank);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  $insert_stmt = $pdo->prepare("INSERT INTO proj_tbl (catid, proj_vid, sort_order, proj_name, semantic_url, page_title, page_txt1, page_txt2, page_txt3, page_txt4, page_txt5, page_txt6, page_txt12, google_priority, date_added, date_modified, projpdf, pdfthumb) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  $insert_stmt->execute([$catid, $proj_vid, $$value0 = 0; // Default value for sort_order
+$subtitle = "valueblank]);
+  $newid = $pdo->lastInsertId();
   
 
   if (is_uploaded_file($_FILES['Image1']['tmp_name'])) {
@@ -160,10 +153,8 @@ if ($newadmin == 'newadmin') {
    $isanimage = 0;
    if ( $result )
    {
-    $stmt = $mysqli->prepare("UPDATE proj_tbl SET pdfthumb = ? WHERE pid = ?"); 
-    $stmt->bind_param("si", $actualname, $newid);
-    $stmt->execute();
-    $stmt->close();
+    $stmt = $pdo->prepare("UPDATE proj_tbl SET pdfthumb = ? WHERE pid = ?"); 
+    $stmt->execute([$actualname, $newid]);
     $isanimage = 1;
    }
   }# if image uploaded
@@ -176,17 +167,12 @@ if ($newadmin == 'newadmin') {
       $imgtype = "1";
        
        $numids=1;
-        while (!$numids == 0) {
+         while (!$numids == 0) {
           // make 16 digit hex string plus suffix
           $generateID = substr(md5(rand()), 0, 16).'.pdf';
-          $stmt = $mysqli->prepare("SELECT pid FROM proj_tbl WHERE projpdf = ? LIMIT 1");
-          $stmt->bind_param('s', $generateID);
-          $stmt->execute();
-          $stmt->store_result();
-          $stmt->bind_result($fid);
-          $stmt->fetch();
-          $numids = $stmt->num_rows;
-          $stmt->close();
+          $stmt = $pdo->prepare("SELECT pid FROM proj_tbl WHERE projpdf = ? LIMIT 1");
+          $stmt->execute([$generateID]);
+          $numids = $stmt->rowCount();
         }
 
         $resultpdf = move_uploaded_file($_FILES['ufile']['tmp_name'], FILEREPOSITORY."$generateID");
@@ -194,10 +180,8 @@ if ($newadmin == 'newadmin') {
         if ($resultpdf == 1) { 
              $errmsg = "<p>File successfully uploaded.</p>";
              
-            $stmt = $mysqli->prepare("UPDATE proj_tbl SET projpdf = ? WHERE pid = ?");
-            $stmt->bind_param("si", $generateID, $newid);
-            $stmt->execute();
-            $stmt->close();
+            $stmt = $pdo->prepare("UPDATE proj_tbl SET projpdf = ? WHERE pid = ?");
+            $stmt->execute([$generateID, $newid]);
             // create thumbnail if pdf and no image
             if ($isanimage == 0) {
               $startpdf = "../projpdfs/".$generateID;
@@ -206,10 +190,8 @@ if ($newadmin == 'newadmin') {
               // create jpg image and thumb from pdf first page
               $result1 = exec("/usr/bin/convert  \"$startpdf\" -quality 70 -colorspace rgb -background white -flatten -thumbnail 180x270 \"$largepng\"");
               
-              $stmt = $mysqli->prepare("UPDATE proj_tbl SET pdfthumb = ? WHERE pid = ?"); 
-              $stmt->bind_param("si", $pngname, $newid);
-              $stmt->execute();
-              $stmt->close();
+              $stmt = $pdo->prepare("UPDATE proj_tbl SET pdfthumb = ? WHERE pid = ?"); 
+              $stmt->execute([$pngname, $newid]);
             }
         }
          else { $errmsg = "<p>There was a problem uploading the file.  $name ($uploadtype)</p>";
@@ -242,7 +224,8 @@ $todaydisp = strtotime($today); # default 'to' date for datepicker
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
             <?php echo $delalert ?>
             <div class="row">
                <div class="col-xl-12">
@@ -260,47 +243,42 @@ $todaydisp = strtotime($today); # default 'to' date for datepicker
                          </thead>
                          <tbody>
 <?PHP
-$stmt = $mysqli->prepare("SELECT pid, proj_name, proj_vid, date_modified, sort_order FROM proj_tbl");
+$stmt = $pdo->prepare("SELECT pid, proj_name, proj_vid, date_modified, sort_order FROM proj_tbl");
 $stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($pid, $proj_name, $proj_vid, $date_modified, $sort_order);
-while ($stmt->fetch()){
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+  $pid = (int)$row['pid'];
+  $proj_name = $row['proj_name'];
+  $proj_vid = $row['proj_vid'];
+  $date_modified = $row['date_modified'];
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "row['sort_order'];
   $date_modified = strtotime($date_modified);
   // get categories
   // Loop through tags
   $cats = '';
-  $loopstmt = $mysqli->prepare("SELECT catid FROM proj_link_tbl  WHERE pid = ?");
-  $loopstmt->bind_param("i", $pid);
-  $loopstmt->execute();
-  $loopstmt->store_result();
-  $loopstmt->bind_result($catid);
-  while ($loopstmt->fetch()) {
-    $whatlink = $mysqli->prepare("SELECT catproj FROM proj_cats WHERE catid = ? ");
-    $whatlink->bind_param("i", $catid);
-    $whatlink->execute(); 
-    $whatlink->bind_result($catproj);
-    $whatlink->fetch();
+  $loopstmt = $pdo->prepare("SELECT catid FROM proj_link_tbl  WHERE pid = ?");
+  $loopstmt->execute([$pid]);
+  while ($catrow = $loopstmt->fetch(PDO::FETCH_ASSOC)) {
+    $catid = (int)$catrow['catid'];
+    $whatlink = $pdo->prepare("SELECT catproj FROM proj_cats WHERE catid = ? ");
+    $whatlink->execute([$catid]); 
+    $catproj = $whatlink->fetchColumn();
     $cats .= $catproj.' ';
-    $whatlink->close();
-
   }
-  $loopstmt->close();
   // get images
   $numimg = 0;
   $galleryid = 'r'.$pid;
-  $vids = $mysqli->prepare("SELECT gid FROM cs_gallery WHERE category = ? ");
-  $vids->bind_param("i", $galleryid);
-  $vids->execute();
-  $vids->store_result();
-  $numimg = $vids->num_rows;
-  $vids->close();
+  $vids = $pdo->prepare("SELECT gid FROM cs_gallery WHERE category = ? ");
+  $vids->execute([$galleryid]);
+  $numimg = $vids->rowCount();
   if ($numimg == 0) {
    $cats = '<div class="badge badge-danger">None</div>';
   }
   if ($sort_order == 0) {
    $dispsort_order = '<div class="badge badge-danger">Not displayed</div>';
   } else {
-    $dispsort_order = $sort_order;
+    $disp$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order;
   }
   if ($cats == '') {
    $cats = '<div class="badge badge-danger">None</div>';
@@ -323,13 +301,11 @@ while ($stmt->fetch()){
 </tr>
 <?php
 }
-$numrows = $stmt->num_rows;
-$stmt->close();
+// end fetch loop
 ?>
                          </tbody>
                       </table>
-                   </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -347,18 +323,18 @@ $stmt->close();
                                   <option selected="">Select a Manufacturer:</option>
                                   <?php
                                   $pageid = 0; # defualt
-                                  $tableset = $mysqli->prepare("SELECT catid, catproj FROM proj_cats ");
+                                  $tableset = $pdo->prepare("SELECT catid, catproj FROM proj_cats ");
                                   $tableset->execute();
-                                  $tableset->store_result();
-                                  $tableset->bind_result($catid, $catproj);
-                                  while ($tableset->fetch()){
+                                  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                                    $catid = $row['catid'];
+                                    $catproj = $row['catproj'];
                                     echo "<option value=\"e$catid\"";
                                     if ($pageid == $catid) {
                                       echo "selected='selected'";
                                     }
                                     echo ">$catproj</option>";
                                   }
-                                  $tableset->close();
+                                  $tableset->closeCursor();
                                   ?>
                                 </select>
                           </div>
@@ -406,7 +382,8 @@ $stmt->close();
                            </div>
                            <div class="form-group">
                               <label class="col-form-label" for="sort_order">Sort order</label>
-                              <input class="form-control" type="number" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
+                              <input class="form-control" type="number" id="$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
                            </div>
                            <div class="form-group">
                               <label class="col-form-label">Images</label>
@@ -419,19 +396,13 @@ $stmt->close();
                           <div class="form-group">
                             <label class="col-form-label">Project PDF</label>
                             <input type="file" class="form-control" name="ufile" id="ufile"><span class="form-text">A thumbnail of the pdf wil be created if no image is loaded</span>
-                          </div>
-                           
-                          
-
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

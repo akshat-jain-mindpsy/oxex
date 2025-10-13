@@ -3,9 +3,10 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Check authorization
-if (login_check($mysqli) != true || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (login_check($pdo) != true || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     echo json_encode([
         'status' => 'error',
         'message' => 'Not authorized'
@@ -28,30 +29,25 @@ if ($stid <= 0) {
 // Fetch current selections with more detailed error handling
 try {
     // First, verify the field exists and get its type
-    $stmt = $mysqli->prepare("SELECT str, single FROM select_types WHERE stid = ?");
-    $stmt->bind_param("i", $stid);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt = $supabase_pdo->prepare("SELECT str, single FROM select_types WHERE stid = ?");
+    $stmt->execute([$stid]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($row = $result->fetch_assoc()) {
+    if ($row) {
         $fieldName = $row['str'];
-        $fieldType = $row['single'];
-        $stmt->close();
+        $fieldType = (int)$row['single'];
         
         // Now fetch the actual options from select_gen
-        $options_stmt = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ORDER BY select_val");
-        $options_stmt->bind_param("i", $stid);
-        $options_stmt->execute();
-        $options_result = $options_stmt->get_result();
+        $options_stmt = $supabase_pdo->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ORDER BY select_val");
+        $options_stmt->execute([$stid]);
         
         $selections = [];
-        while ($option = $options_result->fetch_assoc()) {
+        while ($option = $options_stmt->fetch(PDO::FETCH_ASSOC)) {
             $selections[] = [
-                'id' => $option['pid'],
+                'id' => (int)$option['pid'],
                 'value' => $option['select_val']
             ];
         }
-        $options_stmt->close();
 
         echo json_encode([
             'status' => 'success',
@@ -64,9 +60,8 @@ try {
             'status' => 'error',
             'message' => 'Field not found'
         ]);
-        $stmt->close();
     }
-} catch (Exception $e) {
+} catch (PDOException $e) {
     // Log the full error for server-side debugging
     error_log("Error fetching selections: " . $e->getMessage());
     

@@ -12,7 +12,7 @@ include_once __DIR__ . '/../incl/sess.php';
 error_log("update_field_options.php called");
 
 // Check login and permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     echo json_encode([
         'status' => 'error', 
         'message' => 'Unauthorized access'
@@ -55,9 +55,15 @@ if ($field_id <= 0) {
 }
 
 try {
+    // Initialize PDO connection
+    $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+    if (!$pdo) {
+        throw new Exception("Database connection not available");
+    }
+    
     // First check if field_options column exists
-    $check_column = $mysqli->query("SHOW COLUMNS FROM select_types LIKE 'field_options'");
-    if ($check_column === false || $check_column->num_rows === 0) {
+    $check_column = $pdo->query("SELECT column_name FROM information_schema.columns WHERE table_name = 'select_types' AND column_name = 'field_options'");
+    if ($check_column === false || $check_column->rowCount() === 0) {
         // Column doesn't exist, redirect to update page
         $response = [
             'status' => 'error',
@@ -69,35 +75,30 @@ try {
     }
     
     // Begin transaction
-    $mysqli->begin_transaction();
+    $pdo->beginTransaction();
     
     // 1. Update field_options in select_types
-    $update_stmt = $mysqli->prepare("UPDATE select_types SET field_options = ? WHERE stid = ?");
-    $update_stmt->bind_param("si", $options_string, $field_id);
-    $update_result = $update_stmt->execute();
-    $update_stmt->close();
+    $update_stmt = $pdo->prepare("UPDATE select_types SET field_options = ? WHERE stid = ?");
+    $update_result = $update_stmt->execute([$options_string, $field_id]);
     
     if (!$update_result) {
-        throw new Exception("Failed to update field_options: " . $mysqli->error);
+        throw new Exception("Failed to update field_options: " . implode(', ', $update_stmt->errorInfo()));
     }
     
     // 2. Update select_gen table
     // First, get existing options
     $existing_opts = [];
     $query = "SELECT pid, select_val FROM select_gen WHERE stid = ?";
-    $stmt = $mysqli->prepare($query);
-    $stmt->bind_param("i", $field_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt = $pdo->prepare($query);
+    $stmt->execute([$field_id]);
     
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $existing_opts[$row['select_val']] = $row['pid'];
     }
-    $stmt->close();
     
     // Add new options
     $add_count = 0;
-    $insert_stmt = $mysqli->prepare("INSERT INTO select_gen (stid, select_val) VALUES (?, ?)");
+    $insert_stmt = $pdo->prepare("INSERT INTO select_gen (stid, select_val) VALUES (?, ?)");
     
     foreach ($options_array as $option) {
         $option = trim($option);
@@ -105,12 +106,10 @@ try {
             continue;  // Skip empty or existing options
         }
         
-        $insert_stmt->bind_param("is", $field_id, $option);
-        if ($insert_stmt->execute()) {
+        if ($insert_stmt->execute([$field_id, $option])) {
             $add_count++;
         }
     }
-    $insert_stmt->close();
     
     // Remove options that are no longer in the list
     $remove_count = 0;
@@ -124,27 +123,18 @@ try {
         
         if (!empty($to_remove)) {
             $placeholders = implode(',', array_fill(0, count($to_remove), '?'));
-            $types = str_repeat('i', count($to_remove));
             
             $delete_query = "DELETE FROM select_gen WHERE pid IN ($placeholders)";
-            $delete_stmt = $mysqli->prepare($delete_query);
+            $delete_stmt = $pdo->prepare($delete_query);
             
-            // Dynamically bind parameters
-            $delete_params = array($types);
-            foreach ($to_remove as $key => $val) {
-                $delete_params[] = &$to_remove[$key];
+            if ($delete_stmt->execute($to_remove)) {
+                $remove_count = $delete_stmt->rowCount();
             }
-            call_user_func_array(array($delete_stmt, 'bind_param'), $delete_params);
-            
-            if ($delete_stmt->execute()) {
-                $remove_count = $delete_stmt->affected_rows;
-            }
-            $delete_stmt->close();
         }
     }
     
     // Commit transaction
-    $mysqli->commit();
+    $pdo->commit();
     
     // Success response
     $response = [
@@ -156,7 +146,9 @@ try {
     
 } catch (Exception $e) {
     // Rollback on error
-    $mysqli->rollback();
+    if (isset($pdo) && $pdo->inTransaction()) {
+        $pdo->rollback();
+    }
     
     $response['message'] = 'Database error: ' . $e->getMessage();
     error_log("Exception in update_field_options.php: " . $e->getMessage());

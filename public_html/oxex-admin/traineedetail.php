@@ -3,6 +3,7 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Trainee Clinical Psychologists";
 $subtitle = "Trainees";
 $listurl = "trainee.php";
@@ -12,7 +13,7 @@ $value59 = 59; # $stid for age in trainee log
 $dispcolorarr = array();
 $dispborderarr = array();
 
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -52,15 +53,11 @@ $valueyearend = 20991231;
 
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row
-  $stmt = $mysqli->prepare("DELETE FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
-  $stmt->bind_param("s", $which); 
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("DELETE FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+  $stmt->execute([$which]);
   // delete all slogbook entries
-  $stmt = $mysqli->prepare("DELETE FROM logbook WHERE trainkey = ?");
-  $stmt->bind_param("s", $which); 
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("DELETE FROM logbook WHERE trainkey = ?");
+  $stmt->execute([$which]);
 }
 if ($done == "passfail" && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) { 
    // add new notes 
@@ -68,19 +65,13 @@ if ($done == "passfail" && ($admintype == 'AT' || $admintype == 'AO' || $adminty
   $super_pass = isset($_POST['super_pass']) ? $_POST['super_pass'] : 0;
   $super_txt = isset($_POST['super_txt']) ? $_POST['super_txt'] : '';
   // check if there's not already a pass for this competency - it's probably a reload if so
-   $vids = $mysqli->prepare("SELECT trid FROM trainee_report_ok WHERE trainkey = ? AND super_pass = ? AND date_added = ?");
-   $vids->bind_param("sii", $which, $super_pass, $today);
-   $vids->execute();
-   $vids->store_result();
-   $numlinks = $vids->num_rows;
-   $vids->close();
+   $vids = $supabase_pdo->prepare("SELECT trid FROM trainee_report_ok WHERE trainkey = ? AND super_pass = ? AND date_added = ?");
+   $vids->execute([$which, $super_pass, $today]);
+   $numlinks = $vids->rowCount();
    if ($numlinks == 0) {
-      $insert_stmt = $mysqli->prepare("INSERT INTO trainee_report_ok (trainkey, who_by, super_pass, super_txt, date_added, date_modified) VALUES (?, ?, ?, ?, ?, ?)");
-      $insert_stmt->bind_param("ssisii", $which, $usrkey, $super_pass, $super_txt, $today, $today);
-      $insert_stmt->execute();
-         //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-      $newid = $insert_stmt->insert_id;
-      $insert_stmt->close();
+      $insert_stmt = $supabase_pdo->prepare("INSERT INTO trainee_report_ok (trainkey, who_by, super_pass, super_txt, date_added, date_modified) VALUES (?, ?, ?, ?, ?, ?)");
+      $insert_stmt->execute([$which, $usrkey, $super_pass, $super_txt, $today, $today]);
+      $newid = (int)$supabase_pdo->lastInsertId();
    }
 }
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  
@@ -96,34 +87,27 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $year = isset($_POST['year']) ? $_POST['year'] : '';
   
   // Update record
-  $stmt = $mysqli->prepare("UPDATE trainee_tbl SET name = ?, email = ?, uid = ?, supervisor = ?, syslink = ?, year = ?, who_by = ?, date_modified = ?, tutor = ?, supervisor2 = ?, supervisor3 = ? WHERE trainkey = ? "); 
-  $stmt->bind_param("ssissisissss", $name, $email, $uid, $supervisor, $syslink, $year, $usrkey, $today, $tutor, $supervisor2, $supervisor3, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("UPDATE trainee_tbl SET name = ?, email = ?, uid = ?, supervisor = ?, syslink = ?, year = ?, who_by = ?, date_modified = ?, tutor = ?, supervisor2 = ?, supervisor3 = ? WHERE trainkey = ? "); 
+  $stmt->execute([$name, $email, $uid, $supervisor, $syslink, $year, $usrkey, $today, $tutor, $supervisor2, $supervisor3, $which]);
 
   // delete existing tags before re-adding
-  $stmt = $mysqli->prepare("DELETE FROM trainee_tab_link WHERE trainkey = ? ");
-  $stmt->bind_param("s",$which);     
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("DELETE FROM trainee_tab_link WHERE trainkey = ? ");
+  $stmt->execute([$which]);
   
   // update subject tag links
-  $tagstmt = $mysqli->prepare("SELECT tbid FROM tabs_tbl");
+  $tagstmt = $supabase_pdo->prepare("SELECT tbid FROM tabs_tbl");
   $tagstmt->execute();
-  $tagstmt->store_result();
-  $tagstmt->bind_result($tbid);
-  while ($tagstmt->fetch()){
+  $tabs = $tagstmt->fetchAll(PDO::FETCH_COLUMN);
+  foreach ($tabs as $tbid){
     $posmarker = 'q'.$tbid;
     $clicked = isset($_POST[$posmarker]) ? $_POST[$posmarker] : '';
     if ($clicked == $tbid)  {
       // if checkbox has same value add to db
-      $insert_stmt = $mysqli->prepare("INSERT INTO trainee_tab_link (trainkey, tbid) VALUES (?, ?)");
-      $insert_stmt->bind_param("si", $which, $tbid);
-      $insert_stmt->execute();
-      $insert_stmt->close();
+      $insert_stmt = $supabase_pdo->prepare("INSERT INTO trainee_tab_link (trainkey, tbid) VALUES (?, ?)");
+      $insert_stmt->execute([$which, $tbid]);
     }
   }
-  $tagstmt->close();
+  // PDO auto-closes
 }
 
 // Handle password reset
@@ -144,49 +128,69 @@ if ($done == "resetpassword" && ($admintype == 'AT' || $admintype == 'AO' || $ad
     $hashed_password = hash('sha512', $new_password.$new_salt);
     
     // Update the trainee's password and clear txtpw
-    $update_stmt = $mysqli->prepare("UPDATE trainee_tbl SET password = ?, salt = ?, txtpw = '', who_by = ?, date_modified = ? WHERE trainkey = ?");
-    $update_stmt->bind_param("sssss", $hashed_password, $new_salt, $usrkey, $today, $which);
-    
-    if ($update_stmt->execute()) {
+    $update_stmt = $supabase_pdo->prepare("UPDATE trainee_tbl SET password = ?, salt = ?, txtpw = '', who_by = ?, date_modified = ? WHERE trainkey = ?");
+    if ($update_stmt->execute([$hashed_password, $new_salt, $usrkey, $today, $which])) {
       $password_alert = "<div class=\"alert alert-success\" role=\"alert\"><strong>Password reset successfully! The trainee can now log in with their new password.</strong></div>";
       // Refresh the page data to show updated password status
-      $refresh_stmt = $mysqli->prepare("SELECT name, email, uid, supervisor, supervisor2, supervisor3, tutor, syslink, year, trainkey, txtpw, who_by, date_added, date_modified, last_used, tandc FROM trainee_tbl WHERE trainkey = ?");
-      $refresh_stmt->bind_param("s", $which);
-      $refresh_stmt->execute();
-      $refresh_stmt->store_result();
-      $refresh_stmt->bind_result($name, $email, $uid, $supervisor, $supervisor2, $supervisor3, $tutor, $syslink, $year, $trainkey, $txtpw, $who_by, $date_added, $date_modified, $last_used, $tandc);
-      $refresh_stmt->fetch();
-      $refresh_stmt->close();
-      $update_stmt->close();
+      $refresh_stmt = $supabase_pdo->prepare("SELECT name, email, uid, supervisor, supervisor2, supervisor3, tutor, syslink, year, trainkey, txtpw, who_by, date_added, date_modified, last_used, tandc FROM trainee_tbl WHERE trainkey = ?");
+      $refresh_stmt->execute([$which]);
+      $row = $refresh_stmt->fetch(PDO::FETCH_ASSOC);
+      if ($row) {
+        $name = $row['name'];
+        $email = $row['email'];
+        $uid = $row['uid'];
+        $supervisor = $row['supervisor'];
+        $supervisor2 = $row['supervisor2'];
+        $supervisor3 = $row['supervisor3'];
+        $tutor = $row['tutor'];
+        $syslink = $row['syslink'];
+        $year = $row['year'];
+        $trainkey = $row['trainkey'];
+        $txtpw = $row['txtpw'];
+        $who_by = $row['who_by'];
+        $date_added = $row['date_added'];
+        $date_modified = $row['date_modified'];
+        $last_used = $row['last_used'];
+        $tandc = $row['tandc'];
+      }
     } else {
       $password_alert = "<div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to reset password</strong></div>";
-      $update_stmt->close();
     }
   }
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT name, email, uid, supervisor, supervisor2, supervisor3, tutor, syslink, year, trainkey, txtpw, who_by, date_added, date_modified, last_used, tandc FROM trainee_tbl WHERE trainkey = ?");
-$stmt->bind_param("s", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($name, $email, $uid, $supervisor, $supervisor2, $supervisor3, $tutor, $syslink, $year, $trainkey, $txtpw, $who_by, $date_added, $date_modified, $last_used, $tandc);
-$stmt->fetch();
-$stmt->close();
+$stmt = $supabase_pdo->prepare("SELECT name, email, uid, supervisor, supervisor2, supervisor3, tutor, syslink, year, trainkey, txtpw, who_by, date_added, date_modified, last_used, tandc FROM trainee_tbl WHERE trainkey = ?");
+$stmt->execute([$which]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+if ($row) {
+  $name = $row['name'];
+  $email = $row['email'];
+  $uid = $row['uid'];
+  $supervisor = $row['supervisor'];
+  $supervisor2 = $row['supervisor2'];
+  $supervisor3 = $row['supervisor3'];
+  $tutor = $row['tutor'];
+  $syslink = $row['syslink'];
+  $year = $row['year'];
+  $trainkey = $row['trainkey'];
+  $txtpw = $row['txtpw'];
+  $who_by = $row['who_by'];
+  $date_added = $row['date_added'];
+  $date_modified = $row['date_modified'];
+  $last_used = $row['last_used'];
+  $tandc = $row['tandc'];
+}
    $date_added = strtotime($date_added);
    $date_modified = strtotime($date_modified);
    if ($last_used != 0) {
       $last_used = strtotime($last_used);
    }
    // who changed last?
-  $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $who_by);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($who_by);
-   $stmt->fetch();
-   $stmt->close();
+ $stmt = $supabase_pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+  $stmt->execute([$who_by]);
+  $who_by = $stmt->fetchColumn();
    
 // whatever the record name is
   $changename = "$name";
@@ -253,30 +257,22 @@ $stmt->close();
                                    <?php
                                    // list the groups, grouping as there are repeats
                                    $cat_ref = $uid;
-                                   $tableset = $mysqli->prepare("SELECT uid, university FROM uni_tbl");
+                                   $tableset = $supabase_pdo->prepare("SELECT uid, university FROM uni_tbl");
                                    $tableset->execute();
-                                   $tableset->store_result();
-                                   $tableset->bind_result($uid, $university);
-                                   while ($tableset->fetch()){
+                                   $uni_rows = $tableset->fetchAll(PDO::FETCH_ASSOC);
+                                   foreach ($uni_rows as $urow){
+                                     $uid = $urow['uid'];
+                                     $university = $urow['university'];
                                      echo "<option value=\"$uid\"";
                                      if ($uid == $cat_ref) {
                                        echo "selected='selected'";
                                      }
                                      echo ">$university</option>";
                                    }
-                                   $tableset->close();
                                    ?>
                                  </select>
                               </div>
                               <?php
-                                /*
-                                 AT = "Full Admin Control";
-                                 AO = "Oxford Course Tutor";
-                                 AE = "Exeter Course Tutor";
-                                 SO = "Oxford Supervisor";
-                                 SE = "Exeter Supervisor";
-                                 DV = "Developer";
-                                 */
                                 $cat_ref = '';
                                 $adminAT = 'AT';
                                 $adminSO = 'SO';
@@ -292,12 +288,13 @@ $stmt->close();
                                          <?php
                                          // list the groups, grouping as there are repeats
                                          $cat_ref = $supervisor;
-                                         $tableset = $mysqli->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE admintype = ? OR admintype = ? OR admintype = ?");
-                                         $tableset->bind_param("sss", $adminSO, $adminSE, $adminAT);
-                                         $tableset->execute();
-                                         $tableset->store_result();
-                                         $tableset->bind_result($supervisor, $realname, $thisadmintype);
-                                         while ($tableset->fetch()){
+                                         $tableset = $supabase_pdo->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE admintype = ? OR admintype = ? OR admintype = ?");
+                                         $tableset->execute([$adminSO, $adminSE, $adminAT]);
+                                         $wrows = $tableset->fetchAll(PDO::FETCH_ASSOC);
+                                         foreach ($wrows as $wr){
+                                          $supervisor = $wr['usrkey'];
+                                          $realname = $wr['realname'];
+                                          $thisadmintype = $wr['admintype'];
                                           if ($thisadmintype == 'SO') {
                                              $admin = " (OX)";
                                           } else {
@@ -309,7 +306,6 @@ $stmt->close();
                                            }
                                            echo ">$realname $thisadmintype</option>";
                                          }
-                                         $tableset->close();
                                          ?>
                                        </select>
                                     </div>
@@ -320,12 +316,13 @@ $stmt->close();
                                          <?php
                                          // list the groups, grouping as there are repeats
                                          $cat_ref = $supervisor2;
-                                         $tableset = $mysqli->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE admintype = ? OR admintype = ? OR admintype = ?");
-                                         $tableset->bind_param("sss", $adminSO, $adminSE, $adminAT);
-                                         $tableset->execute();
-                                         $tableset->store_result();
-                                         $tableset->bind_result($supervisor, $realname, $thisadmintype);
-                                         while ($tableset->fetch()){
+                                         $tableset = $supabase_pdo->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE admintype = ? OR admintype = ? OR admintype = ?");
+                                         $tableset->execute([$adminSO, $adminSE, $adminAT]);
+                                         $wrows = $tableset->fetchAll(PDO::FETCH_ASSOC);
+                                         foreach ($wrows as $wr){
+                                          $supervisor = $wr['usrkey'];
+                                          $realname = $wr['realname'];
+                                          $thisadmintype = $wr['admintype'];
                                           if ($thisadmintype == 'SO') {
                                              $admin = " (OX)";
                                           } else {
@@ -337,7 +334,6 @@ $stmt->close();
                                            }
                                            echo ">$realname $thisadmintype</option>";
                                          }
-                                         $tableset->close();
                                          ?>
                                        </select>
                                     </div>
@@ -350,12 +346,13 @@ $stmt->close();
                                          <?php
                                          // list the groups, grouping as there are repeats
                                          $cat_ref = $supervisor3;
-                                         $tableset = $mysqli->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE admintype = ? OR admintype = ? OR admintype = ?");
-                                         $tableset->bind_param("sss", $adminSO, $adminSE, $adminAT);
-                                         $tableset->execute();
-                                         $tableset->store_result();
-                                         $tableset->bind_result($supervisor, $realname, $thisadmintype);
-                                         while ($tableset->fetch()){
+                                         $tableset = $supabase_pdo->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE admintype = ? OR admintype = ? OR admintype = ?");
+                                         $tableset->execute([$adminSO, $adminSE, $adminAT]);
+                                         $wrows = $tableset->fetchAll(PDO::FETCH_ASSOC);
+                                         foreach ($wrows as $wr){
+                                          $supervisor = $wr['usrkey'];
+                                          $realname = $wr['realname'];
+                                          $thisadmintype = $wr['admintype'];
                                           if ($thisadmintype == 'SO') {
                                              $admin = " (OX)";
                                           } else {
@@ -367,7 +364,6 @@ $stmt->close();
                                            }
                                            echo ">$realname $thisadmintype</option>";
                                          }
-                                         $tableset->close();
                                          ?>
                                        </select>
                                     </div>
@@ -378,12 +374,13 @@ $stmt->close();
                                          <?php
                                          // list the groups, grouping as there are repeats
                                          $cat_ref = $tutor;
-                                         $tableset = $mysqli->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE admintype = ? OR admintype = ? OR admintype = ?");
-                                         $tableset->bind_param("sss", $tutorAO, $tutorAE, $adminAT);
-                                         $tableset->execute();
-                                         $tableset->store_result();
-                                         $tableset->bind_result($supervisor, $realname, $thisadmintype);
-                                         while ($tableset->fetch()){
+                                         $tableset = $supabase_pdo->prepare("SELECT usrkey, realname, admintype FROM who_there WHERE admintype = ? OR admintype = ? OR admintype = ?");
+                                         $tableset->execute([$tutorAO, $tutorAE, $adminAT]);
+                                         $wrows = $tableset->fetchAll(PDO::FETCH_ASSOC);
+                                         foreach ($wrows as $wr){
+                                          $supervisor = $wr['usrkey'];
+                                          $realname = $wr['realname'];
+                                          $thisadmintype = $wr['admintype'];
                                           if ($thisadmintype == 'SO') {
                                              $admin = " (OX)";
                                           } else {
@@ -395,7 +392,6 @@ $stmt->close();
                                            }
                                            echo ">$realname $thisadmintype</option>";
                                          }
-                                         $tableset->close();
                                          ?>
                                        </select>
                                     </div>
@@ -405,7 +401,7 @@ $stmt->close();
                                     <div class="form-group">
                                     <label class="col-form-label" for="syslink">Employee Number</label>
                                     <input class="form-control" type="text" id="syslink" name="syslink" value="<?php echo $syslink ?>">
-                                 </div>
+                                    </div>
                                 </div>
                                 <div class="col">
                                     <div class="form-group">
@@ -426,43 +422,41 @@ $stmt->close();
                                         </select>
                                     </div>
                                 </div>
-                            </div>
-                            <h6>Permitted to use Tables:</h6>
-                        <div class="form-group">
-                            <label class="col-form-label">&nbsp;</label>
+                             </div>
+                             <h6>Permitted to use Tables:</h6>
+                         <div class="form-group">
+                             <label class="col-form-label">&nbsp;</label>
                               <?PHP
                               $checked = '';
                               // Loop through tags 
-                              $loopstmt = $mysqli->prepare("SELECT tbid, tab_name FROM tabs_tbl");
+                              $loopstmt = $supabase_pdo->prepare("SELECT tbid, tab_name FROM tabs_tbl");
                               $loopstmt->execute();
-                              $loopstmt->store_result();
-                              $loopstmt->bind_result($tbid, $tab_name);
-                              while ($loopstmt->fetch()) {  
+                              $looprows = $loopstmt->fetchAll(PDO::FETCH_ASSOC);
+                              foreach ($looprows as $lr) {  
+                                $tbid = $lr['tbid'];
+                                $tab_name = $lr['tab_name'];
                                 
                                 // see if in links table for this record
-                                $whatlink = $mysqli->prepare("SELECT ttid FROM trainee_tab_link WHERE trainkey = ? AND tbid = ? ");
-                                $whatlink->bind_param("si", $trainkey, $tbid);
-                                $whatlink->execute(); 
-                                $whatlink->bind_result($ttid);
-                                $whatlink->fetch();
+                                $whatlink = $supabase_pdo->prepare("SELECT ttid FROM trainee_tab_link WHERE trainkey = ? AND tbid = ? ");
+                                $whatlink->execute([$trainkey, $tbid]); 
+                                $ttid = (int)$whatlink->fetchColumn();
                                 if ($ttid > 0) {
                                   $checked = " checked=\"checked\" ";
                                 }
-                                $whatlink->close();
+                                $whatlink->closeCursor();
                                 echo "<label class=\"checkbox-inline mr-3\"><input name=\"q$tbid\" type=\"checkbox\" value=\"$tbid\" $checked/> $tab_name</label>\r";
                                 $ttid = 0;
                                 $checked = '';
                               }
-                              $loopstmt->close();
                               ?>
-                          </div>
-                        </div>
-                        
-                        <div class="card-footer">
-                           <input type="hidden" name="done" value="done">
-                           <input type="hidden" name="which" value="<?PHP echo $which ?>">
-                           <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
+                         </div>
+                         
+                         </div>
+                         <div class="card-footer">
+                            <input type="hidden" name="done" value="done">
+                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
+                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
+                         </div>
                      </div><!-- END card-->
                   </form>
                   
@@ -472,7 +466,6 @@ $stmt->close();
                         <div class="card-title">Reset Trainee Password</div>
                      </div>
                      <div class="card-body">
-                        <?php if (isset($password_alert)) echo $password_alert; ?>
                         <p class="text-muted">Use this form to reset the trainee's password. The trainee will be able to log in with the new password immediately.</p>
                         <?php if ($admintype == 'AT' || $admintype == 'DV'): ?>
                         <p class="text-info"><small><i class="fa fa-shield-alt"></i> You have full admin access to reset passwords.</small></p>
@@ -502,30 +495,29 @@ $stmt->close();
                   
                </div>
                <div class="col-xl-5">
-                  <div class="card border-info">
-                     <div class="card-header bg-info">
-                        <div class="card-title">Attendance Record </div>
-                     </div>
-                     <div class="card-body">
+                   <div class="card border-info">
+                      <div class="card-header bg-info">
+                         <div class="card-title">Attendance Record </div>
+                      </div>
+                      <div class="card-body">
                         <?php
-                        //$valueyearstart = date('Y').'0101'; # YYYYMMDD format
-                        //$valueyearend = date('Y').'1231';
                         $i = 0;
                         // list the coloured task labels
-                        $tableset = $mysqli->prepare("SELECT dtid, task, colour, textcolor FROM tasks ");
+                        $tableset = $supabase_pdo->prepare("SELECT dtid, task, colour, textcolor FROM tasks ");
                         $tableset->execute();
-                        $tableset->store_result();
-                        $tableset->bind_result($dtid, $task, $colour, $textcolor);
-                        while ($tableset->fetch()){
+                        $tasks = $tableset->fetchAll(PDO::FETCH_ASSOC);
+                        foreach ($tasks as $trow){
+                          $dtid = $trow['dtid'];
+                          $task = $trow['task'];
+                          $colour = $trow['colour'];
+                          $textcolor = $trow['textcolor'];
                           // how many this year for this trainee
                           $numtasks = 0;
-                          $vids = $mysqli->prepare("SELECT tsid FROM timesheet WHERE trainkey = ? AND dtid = ? AND taskdate >= ? AND taskdate <= ?");
-                          $vids->bind_param("siii", $trainkey, $dtid, $valueyearstart, $valueyearend);
-                          $vids->execute();
-                          $vids->store_result();
-                          $numtasks = $vids->num_rows;
+                          $vids = $supabase_pdo->prepare("SELECT tsid FROM timesheet WHERE trainkey = ? AND dtid = ? AND taskdate >= ? AND taskdate <= ?");
+                          $vids->execute([$trainkey, $dtid, $valueyearstart, $valueyearend]);
+                          $numtasks = $vids->rowCount();
                           $i = $i + $numtasks;
-                          $vids->close();
+                          $vids->closeCursor();
                           if ($textcolor == 1) {
                             $task = "<span class=\"text-white\">$task</span>";
                           } else {
@@ -533,86 +525,90 @@ $stmt->close();
                           }
                           echo "<div id=\"d$dtid\" class=\"rounded px-3 py-2 mr-1 mb-2\" style=\"background-color:#$colour\"><small>$task</small> <span class=\"badge badge-dark float-right mr-2\" id=\"taskqty$dtid\">$numtasks</span></div>";
                         }
-                        $tableset->close();
                         ?>
-                     </div>
-                     <div class="card-footer text-muted">
-                        Total  attendance: <?php echo $i ?> days
-                     </div>
-                  </div>
+                      </div>
+                      <div class="card-footer text-muted">
+                         Total attendance: <?php echo $i ?> days
+                      </div>
+                   </div>
                </div>
             </div>
 
             <div class="row" id="stats">
                <div class="col">
-                  <h2 class="bg-primary text-white p-2">Statistics </h2>
-            <?php
+                  <h2 class="bg-primary text-white p-2">Statistics</h2>
+                  <?php
                   // Simple statistics - just show basic table info without heavy calculations
                   $namarr = array();
                   $resarr = array();
                   $pasarr = array();
                   
                   // Get basic table information
-               $tableset = $mysqli->prepare("SELECT tabs_tbl.tbid, tabs_tbl.tab_name FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid AND tabs_tbl.isvis = 1 ORDER BY tabs_tbl.sort_order");
-               $tableset->bind_param("s", $which);
-               $tableset->execute();
-               $tableset->store_result();
-               $tableset->bind_result($thistbid, $tab_name);
-                  
-               while ($tableset->fetch()){
-                  array_push($namarr, $tab_name);
-                     
-                     // Count total questions for this table
-                     $questionset = $mysqli->prepare("SELECT COUNT(*) FROM report_manager WHERE tbid = ?");
-                     $questionset->bind_param("i", $thistbid);
-                     $questionset->execute();
-                     $questionset->store_result();
-                     $questionset->bind_result($total_questions);
-                     $questionset->fetch();
-                     $questionset->close();
-                     
-                     array_push($resarr, $total_questions);
-                     array_push($pasarr, 0); // Simplified - no pass/fail calculation
-               }
-               $tableset->close();
-                  
-                  echo "<table class=\"table table-sm table-striped\">";
-                  echo "<thead>";
-                  echo "<tr class=\"table-primary\"><th>Table</th><th>No. Questions</th><th>Status</th></tr>";
-                  echo "</thead>";
-                  echo "<tbody>";
-                  
-                  if (empty($namarr)) {
-                     echo "<tr><td colspan='3' class='text-center text-muted'>No tables assigned to this trainee</td></tr>";
-                  } else {
-                  $qq = 0;
-                  foreach ($namarr as $tname) {
-                     echo "<tr>";
-                     echo "<td>$tname</td>";
-                     echo "<td>$resarr[$qq]</td>";
-                        echo "<td><span class=\"badge badge-info\">Active</span></td>";
-                     echo "</tr>";
-                     $qq++;
+                  $tableset = $pdo->prepare("SELECT tabs_tbl.tbid, tabs_tbl.tab_name FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid AND tabs_tbl.isvis = 1 ORDER BY tabs_tbl.sort_order");
+                  $tableset->execute([$which]);
+                  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                     $thistbid = (int)$row['tbid'];
+                     $tab_name = $row['tab_name'];
+                     array_push($namarr, $tab_name);
+                        
+                        // Count total questions for this table
+                        $questionset = $pdo->prepare("SELECT COUNT(*) FROM report_manager WHERE tbid = ?");
+                        $questionset->execute([$thistbid]);
+                        $total_questions = $questionset->fetchColumn();
+                        $questionset->closeCursor();
+                        
+                        array_push($resarr, $total_questions);
+                        array_push($pasarr, 0); // Simplified - no pass/fail calculation
                   }
-                  }
-                  
-                  echo "</tbody>";
-                  echo "</table>";
-
+                  $tableset->closeCursor();
+                     
+                     echo "<table class=\"table table-sm table-striped\">";
+                     echo "<thead>";
+                     echo "<tr class=\"table-primary\"><th>Table</th><th>No. Questions</th><th>Status</th></tr>";
+                     echo "</thead>";
+                     echo "<tbody>";
+                     
+                     if (empty($namarr)) {
+                        echo "<tr><td colspan='3' class='text-center text-muted'>No tables assigned to this trainee</td></tr>";
+                     } else {
+                        $qq = 0;
+                        foreach ($namarr as $tname) {
+                           echo "<tr>";
+                           echo "<td>$tname</td>";
+                           echo "<td>$resarr[$qq]</td>";
+                           echo "<td><span class=\"badge badge-info\">Active</span></td>";
+                           echo "</tr>";
+                           $qq++;
+                        }
+                     }
+                     
+                     echo "</tbody>";
+                     echo "</table>";
                   ?>
                </div>
             </div>
+
             <?php include 'incl/sign_off.php' ?>
          </div>
       </section>
 
    </div>
-   <?php include 'incl/adminjslite.php' ?>
+   
+   <?php include 'incl/adminjs.php' ?>
    <script>
    $(document).ready(function() {
-      $('#maintable').dataTable( {
-        "pageLength": 10
-      });
+      // Initialise DataTables only if the table exists on this page
+      if ($('#maintable').length) {
+         if ($.fn.DataTable) {
+            $('#maintable').DataTable({
+               "pageLength": 10
+            });
+         } else if ($.fn.dataTable) {
+            $('#maintable').dataTable({
+               "pageLength": 10
+            });
+         }
+      }
       
       // Password reset form validation
       $('#confirm_password').on('input', function() {
@@ -686,20 +682,20 @@ $stmt->close();
    
 <?php
 
-$tableset = $mysqli->prepare("SELECT rcid, colour FROM report_colour ");
+$tableset = $supabase_pdo->prepare("SELECT rcid, colour FROM report_colour ");
 $tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($rcid, $colour);
-while ($tableset->fetch()){
-$hex = str_replace('#', '', $colour);
+$rows = $tableset->fetchAll(PDO::FETCH_ASSOC);
+foreach ($rows as $r){
+   $rcid = $r['rcid'];
+   $colour = $r['colour'];
+   $hex = str_replace('#', '', $colour);
    $length   = strlen($hex);
    $rgbr = hexdec($length == 6 ? substr($hex, 0, 2) : ($length == 3 ? str_repeat(substr($hex, 0, 1), 2) : 0));
    $rgbg = hexdec($length == 6 ? substr($hex, 2, 2) : ($length == 3 ? str_repeat(substr($hex, 1, 1), 2) : 0));
    $rgbb = hexdec($length == 6 ? substr($hex, 4, 2) : ($length == 3 ? str_repeat(substr($hex, 2, 1), 2) : 0));
    array_push($dispcolorarr,"rgba($rgbr, $rgbg, $rgbb, 0.4)");
    array_push($dispborderarr,"rgba($rgbr, $rgbg, $rgbb, 1)");
- }
-$tableset->close();
+}
 
 // Required field for reporting is select_types.stid
 ?>

@@ -5,7 +5,11 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Manage Sections";
+
+// Set variables needed by adminjs.php
+setAdminVars(3); // Tables section
 $subtitle = "Sections";
 
 // Process ALL form submissions first, before ANY HTML output
@@ -13,7 +17,7 @@ $message = '';
 $alertType = '';
 
 // Process forms and handle redirects
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
     
     // Add new section
     if (isset($_POST['new_section'])) {
@@ -21,25 +25,24 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
         $section_description = isset($_POST['section_description']) ? $_POST['section_description'] : '';
         
         // Determine the next order position
-        $order_stmt = $mysqli->prepare("SELECT COALESCE(MAX(section_order) + 1, 1) FROM field_sections");
+        $order_stmt = $pdo->prepare("SELECT COALESCE(MAX(section_order) + 1, 1) FROM field_sections");
         $order_stmt->execute();
-        $order_stmt->bind_result($next_order);
-        $order_stmt->fetch();
-        $order_stmt->close();
+        $next_order = (int)$order_stmt->fetchColumn();
+        $order_stmt->closeCursor();
         
         if (!empty($section_name)) {
-            $insert_stmt = $mysqli->prepare("INSERT INTO field_sections (section_name, section_order, section_description) VALUES (?, ?, ?)");
-            $insert_stmt->bind_param("sis", $section_name, $next_order, $section_description);
-            $insert_stmt->execute();
+            $insert_stmt = $pdo->prepare("INSERT INTO field_sections (section_name, section_order, section_description) VALUES (?, ?, ?)");
+            $insert_stmt->execute([$section_name, $next_order, $section_description]);
             
-            if ($insert_stmt->affected_rows > 0) {
+            if ($insert_stmt->rowCount() > 0) {
                 $message = "Section added successfully!";
                 $alertType = "success";
             } else {
-                $message = "Error adding section: " . $mysqli->error;
+                $err = $pdo->errorInfo()[2] ?? 'Unknown error';
+                $message = "Error adding section: " . $err;
                 $alertType = "danger";
             }
-            $insert_stmt->close();
+            $insert_stmt->closeCursor();
         } else {
             $message = "Section name cannot be empty!";
             $alertType = "warning";
@@ -76,39 +79,36 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
         
         if (!empty($section_name) && $section_id > 0) {
             // Start a transaction to ensure data consistency
-            $mysqli->begin_transaction();
+            $pdo->beginTransaction();
             
             try {
                 // Update section details
-                $update_stmt = $mysqli->prepare("UPDATE field_sections SET section_name = ?, section_description = ? WHERE section_id = ?");
-                $update_stmt->bind_param("ssi", $section_name, $section_description, $section_id);
-                $update_stmt->execute();
+                $update_stmt = $pdo->prepare("UPDATE field_sections SET section_name = ?, section_description = ? WHERE section_id = ?");
+                $update_stmt->execute([$section_name, $section_description, $section_id]);
                 
                 // Remove existing table links
-                $delete_stmt = $mysqli->prepare("DELETE FROM section_table_link WHERE section_id = ?");
-                $delete_stmt->bind_param("i", $section_id);
-                $delete_stmt->execute();
+                $delete_stmt = $pdo->prepare("DELETE FROM section_table_link WHERE section_id = ?");
+                $delete_stmt->execute([$section_id]);
                 
                 // Insert new table links if any
                 if (!empty($filtered_ids)) {
-                    $insert_stmt = $mysqli->prepare("INSERT INTO section_table_link (section_id, tbid, display_order) VALUES (?, ?, ?)");
+                    $insert_stmt = $pdo->prepare("INSERT INTO section_table_link (section_id, tbid, display_order) VALUES (?, ?, ?)");
                     
                     foreach ($filtered_ids as $order => $table_id) {
                         $display_order = $order + 1; // Start at 1
-                        $insert_stmt->bind_param("iii", $section_id, $table_id, $display_order);
-                        $insert_stmt->execute();
+                        $insert_stmt->execute([$section_id, $table_id, $display_order]);
                     }
-                    $insert_stmt->close();
+                    $insert_stmt->closeCursor();
                 }
                 
                 // Commit the transaction
-                $mysqli->commit();
+                $pdo->commit();
                 
                 $message = "Section updated successfully!";
                 $alertType = "success";
             } catch (Exception $e) {
                 // Rollback the transaction on error
-                $mysqli->rollback();
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
                 
                 $message = "Error updating section: " . $e->getMessage();
                 $alertType = "danger";
@@ -129,33 +129,31 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
         $section_id = (int)$_GET['id'];
         
         // First check if there are any fields using this section
-        $check_stmt = $mysqli->prepare("SELECT COUNT(*) FROM select_types WHERE section_id = ?");
-        $check_stmt->bind_param("i", $section_id);
-        $check_stmt->execute();
-        $check_stmt->bind_result($field_count);
-        $check_stmt->fetch();
-        $check_stmt->close();
+        $check_stmt = $pdo->prepare("SELECT COUNT(*) FROM select_types WHERE section_id = ?");
+        $check_stmt->execute([$section_id]);
+        $field_count = (int)$check_stmt->fetchColumn();
+        $check_stmt->closeCursor();
         
         if ($field_count > 0) {
             $message = "Cannot delete: This section is used by $field_count fields. Please reassign those fields first.";
             $alertType = "warning";
         } else {
-            $delete_stmt = $mysqli->prepare("DELETE FROM field_sections WHERE section_id = ? LIMIT 1");
-            $delete_stmt->bind_param("i", $section_id);
-            $delete_stmt->execute();
+            $delete_stmt = $pdo->prepare("DELETE FROM field_sections WHERE section_id = ? LIMIT 1");
+            $delete_stmt->execute([$section_id]);
             
-            if ($delete_stmt->affected_rows > 0) {
+            if ($delete_stmt->rowCount() > 0) {
                 $message = "Section deleted successfully!";
                 $alertType = "success";
                 
                 // Reorder remaining sections
-                $mysqli->query("SET @rank = 0");
-                $mysqli->query("UPDATE field_sections SET section_order = (@rank:=@rank+1) ORDER BY section_order");
+                $pdo->query("SET @rank = 0");
+                $pdo->query("UPDATE field_sections SET section_order = (@rank:=@rank+1) ORDER BY section_order");
             } else {
-                $message = "Error deleting section: " . $mysqli->error;
+                $err = $pdo->errorInfo()[2] ?? 'Unknown error';
+                $message = "Error deleting section: " . $err;
                 $alertType = "danger";
             }
-            $delete_stmt->close();
+            $delete_stmt->closeCursor();
         }
     }
     
@@ -168,20 +166,19 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             $id = (int)$id;
             $order = (int)$order + 1; // Start at 1, not 0
             
-            $update_stmt = $mysqli->prepare("UPDATE field_sections SET section_order = ? WHERE section_id = ?");
-            $update_stmt->bind_param("ii", $order, $id);
-            $update_stmt->execute();
+            $update_stmt = $pdo->prepare("UPDATE field_sections SET section_order = ? WHERE section_id = ?");
+            $update_stmt->execute([$order, $id]);
             
-            if ($update_stmt->affected_rows < 0) {
+            if ($update_stmt->rowCount() < 0) {
                 $success = false;
             }
-            $update_stmt->close();
+            $update_stmt->closeCursor();
         }
         
         if ($success) {
             echo json_encode(['status' => 'success']);
         } else {
-            echo json_encode(['status' => 'error', 'message' => $mysqli->error]);
+            echo json_encode(['status' => 'error', 'message' => ($pdo->errorInfo()[2] ?? 'Unknown error')]);
         }
         exit;
     }
@@ -190,13 +187,11 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
     if (isset($_POST['fetch_section_categories']) && isset($_POST['section_id'])) {
         $section_id = (int)$_POST['section_id'];
         
-        $stmt = $mysqli->prepare("SELECT stid, str, single FROM select_types WHERE section_id = ? ORDER BY str ASC");
-        $stmt->bind_param("i", $section_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
+        $stmt = $pdo->prepare("SELECT stid, str, single FROM select_types WHERE section_id = ? ORDER BY str ASC");
+        $stmt->execute([$section_id]);
         
         $categories = [];
-        while ($row = $result->fetch_assoc()) {
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $typeText = 'Unknown';
             switch ((int)$row['single']) {
                 case 0: $typeText = 'Single Select'; break;
@@ -213,18 +208,16 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                 'type' => $typeText
             ];
         }
-        $stmt->close();
+        $stmt->closeCursor();
         
         // Fetch sheet names this section is assigned to
         $sheets = [];
-        $sheet_stmt = $mysqli->prepare("SELECT t.tbid, t.tab_name FROM section_table_link stl JOIN tabs_tbl t ON stl.tbid = t.tbid WHERE stl.section_id = ? ORDER BY t.sort_order ASC, t.tab_name ASC");
-        $sheet_stmt->bind_param("i", $section_id);
-        $sheet_stmt->execute();
-        $sheet_res = $sheet_stmt->get_result();
-        while ($s = $sheet_res->fetch_assoc()) {
+        $sheet_stmt = $pdo->prepare("SELECT t.tbid, t.tab_name FROM section_table_link stl JOIN tabs_tbl t ON stl.tbid = t.tbid WHERE stl.section_id = ? ORDER BY t.sort_order ASC, t.tab_name ASC");
+        $sheet_stmt->execute([$section_id]);
+        while ($s = $sheet_stmt->fetch(PDO::FETCH_ASSOC)) {
             $sheets[] = [ 'id' => (int)$s['tbid'], 'name' => $s['tab_name'] ];
         }
-        $sheet_stmt->close();
+        $sheet_stmt->closeCursor();
         
         echo json_encode(['status' => 'success', 'categories' => $categories, 'sheets' => $sheets]);
         exit;
@@ -236,31 +229,29 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
         $section_id = (int)$_GET['section_id'];
         
         // Verify the field belongs to this section
-        $check_stmt = $mysqli->prepare("SELECT str FROM select_types WHERE stid = ? AND section_id = ?");
-        $check_stmt->bind_param("ii", $field_id, $section_id);
-        $check_stmt->execute();
-        $check_stmt->store_result();
+        $check_stmt = $pdo->prepare("SELECT str FROM select_types WHERE stid = ? AND section_id = ?");
+        $check_stmt->execute([$field_id, $section_id]);
+        $row = $check_stmt->fetch(PDO::FETCH_NUM);
         
-        if ($check_stmt->num_rows > 0) {
-            $check_stmt->bind_result($field_name);
-            $check_stmt->fetch();
-            $check_stmt->close();
+        if ($row) {
+            $field_name = $row[0];
+            $check_stmt->closeCursor();
             
             // Remove the section association by setting section_id to NULL
-            $update_stmt = $mysqli->prepare("UPDATE select_types SET section_id = NULL WHERE stid = ? LIMIT 1");
-            $update_stmt->bind_param("i", $field_id);
-            $update_stmt->execute();
+            $update_stmt = $pdo->prepare("UPDATE select_types SET section_id = NULL WHERE stid = ? LIMIT 1");
+            $update_stmt->execute([$field_id]);
             
-            if ($update_stmt->affected_rows > 0) {
+            if ($update_stmt->rowCount() > 0) {
                 $message = "Field \"$field_name\" removed from section successfully.";
                 $alertType = "success";
             } else {
-                $message = "Error removing field from section: " . $mysqli->error;
+                $err = $pdo->errorInfo()[2] ?? 'Unknown error';
+                $message = "Error removing field from section: " . $err;
                 $alertType = "danger";
             }
-            $update_stmt->close();
+            $update_stmt->closeCursor();
         } else {
-            $check_stmt->close();
+            $check_stmt->closeCursor();
             $message = "Field not found in this section.";
             $alertType = "warning";
         }
@@ -361,13 +352,13 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             <div class="row">
                <div class="col-12">
                   <div class="card mb-4">
-                     <div class="card-header bg-info text-white">
+                     <div class="card-header">
                         <div class="card-title">Sections</div>
                         <div class="float-right">
                            <button class="btn btn-sm btn-light" data-toggle="modal" data-target="#newSectionModal">
                               <i class="fa fa-plus"></i> Add New Section
                            </button>
-                        </div>
+</div>
                      </div>
                      <div class="card-body">
                         <div class="table-responsive">
@@ -391,8 +382,8 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                                         fs.section_name,
                                         fs.section_description,
                                         fs.section_order,
-                                        GROUP_CONCAT(DISTINCT stl.tbid) AS table_ids,
-                                        GROUP_CONCAT(DISTINCT t.tab_name) AS table_names,
+                                        STRING_AGG(DISTINCT stl.tbid::text, ',') AS table_ids,
+                                        STRING_AGG(DISTINCT t.tab_name, ',') AS table_names,
                                         COUNT(DISTINCT stl.tbid) AS table_count,
                                         COUNT(DISTINCT st.stid) AS field_count
                                     FROM 
@@ -409,9 +400,9 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                                         fs.section_order
                                  ";
                                  
-                                 $sections_result = $mysqli->query($query);
+                                 $sections_result = $pdo->query($query);
                                  
-                                 while ($section = $sections_result->fetch_assoc()) {
+                                 while ($section = $sections_result->fetch(PDO::FETCH_ASSOC)) {
                                     $section_id = $section['section_id'];
                                     $section_name = $section['section_name'];
                                     $section_description = $section['section_description'];
@@ -448,13 +439,8 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                                  ?>
                               </tbody>
                            </table>
-                        </div>
-                        
-                     </div>
-                  </div>
-            
-                  
-            </div>
+</div>
+</div>
          </div>
       </section>
    </div>
@@ -478,15 +464,13 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                   <div class="form-group">
                      <label for="section_description">Description (Optional)</label>
                      <textarea class="form-control" id="section_description" name="section_description" rows="3"></textarea>
-                  </div>
-               </div>
+</div>
                <div class="modal-footer">
                   <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                   <button type="submit" name="new_section" class="btn btn-info">Add Section</button>
                </div>
             </form>
-         </div>
-      </div>
+</div>
    </div>
    
    <!-- Edit Section Modal -->
@@ -518,28 +502,26 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                         <?php
                         // Get all tables to populate the dropdown
                         $tables_query = "SELECT tbid, tab_name FROM tabs_tbl ORDER BY sort_order ASC";
-                        $tables_result = $mysqli->query($tables_query);
+                        $tables_result = $pdo->query($tables_query);
                         
-                        if ($tables_result && $tables_result->num_rows > 0) {
-                           while ($table = $tables_result->fetch_assoc()) {
+                        if ($tables_result) {
+                           while ($table = $tables_result->fetch(PDO::FETCH_ASSOC)) {
                               $tbid = $table['tbid'];
                               $tab_name = $table['tab_name'];
                               echo "<option value='$tbid'>" . htmlspecialchars($tab_name) . "</option>";
                            }
-                           $tables_result->free();
+                           $tables_result->closeCursor();
                         }
                         ?>
                      </select>
                      <small class="form-text text-muted">Select which sheets should display this section</small>
-                  </div>
-               </div>
+</div>
                <div class="modal-footer">
                   <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                   <button type="submit" name="edit_section" class="btn btn-info">Save Changes</button>
                </div>
             </form>
-         </div>
-      </div>
+</div>
    </div>
    
    <!-- Add Fields to Section Modal -->
@@ -563,10 +545,10 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                         <?php
                         // Pre-load all fields
                         $field_query = "SELECT stid, str, single FROM select_types ORDER BY str ASC";
-                        $field_result = $mysqli->query($field_query);
+                        $field_result = $pdo->query($field_query);
                         
-                        if ($field_result && $field_result->num_rows > 0) {
-                           while ($field = $field_result->fetch_assoc()) {
+                        if ($field_result) {
+                           while ($field = $field_result->fetch(PDO::FETCH_ASSOC)) {
                               $stid = $field['stid'];
                               $field_name = $field['str'];
                               $field_type = $field['single'];
@@ -592,28 +574,25 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                               echo '<span class="badge badge-secondary ml-2">' . $type_text . '</span>';
                               echo '</a>';
                            }
-                           $field_result->free();
+                           $field_result->closeCursor();
                         } else {
                            echo '<div class="list-group-item text-muted">No categories available</div>';
                         }
                         ?>
-                     </div>
-                  </div>
+</div>
                   
                   <div class="form-group mt-4">
                      <label>Selected Categories</label>
                      <div id="selected_fields_list" class="list-group">
                         <div class="list-group-item text-muted text-center" id="no-fields-selected">No categories selected</div>
-                     </div>
-                  </div>
+</div>
                </div>
                <div class="modal-footer">
                   <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
                   <button type="submit" name="add_fields_to_section" class="btn btn-primary">Save Changes</button>
                </div>
             </form>
-         </div>
-      </div>
+</div>
    </div>
    
    <!-- View Section Categories Modal -->
@@ -643,14 +622,11 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                      </thead>
                      <tbody></tbody>
                   </table>
-               </div>
-            </div>
+</div>
             <div class="modal-footer">
                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-            </div>
-         </div>
-      </div>
-   </div>
+</div>
+</div>
    
    <?php include 'incl/adminjs.php' ?>
    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.13.0/Sortable.min.js"></script>
@@ -666,8 +642,6 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                // Get the new order of sections
                const items = sectionsList.querySelectorAll('.section-row');
                const newOrder = Array.from(items).map(item => item.dataset.id);
-               
-               // Send the new order to the server
                $.ajax({
                   url: 'sections.php',
                   type: 'POST',
@@ -720,12 +694,6 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             }
          });
          
-         // Debug function
-         function debugSelect2() {
-            console.log("Current select2 values:", $('#edit_table_ids').val());
-            console.log("Select2 options:", $('#edit_table_ids option').length);
-            console.log("Select2 selected options:", $('#edit_table_ids option:selected').length);
-         }
 
          // Edit section button click
          $('.edit-section-btn').click(function() {
@@ -734,10 +702,6 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             const description = $(this).data('description');
             const tableIds = $(this).data('table-ids') || '';
             const tableNames = $(this).data('table-names') || '';
-            
-            console.log("Button clicked for section:", id);
-            console.log("Table IDs raw value:", tableIds);
-            console.log("Table Names:", tableNames);
             
             $('#edit_section_id').val(id);
             $('#edit_section_name').val(name);
@@ -748,11 +712,12 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                $('#edit_table_ids').select2('destroy');
             }
             
-            // Initialize Select2
+            // Initialize Select2 (ensure dropdown renders inside the modal to avoid z-index issues)
             $('#edit_table_ids').select2({
                placeholder: 'Select sheets...',
                allowClear: true,
                width: '100%',
+               dropdownParent: $('#editSectionModal'),
                templateResult: function(state) {
                   if (!state.id) { return state.text; }
                   return $(`<span>${state.text}</span>`);
@@ -763,13 +728,11 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
             let tableIdArray = [];
             if (tableIds && typeof tableIds === 'string' && tableIds.trim() !== '') {
                tableIdArray = tableIds.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
-               console.log("Parsed table IDs array:", tableIdArray);
             }
             
             // Important: Set the values in the select dropdown
             setTimeout(() => {
                $('#edit_table_ids').val(tableIdArray).trigger('change');
-               console.log("Values after setting:", $('#edit_table_ids').val());
             }, 100);
             
             $('#editSectionModal').modal('show');
@@ -779,12 +742,6 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
          $('#editSectionModal form').on('submit', function(e) {
             // Get all selected values from the dropdown
             const tableIds = $('#edit_table_ids').val();
-            console.log("Table IDs being submitted:", tableIds);
-            
-            // Make sure these values are included in the form data
-            if (!tableIds || tableIds.length === 0) {
-               console.log("No tables selected");
-            }
          });
 
          // Add fields to section functionality

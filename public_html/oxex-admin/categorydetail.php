@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Manufacturers";
+
+setAdminVars(3); // Tables section
 $subtitle = "Case Studies";
 $listurl = "categories.php";
 $listname = "Manufacturers";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -30,17 +33,19 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row
-  $stmt = $mysqli->prepare("DELETE FROM proj_cats WHERE catid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  $stmt->close();
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("DELETE FROM proj_cats WHERE catid = ? LIMIT 1");
+    $stmt->execute([$which]);
+  }
 }
 if ($delicon == "delicon" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete image ref
-  $stmt = $mysqli->prepare("UPDATE proj_cats SET cat_logo = ?, webp = ?, avif = ? WHERE catid = ?"); 
-  $stmt->bind_param("sssi", $valueblank, $valueblank, $valueblank, $which);
-  $stmt->execute();
-  $stmt->close();
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("UPDATE proj_cats SET cat_logo = ?, webp = ?, avif = ? WHERE catid = ?"); 
+    $stmt->execute([$valueblank, $valueblank, $valueblank, $which]);
+  }
 }
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  
   $which = isset($_POST['which']) ? $_POST['which'] : 0;
@@ -49,21 +54,26 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $cat_txt = isset($_POST['cat_txt']) ? $_POST['cat_txt'] : '';
   
   // Update record
-  $stmt = $mysqli->prepare("UPDATE proj_cats SET catproj = ?, cat_txt = ? WHERE catid = ? "); 
-  $stmt->bind_param("ssi", $catproj, $cat_txt, $which);
-  $stmt->execute();
-  $stmt->close();
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("UPDATE proj_cats SET catproj = ?, cat_txt = ? WHERE catid = ? "); 
+    $stmt->execute([$catproj, $cat_txt, $which]);
+  }
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT catproj, cat_txt, cat_logo FROM proj_cats WHERE catid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($catproj, $cat_txt, $cat_logo);
-$stmt->fetch();
-$stmt->close();
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $stmt = $pdo->prepare("SELECT catproj, cat_txt, cat_logo FROM proj_cats WHERE catid = ?");
+  $stmt->execute([$which]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($row) {
+    $catproj = $row['catproj'];
+    $cat_txt = $row['cat_txt'];
+    $cat_logo = $row['cat_logo'];
+  }
+}
 // whatever the record name is
   $changename = "$catproj";
 ?>
@@ -80,7 +90,8 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(3); // Tables section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -98,15 +109,13 @@ $stmt->close();
                            <div class="form-group">
                             <label class="col-form-label" for="cat_txt">Optional Text</label>
                               <textarea name="cat_txt" id="cat_txt" class="form-control summernote"><?php echo $cat_txt ?></textarea>
-                          </div>
-                        </div>
+</div>
                         
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
                </div>
                <div class="col-xl-4">
@@ -140,11 +149,8 @@ $stmt->close();
                     <div id="err"></div>
                   </div>
                   <div class="card-footer">
-                  </div>
-                </div>
-
-               </div>
-            </div>
+</div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -156,11 +162,9 @@ $stmt->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

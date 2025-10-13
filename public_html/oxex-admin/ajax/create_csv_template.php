@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Check user permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     http_response_code(403); // Forbidden
     die(json_encode(['status' => 'error', 'message' => 'Unauthorized access']));
 }
@@ -36,28 +36,26 @@ if (empty($template_name)) {
 try {
     // Insert the new template with only the columns that exist in the database
     // Based on the error message, we're removing fields that don't exist in the table
-    $insert_template = $mysqli->prepare("
+    $insert_template = $supabase_pdo->prepare("
         INSERT INTO csv_templates (
             template_name, 
             description, 
             created_by
         ) VALUES (?, ?, ?)
+        RETURNING id
     ");
     
-    $insert_template->bind_param(
-        "sss", 
+    $insert_template->execute([
         $template_name, 
         $description, 
         $adminname  // Using $adminname from the session
-    );
+    ]);
     
-    $insert_template->execute();
-    
-    if ($insert_template->affected_rows === 0) {
-        die(json_encode(['status' => 'error', 'message' => 'Failed to create template']));
+    // Fetch the newly created id (Postgres-safe)
+    $template_id = $insert_template->fetchColumn();
+    if (!$template_id) {
+        die(json_encode(['status' => 'error', 'message' => 'Failed to create template (no id returned)']));
     }
-    
-    $template_id = $mysqli->insert_id;
     
     echo json_encode([
         'status' => 'success', 
@@ -69,6 +67,4 @@ try {
     error_log("Error creating template: " . $e->getMessage());
     echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
 }
-
-$mysqli->close();
 ?> 

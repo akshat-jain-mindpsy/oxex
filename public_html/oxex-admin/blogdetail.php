@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Blog";
+
+setAdminVars(4); // Blog section
 $subtitle = "Blog";
 $listurl = "blog.php";
 $listname = "Blog";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,10 +31,8 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($delicon == "delicon" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete image ref
-  $stmt = $mysqli->prepare("UPDATE semantic_blog SET banner = ? WHERE sbid = ?"); 
-  $stmt->bind_param("si", $valueblank, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("UPDATE semantic_blog SET banner = ? WHERE sbid = ?"); 
+  $stmt->execute([$valueblank, $which]);
 }
 if ($done == "done" && ($admintype == 'AD' || $admintype == 'AM' || $admintype == 'DV')) {  
   $which = isset($_POST['which']) ? $_POST['which'] : 0;
@@ -60,51 +61,72 @@ if ($done == "done" && ($admintype == 'AD' || $admintype == 'AM' || $admintype =
   $googleDesc = isset($_POST['googleDesc']) ? $_POST['googleDesc'] : '';
   $googleKeywords = isset($_POST['googleKeywords']) ? $_POST['googleKeywords'] : '';
   $schematype = isset($_POST['schematype']) ? $_POST['schematype'] : '';
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
-    $sort_order = (int)$sort_order;
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
+    $$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order;
   
   // Update record
   // note we don't change semantic_url else SEO is hurt
-  $stmt = $mysqli->prepare("UPDATE semantic_blog SET sort_order = ?, date_modified = ?, author = ?, ptid = ?, gid = ?, blog_title = ?, blog_abstract = ?, page_txt1 = ?, page_txt2 = ?, page_txt3 = ?, bannerTitle = ?, bannerTxt = ?, justification = ?, actioncall1 = ?, buttonlink1 = ?, buttonname1 = ?, actioncall2 = ?, buttonlink2 = ?, buttonname2 = ?, metatext = ?, googleTitle = ?, googleDesc = ?, googleKeywords = ?, schematype = ? WHERE sbid = ?"); 
-  $stmt->bind_param("iisiisssssssissssssssssii", $sort_order, $today, $author, $value0, $gid, $blog_title, $blog_abstract, $page_txt1, $page_txt2, $page_txt3, $bannerTitle, $bannerTxt, $justification, $actioncall1, $buttonlink1, $buttonname1, $actioncall2, $buttonlink2, $buttonname2, $metatext, $googleTitle, $googleDesc, $googleKeywords, $value0, $which);
-  $stmt->execute();
-  $anyerror = $mysqli->errno." ".$mysqli->error;
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("UPDATE semantic_blog SET sort_order = ?, date_modified = ?, author = ?, ptid = ?, gid = ?, blog_title = ?, blog_abstract = ?, page_txt1 = ?, page_txt2 = ?, page_txt3 = ?, bannerTitle = ?, bannerTxt = ?, justification = ?, actioncall1 = ?, buttonlink1 = ?, buttonname1 = ?, actioncall2 = ?, buttonlink2 = ?, buttonname2 = ?, metatext = ?, googleTitle = ?, googleDesc = ?, googleKeywords = ?, schematype = ? WHERE sbid = ?"); 
+  $stmt->execute([$$value0 = 0; // Default value for sort_order
+$subtitle = "which]);
   
   // delete existing tags before re-adding
-  $stmt = $mysqli->prepare("DELETE FROM blog_link_tbl WHERE kbid = ? ");
-  $stmt->bind_param("i",$which);     
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("DELETE FROM blog_link_tbl WHERE kbid = ? ");
+  $stmt->execute([$which]);
   
   // update subject tag links
-  $tagstmt = $mysqli->prepare("SELECT btagid FROM blog_subject_tags");
+  $tagstmt = $supabase_pdo->prepare("SELECT btagid FROM blog_subject_tags");
   $tagstmt->execute();
-  $tagstmt->store_result();
-  $tagstmt->bind_result($btagid);
-  while ($tagstmt->fetch()){
+  while ($row = $tagstmt->fetch(PDO::FETCH_ASSOC)){
+    $btagid = (int)$row['btagid'];
     $posmarker = 'q'.$btagid;
     $clicked = isset($_POST[$posmarker]) ? $_POST[$posmarker] : '';
     if ($clicked == $btagid)  {
       // if checkbox has same value add to db
-      $insert_stmt = $mysqli->prepare("INSERT INTO blog_link_tbl (kbid, btagid) VALUES (?, ?)");
-      $insert_stmt->bind_param("ii", $which, $btagid);
-      $insert_stmt->execute();
-      $insert_stmt->close();
+      $insert_stmt = $supabase_pdo->prepare("INSERT INTO blog_link_tbl (kbid, btagid) VALUES (?, ?)");
+      $insert_stmt->execute([$which, $btagid]);
     }
   }
-  $tagstmt->close();
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT sort_order, date_published, date_modified, author, ptid, gid, blog_title, semantic_title, semantic_url, blog_abstract, page_txt1, page_txt2, page_txt3, bannerTitle, bannerTxt, justification, banner, actioncall1, buttonlink1, buttonname1, actioncall2, buttonlink2, buttonname2, metatext, googleTitle, googleDesc, googleKeywords, schematype FROM semantic_blog WHERE sbid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($sort_order, $date_published, $date_modified, $author, $ptid, $gid, $blog_title, $semantic_title, $semantic_url, $blog_abstract, $page_txt1, $page_txt2, $page_txt3, $bannerTitle, $bannerTxt, $justification, $banner, $actioncall1, $buttonlink1, $buttonname1, $actioncall2, $buttonlink2, $buttonname2, $metatext, $googleTitle, $googleDesc, $googleKeywords, $schematype);
-$stmt->fetch();
-$stmt->close();
+$stmt = $supabase_pdo->prepare("SELECT sort_order, date_published, date_modified, author, ptid, gid, blog_title, semantic_title, semantic_url, blog_abstract, page_txt1, page_txt2, page_txt3, bannerTitle, bannerTxt, justification, banner, actioncall1, buttonlink1, buttonname1, actioncall2, buttonlink2, buttonname2, metatext, googleTitle, googleDesc, googleKeywords, schematype FROM semantic_blog WHERE sbid = ?");
+$stmt->execute([$which]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+if ($row) {
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "row['sort_order'];
+  $date_published = $row['date_published'];
+  $date_modified = $row['date_modified'];
+  $author = $row['author'];
+  $ptid = (int)$row['ptid'];
+  $gid = (int)$row['gid'];
+  $blog_title = $row['blog_title'];
+  $semantic_title = $row['semantic_title'];
+  $semantic_url = $row['semantic_url'];
+  $blog_abstract = $row['blog_abstract'];
+  $page_txt1 = $row['page_txt1'];
+  $page_txt2 = $row['page_txt2'];
+  $page_txt3 = $row['page_txt3'];
+  $bannerTitle = $row['bannerTitle'];
+  $bannerTxt = $row['bannerTxt'];
+  $justification = (int)$row['justification'];
+  $banner = $row['banner'];
+  $actioncall1 = $row['actioncall1'];
+  $buttonlink1 = $row['buttonlink1'];
+  $buttonname1 = $row['buttonname1'];
+  $actioncall2 = $row['actioncall2'];
+  $buttonlink2 = $row['buttonlink2'];
+  $buttonname2 = $row['buttonname2'];
+  $metatext = $row['metatext'];
+  $googleTitle = $row['googleTitle'];
+  $googleDesc = $row['googleDesc'];
+  $googleKeywords = $row['googleKeywords'];
+  $schematype = (int)$row['schematype'];
+}
   $date_published = strtotime($date_published);
   $date_modified = strtotime($date_modified);
 // whatever the record name is
@@ -123,7 +145,8 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(4); // Blog section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -164,12 +187,12 @@ $stmt->close();
                         <div class="form-group">
                           <label class="col-form-label" for="sort_order"> Sort order</label>
                           <div class="col-lg-3">
-                            <input type="number" class="form-control" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>">
+                            <input type="number" class="form-control" id="$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order ?>">
                           </div>
                           <div class="col-lg-12">
                             <p><small>(Enter 0 if post is not to be immediately displayed)</small></p>
-                          </div>
-                        </div>
+</div>
                         <h6>SEO</h6><hr>
                         
                         <div class="form-group">
@@ -225,40 +248,34 @@ $stmt->close();
                               <?PHP
                               $checked = '';
                               // Loop through tags 
-                              $loopstmt = $mysqli->prepare("SELECT btagid, btag FROM blog_subject_tags");
+                              $loopstmt = $supabase_pdo->prepare("SELECT btagid, btag FROM blog_subject_tags");
                               $loopstmt->execute();
-                              $loopstmt->store_result();
-                              $loopstmt->bind_result($btagid, $btag);
-                              while ($loopstmt->fetch()) {  
+                              while ($row = $loopstmt->fetch(PDO::FETCH_ASSOC)) {  
+                                $btagid = (int)$row['btagid'];
+                                $btag = $row['btag'];
                                 
                                 // see if in links table for this record
-                                $whatlink = $mysqli->prepare("SELECT blid FROM blog_link_tbl WHERE kbid = ? AND btagid = ? ");
-                                $whatlink->bind_param("ii", $which, $btagid);
-                                $whatlink->execute(); 
-                                $whatlink->bind_result($blid);
-                                $whatlink->fetch();
-                                if ($blid > 0) {
+                                $whatlink = $supabase_pdo->prepare("SELECT blid FROM blog_link_tbl WHERE kbid = ? AND btagid = ? ");
+                                $whatlink->execute([$which, $btagid]); 
+                                $linkrow = $whatlink->fetch(PDO::FETCH_ASSOC);
+                                if ($linkrow && $linkrow['blid'] > 0) {
                                   $checked = " checked=\"checked\" ";
                                 }
-                                $whatlink->close();
                                 echo "<label class=\"checkbox-inline mr-3\"><input name=\"q$btagid\" type=\"checkbox\" id=\"$btagid\" value=\"$btagid\" $checked/> $btag</label>\r";
-                                $blid = 0;
                                 $checked = '';
                               }
-                              $loopstmt->close();
                               ?>
                           </div>
                           <div class="form-group">
                               <label class="col-form-label" for="sort_order">Sort order</label>
-                              <input class="form-control" type="number" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>" min="0" max="999"><span class="form-text">Sort order after date sorting. Enter 0 if not to be displayed.</span>
-                           </div>
-                        </div>
+                              <input class="form-control" type="number" id="$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order ?>" min="0" max="999"><span class="form-text">Sort order after date sorting. Enter 0 if not to be displayed.</span>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
                </div>
                <div class="col-xl-4">
@@ -292,10 +309,8 @@ $stmt->close();
                     <div id="err"></div>
                   </div>
                   <div class="card-footer">
-                  </div>
-                </div>
-               </div>
-            </div>
+</div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -307,11 +322,9 @@ $stmt->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

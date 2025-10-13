@@ -6,6 +6,7 @@ sec_session_start();
 check_session_timeout();
 
 include 'incl/sess.php';
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
 $valueyearstart = date('Y').'0101'; # YYYYMMDD format
 $valueyearend = date('Y').'1231';
 // set up dates for stats panel js array data
@@ -30,7 +31,7 @@ error_log("About to start HTML output");
     <?php include 'incl/meta.php' ?>
   </head>
   <?php
-    if (login_check($mysqli) != false) {
+    if (login_check($pdo) != false) {
       // logged in only!
       error_log("CHECKPOINT 2: Login check passed, starting body");
     ?>
@@ -68,35 +69,33 @@ error_log("About to start HTML output");
           <div class="col-xs-12 col-sm-8 offset-sm-2">
             
             <?php
-            // Ensure database connection is alive
-            $mysqli = ensureConnection($mysqli);
-            if (!$mysqli) {
-                error_log("FATAL: Could not establish database connection in account.php!");
-                die("Database connection failed");
-            }
-            
+            // Using Supabase (PDO) exclusively
+
             // list the coloured task labels
-            $tableset = $mysqli->prepare("SELECT dtid, task, colour, textcolor FROM tasks ");
-            $tableset->execute();
-            $tableset->store_result();
-            $tableset->bind_result($dtid, $task, $colour, $textcolor);
-            while ($tableset->fetch()){
-              // how many this year for this trainee
-              $numtasks = 0;
-              $vids = $mysqli->prepare("SELECT tsid FROM timesheet WHERE trainkey = ? AND dtid = ? AND taskdate >= ? AND taskdate <= ?");
-              $vids->bind_param("siii", $trainkey, $dtid, $valueyearstart, $valueyearend);
-              $vids->execute();
-              $vids->store_result();
-              $numtasks = $vids->num_rows;
-              $vids->close();
-              if ($textcolor == 1) {
-                $task = "<span class=\"text-white\">$task</span>";
-              } else {
-                $task = "<span class=\"text-dark\">$task</span>";
-              }
-              echo "<div id=\"d$dtid\" class=\"rounded px-3 py-2 mr-1 mb-2\" style=\"background-color:#$colour\">$task <span class=\"badge badge-dark float-right mr-2\" id=\"taskqty$dtid\">$numtasks</span></div>";
+            if ($usingSupabase) {
+                try {
+                    $stmtTasks = $supabase_pdo->query('select dtid, task, colour, textcolor from tasks');
+                    while ($rowTask = $stmtTasks->fetch(PDO::FETCH_ASSOC)) {
+                        $dtid = (int)$rowTask['dtid'];
+                        $task = $rowTask['task'];
+                        $colour = $rowTask['colour'];
+                        $textcolor = (int)$rowTask['textcolor'];
+                        // count tasks for trainee within year
+                        $stmtCount = $supabase_pdo->prepare('select count(*) as c from timesheet where trainkey = ? and dtid = ? and taskdate >= ? and taskdate <= ?');
+                        $stmtCount->execute([$trainkey, $dtid, $valueyearstart, $valueyearend]);
+                        $countRow = $stmtCount->fetch(PDO::FETCH_ASSOC);
+                        $numtasks = (int)($countRow['c'] ?? 0);
+                        if ($textcolor == 1) {
+                            $task = "<span class=\"text-white\">$task</span>";
+                        } else {
+                            $task = "<span class=\"text-dark\">$task</span>";
+                        }
+                        echo "<div id=\"d$dtid\" class=\"rounded px-3 py-2 mr-1 mb-2\" style=\"background-color:#$colour\">$task <span class=\"badge badge-dark float-right mr-2\" id=\"taskqty$dtid\">$numtasks</span></div>";
+                    }
+                } catch (Throwable $e) {
+                    error_log('Supabase tasks section failed: ' . $e->getMessage());
+                }
             }
-            $tableset->close();
             error_log("CHECKPOINT 3: Task labels section completed");
             ?>
           </div>
@@ -122,38 +121,56 @@ error_log("About to start HTML output");
              // Create divs for graphs from report manager
              // All have IDs that align with equivalent javascript
              // first loop through Tables (that are agreed for thsi Trainee)
-             $tableset = $mysqli->prepare("SELECT tabs_tbl.tbid, tabs_tbl.tab_name FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid AND tabs_tbl.isvis = 1 ORDER BY tabs_tbl.sort_order");
-             $tableset->bind_param("s", $trainkey);
-             $tableset->execute();
-             $tableset->store_result();
-             $tableset->bind_result($thistbid, $tab_name);
-             error_log("CHECKPOINT 5: Starting tables loop, found " . $tableset->num_rows . " tables");
+            if ($usingSupabase) {
+                $tables = [];
+                $stmtTabs = $supabase_pdo->prepare('select t.tbid, t.tab_name from tabs_tbl t join trainee_tab_link l on t.tbid = l.tbid where l.trainkey = ? and t.isvis = 1 order by t.sort_order');
+                $stmtTabs->execute([$trainkey]);
+                while ($r = $stmtTabs->fetch(PDO::FETCH_ASSOC)) { $tables[] = $r; }
+                error_log("CHECKPOINT 5: Starting tables loop, found " . count($tables) . " tables");
+            } else {
+                $tableset = $pdo->prepare("SELECT tabs_tbl.tbid, tabs_tbl.tab_name FROM tabs_tbl, trainee_tab_link WHERE trainee_tab_link.trainkey = ? AND tabs_tbl.tbid = trainee_tab_link.tbid AND tabs_tbl.isvis = 1 ORDER BY tabs_tbl.sort_order");
+                $tableset->execute([$trainkey]);
+                $tables = [];
+                while ($r = $tableset->fetch(PDO::FETCH_ASSOC)) { $tables[] = $r; }
+                error_log("CHECKPOINT 5: Starting tables loop, found " . count($tables) . " tables");
+            }
              
              // OPTIMIZATION: Pre-collect all trainee_log data for this trainee and date range
              // This replaces hundreds of individual queries with a single efficient query
-             $allTraineeData = array();
-             $traineeDataQuery = $mysqli->prepare("
-                SELECT tlogid, logkey, stid, pid, select_val, date_added 
-                FROM trainee_log 
-                WHERE trainkey = ? AND date_added >= ? AND date_added <= ?
-                ORDER BY stid, pid
-             ");
-             $traineeDataQuery->bind_param("sii", $trainkey, $datestart, $dateend);
-             $traineeDataQuery->execute();
-             $traineeDataQuery->store_result();
-             $traineeDataQuery->bind_result($tlogid, $logkey, $stid, $pid, $select_val, $date_added);
-             
-             while ($traineeDataQuery->fetch()) {
-                $allTraineeData[] = array(
-                   'tlogid' => $tlogid,
-                   'logkey' => $logkey,
-                   'stid' => $stid,
-                   'pid' => $pid,
-                   'select_val' => $select_val,
-                   'date_added' => $date_added
-                );
-             }
-             $traineeDataQuery->close();
+            $allTraineeData = array();
+            if ($usingSupabase) {
+                $q = $supabase_pdo->prepare('select tlogid, logkey, stid, pid, select_val, date_added from trainee_log where trainkey = ? and date_added >= ? and date_added <= ? order by stid, pid');
+                $q->execute([$trainkey, $datestart, $dateend]);
+                while ($r = $q->fetch(PDO::FETCH_ASSOC)) {
+                    $allTraineeData[] = array(
+                        'tlogid' => $r['tlogid'],
+                        'logkey' => $r['logkey'],
+                        'stid' => (int)$r['stid'],
+                        'pid' => (int)$r['pid'],
+                        'select_val' => $r['select_val'],
+                        'date_added' => $r['date_added'],
+                    );
+                }
+            } else {
+                $traineeDataQuery = $pdo->prepare("
+                   SELECT tlogid, logkey, stid, pid, select_val, date_added 
+                   FROM trainee_log 
+                   WHERE trainkey = ? AND date_added >= ? AND date_added <= ?
+                   ORDER BY stid, pid
+                ");
+                $traineeDataQuery->execute([$trainkey, $datestart, $dateend]);
+                while ($r = $traineeDataQuery->fetch(PDO::FETCH_ASSOC)) {
+                   $allTraineeData[] = array(
+                      'tlogid' => $r['tlogid'],
+                      'logkey' => $r['logkey'],
+                      'stid' => $r['stid'],
+                      'pid' => $r['pid'],
+                      'select_val' => $r['select_val'],
+                      'date_added' => $r['date_added']
+                   );
+                }
+                $traineeDataQuery->closeCursor();
+            }
              
              // Create lookup arrays for fast access
              $traineeDataByStidPid = array();
@@ -172,157 +189,91 @@ error_log("About to start HTML output");
                 $traineeDataByLogkey[$data['logkey']][] = $data;
              }
              
-             while ($tableset->fetch()){
+            if ($usingSupabase) {
+            foreach ($tables as $t) { $thistbid = (int)$t['tbid']; $tab_name = $t['tab_name'];
+            
                 array_push($namarr, $tab_name);
-
-                $reportset = $mysqli->prepare("SELECT rmid, report_title, valtype, situation, stid FROM report_manager WHERE tbid = ? ORDER BY sort_order");
-                $reportset->bind_param("i", $thistbid);
-                $reportset->execute();
-                $reportset->store_result();
-                $reportset->bind_result($rmid, $report_title, $valtype, $situation, $stid);
-                while ($reportset->fetch()){
-                   $allreports++; # count No. of reports
-                   if ($allreports % 10 == 0) {
-                      error_log("CHECKPOINT 6: Processed " . $allreports . " reports total, currently on table " . count($namarr) . " (tbid: " . $thistbid . ")");
-                   }
-
-// START OPTIMIZED data collect
-
-                   $ansarr = array();
-                   $valarr = array();
-                   $valBarr = array();
-                   
-                   // look at trainee's data
-                   if ($valtype == 0) { # Exact values
-                      error_log("CHECKPOINT 7: About to process valtype 0 for report " . $allreports . " (rmid: " . $rmid . ")");
-                      
-                      // Get report data requirements
-                      $dataset = $mysqli->prepare("SELECT select_gen.select_val, report_data.valuea FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
-                      $dataset->bind_param("i", $rmid); 
-                      $dataset->execute();
-                      $dataset->store_result();
-                      $dataset->bind_result($select_val, $valuea);
-                      while ($dataset->fetch()){
-                         array_push($valarr, $valuea); # the id's to look for in Trainee's data
-                      }
-                      $dataset->close();
-                      
-                      error_log("CHECKPOINT 8: About to start foreach loop for valtype 0, rmid: " . $rmid . ", valarr count: " . count($valarr));
-                      
-                      // Use pre-collected data instead of individual queries
-                      foreach ($valarr as $valueA) {
-                         $key = $stid . '_' . $valueA;
-                         $count = isset($traineeDataByStidPid[$key]) ? count($traineeDataByStidPid[$key]) : 0;
-                         array_push($ansarr, $count);
-                      }
-                      
-                      error_log("CHECKPOINT 9: Completed foreach loop for valtype 0, rmid: " . $rmid . ", ansarr count: " . count($ansarr));
-                      
-                   }
-                   if ($valtype == 1) { #range of values
-                      $dataset = $mysqli->prepare("SELECT valuea, valueb FROM report_data WHERE rmid = ? ORDER BY rdid");
-                      $dataset->bind_param("i", $rmid); 
-                      $dataset->execute();
-                      $dataset->store_result();
-                      $dataset->bind_result($valuea, $valueb);
-                      while ($dataset->fetch()){
-                         $select_val = "$valuea - $valueb";
-                         array_push($valarr, $valuea); # the 'from' value to search data
-                         array_push($valBarr, $valueb); # the 'to' value to search data
-                      }
-                      $dataset->close();
-                      
-                      // Use pre-collected data for range queries
-                      $x = 0;
-                      foreach ($valarr as $valueA) {
-                         $valueB = $valBarr[$x];
-                         $count = 0;
-                         
-                         // Count records in range using pre-collected data
-                         foreach ($allTraineeData as $data) {
-                            if ($data['stid'] == $stid && 
-                                $data['select_val'] >= $valueA && 
-                                $data['select_val'] <= $valueB) {
-                               $count++;
+                $reportRows = [];
+                $reportset = $supabase_pdo->prepare('select rmid, report_title, valtype, situation, stid from report_manager where tbid = ? order by sort_order');
+                $reportset->execute([$thistbid]);
+                while ($rr = $reportset->fetch(PDO::FETCH_ASSOC)) { $reportRows[] = $rr; }
+                foreach ($reportRows as $rr) {
+                    $rmid = (int)$rr['rmid'];
+                    $report_title = $rr['report_title'];
+                    $valtype = (int)$rr['valtype'];
+                    $situation = $rr['situation'];
+                    $stid = (int)$rr['stid'];
+                    $allreports++;
+                    if ($allreports % 10 == 0) {
+                        error_log("CHECKPOINT 6: Processed " . $allreports . " reports total, currently on table " . count($namarr) . " (tbid: " . $thistbid . ")");
+                    }
+                    $ansarr = array();
+                    $valarr = array();
+                    $valBarr = array();
+                    if ($valtype == 0) {
+                        $dataset = $supabase_pdo->prepare('select s.select_val, d.valuea from report_data d join select_gen s on s.pid = d.valuea where d.rmid = ? order by d.rdid');
+                        $dataset->execute([$rmid]);
+                        while ($r = $dataset->fetch(PDO::FETCH_ASSOC)) { $valarr[] = $r['valuea']; }
+                        foreach ($valarr as $valueA) {
+                            $key = $stid . '_' . $valueA;
+                            $count = isset($traineeDataByStidPid[$key]) ? count($traineeDataByStidPid[$key]) : 0;
+                            array_push($ansarr, $count);
+                        }
+                    }
+                    if ($valtype == 1) {
+                        $dataset = $supabase_pdo->prepare('select valuea, valueb from report_data where rmid = ? order by rdid');
+                        $dataset->execute([$rmid]);
+                        while ($r = $dataset->fetch(PDO::FETCH_ASSOC)) { $valarr[] = (int)$r['valuea']; $valBarr[] = (int)$r['valueb']; }
+                        $x = 0;
+                        foreach ($valarr as $valueA) {
+                            $valueB = $valBarr[$x];
+                            $count = 0;
+                            foreach ($allTraineeData as $data) {
+                                if ($data['stid'] == $stid && $data['select_val'] >= $valueA && $data['select_val'] <= $valueB) {
+                                    $count++;
+                                }
                             }
-                         }
-                         
-                         array_push($ansarr, $count);
-                         $x++;
-                      }
-                   }
-                   if ($valtype == 2) { # count of hours
-                      $value60 = 60;
-                      $dataset = $mysqli->prepare("SELECT select_gen.select_val, report_data.valuea, report_data.valueb FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
-                      $dataset->bind_param("i", $rmid); 
-                      $dataset->execute();
-                      $dataset->store_result();
-                      $dataset->bind_result($select_val, $valuea, $valueb);
-                      while ($dataset->fetch()){
-                         $valuea = intval($valuea);
-                         array_push($valarr, $valuea); # the stid's to look for in Trainee's data
-                      }
-                      $dataset->close();
-
-                      // Calculate hours using pre-collected data
-                      $tothrs = 0;
-                      foreach ($valarr as $valueA) {
-                         $hours = 0;
-                         
-                         // Find matching logkeys for this stid/pid combination
-                         $key = $stid . '_' . $valueA;
-                         if (isset($traineeDataByStidPid[$key])) {
-                            foreach ($traineeDataByStidPid[$key] as $data) {
-                               $logkey = $data['logkey'];
-                               
-                               // Find hours for this logkey (stid = 60)
-                               if (isset($traineeDataByLogkey[$logkey])) {
-                                  foreach ($traineeDataByLogkey[$logkey] as $logData) {
-                                     if ($logData['stid'] == $value60) {
-                                        $hours = $logData['select_val'];
-                                        break;
-                                     }
-                                  }
-                               }
-                               
-                               // Convert HH:mm format to hours
-                               if ($hours > 0) {
-                                  $time = explode(':', $hours);
-                                  $minutes = (intval($time[0]) * 60.0 + intval($time[1]) * 1.0);
-                                  $hours = $minutes / 60;
-                                  $tothrs = $tothrs + $hours;
-                               }
+                            array_push($ansarr, $count);
+                            $x++;
+                        }
+                    }
+                    if ($valtype == 2) {
+                        $dataset = $supabase_pdo->prepare('select s.select_val, d.valuea, d.valueb from report_data d join select_gen s on s.pid = d.valuea where d.rmid = ? order by d.rdid');
+                        $dataset->execute([$rmid]);
+                        while ($r = $dataset->fetch(PDO::FETCH_ASSOC)) { $valarr[] = (int)$r['valuea']; }
+                        $tothrs = 0;
+                        $value60 = 60;
+                        foreach ($valarr as $valueA) {
+                            $hours = 0;
+                            $key = $stid . '_' . $valueA;
+                            if (isset($traineeDataByStidPid[$key])) {
+                                foreach ($traineeDataByStidPid[$key] as $data) {
+                                    $logkey = $data['logkey'];
+                                    if (isset($traineeDataByLogkey[$logkey])) {
+                                        foreach ($traineeDataByLogkey[$logkey] as $logData) {
+                                            if ($logData['stid'] == $value60) { $hours = $logData['select_val']; break; }
+                                        }
+                                    }
+                                    if ($hours > 0) {
+                                        $time = explode(':', $hours);
+                                        $minutes = (intval($time[0]) * 60.0 + intval($time[1]) * 1.0);
+                                        $hours = $minutes / 60;
+                                        $tothrs = $tothrs + $hours;
+                                    }
+                                }
                             }
-                         }
-                         
-                         array_push($ansarr, $tothrs);
-                      }
-                   }
-
-                   $howmanyvals = count($valarr); # how many values expected
-                   
-// END OPTIMIZED data collect
-
-
-
-// START pass/fail
-                // $passtext shows pass/fail/no pass requirement
-                   
-                   // $situation shows requirements for 'pass'
-                   include 'oxex-admin/incl/situations.php';
-// END pass/fail
-
-                   
+                            array_push($ansarr, $tothrs);
+                        }
+                    }
+                    include 'oxex-admin/incl/situations.php';
                 }
-                $reportset->close();
                 $prevtabname = $tab_name;
-                
-                array_push($resarr, $allreports); # how many for this table
-                array_push($pasarr, $allpass); # how many for this table
+                array_push($resarr, $allreports);
+                array_push($pasarr, $allpass);
                 $allpass = 0;
                 $allreports = 0;
-             }
-             $tableset->close();
+            }
+            }
              ?>
              <h2 class="bg_nhsuk-blue text-white p-2">Statistics (<?php echo $dispyear ?>)</h2>
                   <?php
@@ -383,28 +334,44 @@ error_log("About to start HTML output");
                       
                       <?php
                       // Check if csv_templates table exists
-                      $template_table_exists = false;
-                      $check_table = $mysqli->query("SHOW TABLES LIKE 'csv_templates'");
-                      if ($check_table && $check_table->num_rows > 0) {
-                          $template_table_exists = true;
-                          
-                          // Get available templates
-                          $templates_query = "SELECT id, template_name, description FROM csv_templates ORDER BY template_name";
-                          $templates_result = $mysqli->query($templates_query);
-                          
-                          if ($templates_result && $templates_result->num_rows > 0) {
-                              // Add a divider if templates exist
-                              echo '<div class="dropdown-divider"></div>';
-                              echo '<h6 class="dropdown-header">Custom Templates</h6>';
-                              
-                              // List all templates as dropdown items
-                              while ($template = $templates_result->fetch_assoc()) {
-                                  $template_name = htmlspecialchars($template['template_name']);
-                                  $description = htmlspecialchars($template['description']);
-                                  $template_id = $template['id'];
-                                  
-                                  echo "<a class=\"dropdown-item csv-template-link\" href=\"#\" data-template-id=\"{$template_id}\" 
-                                          title=\"{$description}\" data-toggle=\"modal\" data-target=\"#csvDateModal\">{$template_name}</a>";
+                      if ($usingSupabase) {
+                          try {
+                              $existsStmt = $supabase_pdo->prepare("select 1 from information_schema.tables where table_name = 'csv_templates' limit 1");
+                              $existsStmt->execute();
+                              $exists = (bool)$existsStmt->fetch(PDO::FETCH_NUM);
+                              if ($exists) {
+                                  $templates_result = $supabase_pdo->query('select id, template_name, description from csv_templates order by template_name');
+                                  $rows = $templates_result->fetchAll(PDO::FETCH_ASSOC);
+                                  if ($rows) {
+                                      echo '<div class="dropdown-divider"></div>';
+                                      echo '<h6 class="dropdown-header">Custom Templates</h6>';
+                                      foreach ($rows as $template) {
+                                          $template_name = htmlspecialchars($template['template_name']);
+                                          $description = htmlspecialchars($template['description']);
+                                          $template_id = $template['id'];
+                                          echo "<a class=\"dropdown-item csv-template-link\" href=\"#\" data-template-id=\"{$template_id}\" title=\"{$description}\" data-toggle=\"modal\" data-target=\"#csvDateModal\">{$template_name}</a>";
+                                      }
+                                  }
+                              }
+                          } catch (Throwable $e) {
+                              error_log('Supabase csv templates section failed: ' . $e->getMessage());
+                          }
+                      } else {
+                          $template_table_exists = false;
+                          $check_table = $pdo->query("SHOW TABLES LIKE 'csv_templates'");
+                          if ($check_table && $check_table->rowCount() > 0) {
+                              $template_table_exists = true;
+                              $templates_query = "SELECT id, template_name, description FROM csv_templates ORDER BY template_name";
+                              $templates_result = $pdo->query($templates_query);
+                              if ($templates_result && $templates_result->rowCount() > 0) {
+                                  echo '<div class="dropdown-divider"></div>';
+                                  echo '<h6 class="dropdown-header">Custom Templates</h6>';
+                                  while ($template = $templates_result->fetch(PDO::FETCH_ASSOC)) {
+                                      $template_name = htmlspecialchars($template['template_name']);
+                                      $description = htmlspecialchars($template['description']);
+                                      $template_id = $template['id'];
+                                      echo "<a class=\"dropdown-item csv-template-link\" href=\"#\" data-template-id=\"{$template_id}\" title=\"{$description}\" data-toggle=\"modal\" data-target=\"#csvDateModal\">{$template_name}</a>";
+                                  }
                               }
                           }
                       }
@@ -433,43 +400,34 @@ error_log("About to start HTML output");
             <div class="card-body">
                <?php
                // list supervisor sign-offs
-               $tableset = $mysqli->prepare("SELECT trid, who_by, super_pass, super_txt, date_added, date_modified, tbid FROM trainee_report_ok WHERE trainkey = ? ");
-               $tableset->bind_param("s", $trainkey);
-               $tableset->execute();
-               $tableset->store_result();
-               $tableset->bind_result($trid, $who_notes, $super_pass, $super_txt, $date_added, $date_modified, $tbid);
-               while ($tableset->fetch()){
-                  $date_added = strtotime($date_added);
-                  $date_modified = strtotime($date_modified);
-                  // who?
-                  $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-                  $stmt->bind_param("s", $who_notes);
-                  $stmt->execute();
-                  $stmt->store_result();
-                  $stmt->bind_result($supername);
-                  $stmt->fetch();
-                  $stmt->close();
-                  // which competency
-                  $stmt = $mysqli->prepare("SELECT tab_name FROM tabs_tbl WHERE tbid = ?");
-                  $stmt->bind_param("s", $super_pass);
-                  $stmt->execute();
-                  $stmt->store_result();
-                  $stmt->bind_result($tab_name);
-                  $stmt->fetch();
-                  $stmt->close();
-                  echo "<p><em>Created on ".date("D jS M Y", $date_added). " and last modified on ".date("D jS M Y", $date_modified)." by $supername</em></p>";
-                  
-                     echo "<p><strong>$tab_name Competency Passed</strong></p>";
-                     echo "<a href=\"pdftest.php?trainee=$trainkey&amp;trid=$trid\" class=\"btn btn-nhs\">View PDF</a>";
-                  
-                  if ($super_txt != '') {
-                     echo "<p><small>$super_txt</small></p>";
+              if ($usingSupabase) {
+                  $notes = $supabase_pdo->prepare('select trid, who_by, super_pass, super_txt, date_added, date_modified, tbid from trainee_report_ok where trainkey = ?');
+                  $notes->execute([$trainkey]);
+                  $rows = $notes->fetchAll(PDO::FETCH_ASSOC);
+                  foreach ($rows as $row) {
+                      $trid = $row['trid'];
+                      $who_notes = $row['who_by'];
+                      $super_pass = $row['super_pass'];
+                      $super_txt = $row['super_txt'];
+                      $date_added = strtotime($row['date_added']);
+                      $date_modified = strtotime($row['date_modified']);
+                      $stmt = $supabase_pdo->prepare('select realname from who_there where usrkey = ? limit 1');
+                      $stmt->execute([$who_notes]);
+                      $supername = ($tmp = $stmt->fetch(PDO::FETCH_ASSOC)) ? $tmp['realname'] : '';
+                      $stmt = $supabase_pdo->prepare('select tab_name from tabs_tbl where tbid = ? limit 1');
+                      $stmt->execute([$super_pass]);
+                      $tab_name = ($tmp = $stmt->fetch(PDO::FETCH_ASSOC)) ? $tmp['tab_name'] : '';
+                      echo "<p><em>Created on ".date("D jS M Y", $date_added). " and last modified on ".date("D jS M Y", $date_modified)." by $supername</em></p>";
+                      echo "<p><strong>$tab_name Competency Passed</strong></p>";
+                      echo "<a href=\"pdftest.php?trainee=$trainkey&amp;trid=$trid\" class=\"btn btn-nhs\">View PDF</a>";
+                      if ($super_txt != '') {
+                          echo "<p><small>$super_txt</small></p>";
+                      }
+                      echo "<hr>";
                   }
-                  echo "<hr>";
-               }
-               error_log("CHECKPOINT 10: Tables loop completed. Processed " . count($namarr) . " tables and " . $allreports . " reports");
-               $numnotes = $tableset->num_rows;
-               $tableset->close();
+                  error_log("CHECKPOINT 10: Tables loop completed. Processed " . count($namarr) . " tables and " . $allreports . " reports");
+                  $numnotes = is_array($rows) ? count($rows) : 0;
+              }
                if ($numnotes == 0) {
                   echo "<p>No notes currently</p>";
                }
@@ -485,7 +443,7 @@ error_log("About to start HTML output");
     </div>
     <?php include 'incl/footer.php' ?>
     <?php
-    if (login_check($mysqli) != false) {
+    if (login_check($pdo) != false) {
       include 'incl/glossary.php';
     }
     ?>

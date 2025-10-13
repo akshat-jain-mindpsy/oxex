@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Composite Searches";
+
+setAdminVars(3); // Tables section
 $subtitle = "Searches";
 $listurl = "composite.php";
 $listname = "Searches";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -20,6 +23,9 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
    <?php include 'incl/admincss.php' ?>
    <style>
       .draggable {cursor: grabbing;}
+      .drag-handle {cursor: grab; margin-right: 8px; color: #856404;}
+      .sortable-item {display: flex; align-items: center; justify-content: space-between;}
+      .order-badge {min-width: 2rem; text-align: center;}
    </style>
 </head>
 <?php 
@@ -37,47 +43,55 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
    $csname = isset($_POST['csname']) ? $_POST['csname'] : '';
    $pid1 = isset($_POST['pid1']) ? $_POST['pid1'] : 0;
    $pid2 = isset($_POST['pid2']) ? $_POST['pid2'] : 0;
-   $pid3 = isset($_POST['pid3']) ? $_POST['pid3'] : 0;
-   $target = isset($_POST['target']) ? $_POST['target'] : 0;
-   $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
-   $stmt = $mysqli->prepare("SELECT stid FROM select_gen WHERE pid = ?");
-   $stmt->bind_param("i", $pid1);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($stid1);
-   $stmt->fetch();
-   $stmt->close();
-   $stmt = $mysqli->prepare("SELECT stid FROM select_gen WHERE pid = ?");
-   $stmt->bind_param("i", $pid2);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($stid2);
-   $stmt->fetch();
-   $stmt->close();
-   $stmt = $mysqli->prepare("SELECT stid FROM select_gen WHERE pid = ?");
-   $stmt->bind_param("i", $pid3);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($stid3);
-   $stmt->fetch();
-   $stmt->close();
+  $pid3 = isset($_POST['pid3']) ? $_POST['pid3'] : 0;
+  $target = isset($_POST['target']) ? $_POST['target'] : 0;
+  $sort_order = isset($_POST['sort_order']) ? (int)$_POST['sort_order'] : 0;
+   
+   $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+   if (!$pdo) {
+     echo "<p>Error: No database connection available.</p>";
+     exit();
+   }
+   
+   $stmt = $pdo->prepare("SELECT stid FROM select_gen WHERE pid = ?");
+   $stmt->execute([$pid1]);
+   $stid1 = $stmt->fetchColumn();
+   
+   $stmt = $pdo->prepare("SELECT stid FROM select_gen WHERE pid = ?");
+   $stmt->execute([$pid2]);
+   $stid2 = $stmt->fetchColumn();
+   
+   $stmt = $pdo->prepare("SELECT stid FROM select_gen WHERE pid = ?");
+   $stmt->execute([$pid3]);
+   $stid3 = $stmt->fetchColumn();
   
   // Update record
-  $stmt = $mysqli->prepare("UPDATE compositesearch SET csname = ?, stid1 = ?, pid1 = ?, stid2 = ?, pid2 = ?, stid3 = ?, pid3 = ?, sort_order = ?, target = ?, who_by = ?, date_modified = ? WHERE csid = ? "); 
-  $stmt->bind_param("siiiiiiiisii", $csname, $stid1, $pid1, $stid2, $pid2, $stid3, $pid3, $sort_order, $target, $usrkey, $today, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $pdo->prepare("UPDATE compositesearch SET csname = ?, stid1 = ?, pid1 = ?, stid2 = ?, pid2 = ?, stid3 = ?, pid3 = ?, sort_order = ?, target = ?, who_by = ?, date_modified = ? WHERE csid = ? "); 
+  $stmt->execute([$csname, $stid1, $pid1, $stid2, $pid2, $stid3, $pid3, $sort_order, $target, $usrkey, $today, $which]);
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT csname, stid1, pid1, stid2, pid2, stid3, pid3, sort_order, target, who_by, date_added, date_modified FROM compositesearch WHERE csid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($csname, $stid1, $pid1, $stid2, $pid2, $stid3, $pid3, $sort_order, $target, $usrkey, $date_added, $date_modified);
-$stmt->fetch();
-$stmt->close();
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $stmt = $pdo->prepare("SELECT csname, stid1, pid1, stid2, pid2, stid3, pid3, sort_order, target, who_by, date_added, date_modified FROM compositesearch WHERE csid = ?");
+  $stmt->execute([$which]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($row) {
+    $csname = $row['csname'];
+    $stid1 = $row['stid1'];
+    $pid1 = $row['pid1'];
+    $stid2 = $row['stid2'];
+    $pid2 = $row['pid2'];
+    $stid3 = $row['stid3'];
+    $pid3 = $row['pid3'];
+    $sort_order = isset($row['sort_order']) ? (int)$row['sort_order'] : 0;
+    $target = $row['target'];
+    $usrkey = $row['who_by'];
+    $date_added = $row['date_added'];
+    $date_modified = $row['date_modified'];
+  }
+}
 // whatever the record name is
   $changename = "$csname";
 ?>
@@ -94,6 +108,7 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
+
             </div>
 
             <div class="row my-5">
@@ -121,19 +136,22 @@ $stmt->close();
                                  // 'select_types' says the name of the field
                                  echo "<option value=\"0\" selected";
                                  echo ">No Selection</option>";
-                                 $tableset = $mysqli->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
-                                 $tableset->execute();
-                                 $tableset->store_result();
-                                 $tableset->bind_result($pid, $stid, $select_val, $str);
-                                 while ($tableset->fetch()){
-                                 echo "<option value=\"$pid\"";
-                                 if ($pid1 == $pid) {
-                                    echo ' selected';
-                                 }
-                                 echo ">$select_val ($str) ($pid)</option>";
-                                 }
-                                 $numrows = $tableset->num_rows;
-                                 $tableset->close();                                   
+                                 $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+                                 if ($pdo) {
+                                   $tableset = $pdo->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
+                                   $tableset->execute();
+                                   while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+                                     $pid = $row['pid'];
+                                     $stid = $row['stid'];
+                                     $select_val = $row['select_val'];
+                                     $str = $row['str'];
+                                     echo "<option value=\"$pid\"";
+                                     if ($pid1 == $pid) {
+                                        echo ' selected';
+                                     }
+                                     echo ">$select_val ($str) ($pid)</option>";
+                                   }
+                                 }                                   
                                   ?>
                               </select>
                               </div>
@@ -147,19 +165,19 @@ $stmt->close();
                                  // 'select_types' says the name of the field
                                  echo "<option value=\"0\" selected";
                                  echo ">No Selection</option>";
-                                 $tableset = $mysqli->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
+                                 $tableset = $pdo->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
                                  $tableset->execute();
-                                 $tableset->store_result();
-                                 $tableset->bind_result($pid, $stid, $select_val, $str);
-                                 while ($tableset->fetch()){
+                                 while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+                                   $pid = $row['pid'];
+                                   $stid = $row['stid'];
+                                   $select_val = $row['select_val'];
+                                   $str = $row['str'];
                                  echo "<option value=\"$pid\"";
                                  if ($pid2 == $pid) {
                                     echo ' selected';
                                  }
                                  echo ">$select_val ($str) ($pid)</option>";
-                                 }
-                                 $numrows = $tableset->num_rows;
-                                 $tableset->close();                                   
+                                 }                                   
                                   ?>
                               </select>
                               </div>
@@ -173,23 +191,22 @@ $stmt->close();
                                  // 'select_types' says the name of the field
                                  echo "<option value=\"0\" selected";
                                  echo ">No Selection</option>";
-                                 $tableset = $mysqli->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
+                                 $tableset = $pdo->prepare("SELECT select_gen.pid, select_gen.stid, select_gen.select_val, select_types.str FROM select_gen, select_types WHERE select_gen.stid = select_types.stid ORDER BY select_types.str, select_gen.select_val");
                                  $tableset->execute();
-                                 $tableset->store_result();
-                                 $tableset->bind_result($pid, $stid, $select_val, $str);
-                                 while ($tableset->fetch()){
+                                 while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+                                   $pid = $row['pid'];
+                                   $stid = $row['stid'];
+                                   $select_val = $row['select_val'];
+                                   $str = $row['str'];
                                  echo "<option value=\"$pid\"";
                                  if ($pid3 == $pid) {
                                     echo ' selected';
                                  }
                                  echo ">$select_val ($str) ($pid)</option>";
-                                 }
-                                 $numrows = $tableset->num_rows;
-                                 $tableset->close();                                   
+                                 }                                   
                                   ?>
                               </select>
-                              </div>
-                            </div>
+</div>
                             <div class="row">
                               <div class="col form-group">
                                  <label class="col-form-label" for="target">Target Hours (decimal or integer)</label>
@@ -198,8 +215,7 @@ $stmt->close();
                               <div class="col form-group">
                                  <label class="col-form-label" for="sort_order">Sort order</label>
                                  <input class="form-control" type="number" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
-                              </div>
-                            </div>
+</div>
 
                         </div>
                         
@@ -207,8 +223,7 @@ $stmt->close();
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
                </div>
 
@@ -227,26 +242,27 @@ $stmt->close();
                      <ul class="list-unstyled" id="post_list">
 <?php
 // find all values for this list
-$tableset = $mysqli->prepare("SELECT csid, csname FROM compositesearch WHERE sort_order != ? ORDER BY sort_order");
-$tableset->bind_param("i", $value0);
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($csid, $csname);
-while ($tableset->fetch()){
-   echo "<li class=\"bg-warning rounded my-1 pl-1 py-1 draggable\" id=\"$csid\">$csname  </li>";
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $value0 = 0;
+  $tableset = $pdo->prepare("SELECT csid, csname FROM compositesearch WHERE sort_order != ? ORDER BY sort_order");
+  $tableset->execute([$value0]);
+  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+    $csid = $row['csid'];
+    $csname = $row['csname'];
+    echo "<li class=\"bg-warning rounded my-1 pl-2 py-1 draggable sortable-item\" id=\"$csid\">".
+         "<span class=\"drag-handle\"><i class=\"fa fa-bars\"></i></span>".
+         "<span class=\"item-text\">$csname</span>".
+         "<span class=\"badge badge-light order-badge\"></span>".
+         "</li>";
+  }
 }
-$tableset->close();
 ?>
                      </ul>
                   </div>
                   <div class="card-footer">
-                  </div>
-                </div>
-               </div>
-
-
-
-            </div>
+</div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -258,11 +274,9 @@ $tableset->close();
                         <div class="card-footer">
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button" onclick="return confirm('Are you sure you want to delete this record and all associated data?')"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>
@@ -271,16 +285,19 @@ $tableset->close();
 <script type="text/javascript">
    /* sort table field list and update table */
    /* oxex admin sheetdetail.php */
- $( "#post_list" ).sortable({
+$( "#post_list" ).sortable({
      delay: 150,
      opacity: 0.6, 
-      cursor: 'move',
+     cursor: 'move',
+    axis: 'y',
+    handle: '.drag-handle',
      stop: function() {
          var selectedData = new Array();
          $('#post_list>li').each(function() {
              selectedData.push($(this).attr("id"));
          });
          updateOrder(selectedData);
+        refreshOrderBadges();
      }
  });
 
@@ -291,6 +308,13 @@ $tableset->close();
          data:{position:data},
      })
  }
+
+function refreshOrderBadges() {
+    $('#post_list>li').each(function(index) {
+        $(this).find('.order-badge').text(index + 1);
+    });
+}
+$(function(){ refreshOrderBadges(); });
 </script>
 <script>
    $(document).ready(function() {

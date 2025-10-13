@@ -3,9 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Pages";
+
+setAdminVars(1); // Pages section
 $subtitle = "Page content";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -50,11 +55,22 @@ if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || 
                            </thead>
                            <tbody>
 <?PHP
-$stmt = $mysqli->prepare("SELECT pid, filename, page_name, page_txt1, page_txt2, page_txt3, google_priority FROM pages_tbl");
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($pid, $filename, $page_name, $page_txt1, $page_txt2, $page_txt3, $google_priority);
-  while ($stmt->fetch()){
+if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("SELECT pid, filename, page_name, page_txt1, page_txt2, page_txt3, google_priority FROM pages_tbl");
+    $stmt->execute();
+    $pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $pages = [];
+}
+
+foreach ($pages as $page) {
+    $pid = $page['pid'];
+    $filename = $page['filename'];
+    $page_name = $page['page_name'];
+    $page_txt1 = $page['page_txt1'];
+    $page_txt2 = $page['page_txt2'];
+    $page_txt3 = $page['page_txt3'];
+    $google_priority = $page['google_priority'];
     if ($page_txt1 == '' && $page_txt2 == ''  && $page_txt3 == '' ) {
       $page_txt1 = '<span class="badge badge-info">No&nbsp;</span>';
     } else {
@@ -76,20 +92,16 @@ $stmt = $mysqli->prepare("SELECT pid, filename, page_name, page_txt1, page_txt2,
 </tr>
  <?php
  }
-$numrows = $stmt->num_rows;
-$stmt->close();
+$numrows = count($pages);
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
                <div class="col-xl-8">
-                  
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

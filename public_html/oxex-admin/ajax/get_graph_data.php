@@ -31,7 +31,7 @@ try {
     error_log("Session data: " . print_r($_SESSION, true));
     
     // Check user permissions (sess.php already validates the session)
-    if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+    if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
         error_log("ERROR: Authentication or permission check failed");
         echo json_encode([
             'status' => 'error',
@@ -41,6 +41,17 @@ try {
     }
     
     error_log("Admin authenticated: usrkey=$usrkey, type=$admintype");
+    
+    // Initialize PDO connection
+    $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+    if (!$pdo) {
+        error_log("ERROR: No database connection available");
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Database connection error'
+        ]);
+        exit;
+    }
     
     // Get trainkey from POST parameter (admin can select which trainee to view)
     $trainkey = isset($_POST['trainee_key']) ? $_POST['trainee_key'] : null;
@@ -70,16 +81,13 @@ try {
         
         // Fetch all trainkeys from the subset
         $subset_trainees_query = "SELECT trainkey FROM subset_link_tbl WHERE setkey = ?";
-        $subset_stmt = $mysqli->prepare($subset_trainees_query);
-        $subset_stmt->bind_param("s", $setkey);
-        $subset_stmt->execute();
-        $subset_result = $subset_stmt->get_result();
+        $subset_stmt = $pdo->prepare($subset_trainees_query);
+        $subset_stmt->execute([$setkey]);
         
         $trainees_in_subset = [];
-        while ($row = $subset_result->fetch_assoc()) {
+        while ($row = $subset_stmt->fetch(PDO::FETCH_ASSOC)) {
             $trainees_in_subset[] = $row['trainkey'];
         }
-        $subset_stmt->close();
         
         if (empty($trainees_in_subset)) {
             error_log("ERROR: Subset $setkey is empty.");
@@ -98,17 +106,13 @@ try {
                              WHERE trainkey IN ($placeholders) 
                              AND (supervisor = ? OR supervisor2 = ? OR supervisor3 = ? OR tutor = ?)";
             
-            $access_stmt = $mysqli->prepare($access_query);
+            $access_stmt = $pdo->prepare($access_query);
             $params = array_merge($trainees_in_subset, [$usrkey, $usrkey, $usrkey, $usrkey]);
-            $types = str_repeat('s', count($params));
-            $access_stmt->bind_param($types, ...$params);
-            $access_stmt->execute();
-            $access_result = $access_stmt->get_result();
+            $access_stmt->execute($params);
             
-            while ($row = $access_result->fetch_assoc()) {
+            while ($row = $access_stmt->fetch(PDO::FETCH_ASSOC)) {
                 $accessible_trainee_keys[] = $row['trainkey'];
             }
-            $access_stmt->close();
         }
         
         if (empty($accessible_trainee_keys)) {
@@ -128,26 +132,21 @@ try {
         if ($canViewAll) {
             // Super admins can view all trainees
             $trainee_access_query = "SELECT trainkey FROM trainee_tbl ORDER BY name ASC";
-            $trainee_access_stmt = $mysqli->prepare($trainee_access_query);
+            $trainee_access_stmt = $pdo->prepare($trainee_access_query);
+            $trainee_access_stmt->execute();
         } else {
             // Regular admins can only view trainees they supervise/tutor
             $trainee_access_query = "SELECT trainkey FROM trainee_tbl 
                                    WHERE supervisor = ? OR supervisor2 = ? OR supervisor3 = ? OR tutor = ? 
                                    ORDER BY name ASC";
-            $trainee_access_stmt = $mysqli->prepare($trainee_access_query);
-            $trainee_access_stmt->bind_param("ssss", $usrkey, $usrkey, $usrkey, $usrkey);
+            $trainee_access_stmt = $pdo->prepare($trainee_access_query);
+            $trainee_access_stmt->execute([$usrkey, $usrkey, $usrkey, $usrkey]);
         }
         
         if ($trainee_access_stmt) {
-            if ($canViewAll) {
-                $trainee_access_stmt->execute();
-            }
-            $trainee_access_result = $trainee_access_stmt->get_result();
-            
-            while ($row = $trainee_access_result->fetch_assoc()) {
+            while ($row = $trainee_access_stmt->fetch(PDO::FETCH_ASSOC)) {
                 $accessible_trainee_keys[] = $row['trainkey'];
             }
-            $trainee_access_stmt->close();
         }
         
         if (empty($accessible_trainee_keys)) {
@@ -169,13 +168,12 @@ try {
     $access_check_query = "SELECT t.trainkey, t.name, t.supervisor, t.supervisor2, t.supervisor3, t.tutor 
                           FROM trainee_tbl t 
                           WHERE t.trainkey = ? LIMIT 1";
-    $access_stmt = $mysqli->prepare($access_check_query);
+    $access_stmt = $pdo->prepare($access_check_query);
     if ($access_stmt) {
-        $access_stmt->bind_param("s", $trainkey);
-        $access_stmt->execute();
-        $access_result = $access_stmt->get_result();
+        $access_stmt->execute([$trainkey]);
+        $trainee_data = $access_stmt->fetch(PDO::FETCH_ASSOC);
         
-        if ($access_result->num_rows === 0) {
+        if (!$trainee_data) {
             error_log("ERROR: Invalid trainkey: $trainkey");
             echo json_encode([
                 'status' => 'error',
@@ -183,9 +181,6 @@ try {
             ]);
             exit;
         }
-        
-        $trainee_data = $access_result->fetch_assoc();
-        $access_stmt->close();
         
         // Check if admin has permission to view this trainee's data
         $canViewAll = ($admintype == 'AT' || $admintype == 'DV');
@@ -255,7 +250,7 @@ try {
     if ($all_users_mode) {
         // For all users mode, check if any of the accessible trainees have access to this table
         $trainkey_placeholders = str_repeat('?,', count($accessible_trainee_keys) - 1) . '?';
-        $access_stmt = $mysqli->prepare("
+        $access_stmt = $pdo->prepare("
             SELECT COUNT(DISTINCT ttl.trainkey) as count 
             FROM trainee_tab_link ttl 
             JOIN tabs_tbl tt ON ttl.tbid = tt.tbid 
@@ -264,12 +259,8 @@ try {
         
         if ($access_stmt) {
             $params_for_access = array_merge($accessible_trainee_keys, [$table_id]);
-            $types_for_access = str_repeat('s', count($accessible_trainee_keys)) . 'i';
-            $access_stmt->bind_param($types_for_access, ...$params_for_access);
-            $access_stmt->execute();
-            $access_result = $access_stmt->get_result();
-            $access_row = $access_result->fetch_assoc();
-            $access_stmt->close();
+            $access_stmt->execute($params_for_access);
+            $access_row = $access_stmt->fetch(PDO::FETCH_ASSOC);
             
             error_log("Table access check (All Users) - accessible trainees with table access: " . $access_row['count']);
             
@@ -284,7 +275,7 @@ try {
         }
     } else {
         // Single trainee mode - original access check
-    $access_stmt = $mysqli->prepare("
+    $access_stmt = $pdo->prepare("
         SELECT COUNT(*) as count 
         FROM trainee_tab_link ttl 
         JOIN tabs_tbl tt ON ttl.tbid = tt.tbid 
@@ -292,11 +283,8 @@ try {
     ");
     
     if ($access_stmt) {
-        $access_stmt->bind_param("si", $trainkey, $table_id);
-        $access_stmt->execute();
-        $access_result = $access_stmt->get_result();
-        $access_row = $access_result->fetch_assoc();
-        $access_stmt->close();
+        $access_stmt->execute([$trainkey, $table_id]);
+        $access_row = $access_stmt->fetch(PDO::FETCH_ASSOC);
         
             error_log("Table access check (Single User) - count: " . $access_row['count']);
         
@@ -398,23 +386,25 @@ try {
     $x_field_type = 0; // Default to single selection
     $y_field_type = 0;
     
-    $field_x_stmt = $mysqli->prepare("SELECT str, single FROM select_types WHERE stid = ?");
+    $field_x_stmt = $pdo->prepare("SELECT str, single FROM select_types WHERE stid = ?");
     if ($field_x_stmt) {
-        $field_x_stmt->bind_param("i", $field_x);
-        $field_x_stmt->execute();
-        $field_x_stmt->bind_result($x_field_name, $x_field_type);
-        $field_x_stmt->fetch();
-        $field_x_stmt->close();
+        $field_x_stmt->execute([$field_x]);
+        $row = $field_x_stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            $x_field_name = $row['str'];
+            $x_field_type = $row['single'];
+        }
         error_log("X field name: " . ($x_field_name ?: "Not found") . ", type: $x_field_type");
     }
     
-    $field_y_stmt = $mysqli->prepare("SELECT str, single FROM select_types WHERE stid = ?");
+    $field_y_stmt = $pdo->prepare("SELECT str, single FROM select_types WHERE stid = ?");
     if ($field_y_stmt) {
-        $field_y_stmt->bind_param("i", $field_y);
-        $field_y_stmt->execute();
-        $field_y_stmt->bind_result($y_field_name, $y_field_type);
-        $field_y_stmt->fetch();
-        $field_y_stmt->close();
+        $field_y_stmt->execute([$field_y]);
+        $row = $field_y_stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            $y_field_name = $row['str'];
+            $y_field_type = $row['single'];
+        }
         error_log("Y field name: " . ($y_field_name ?: "Not found") . ", type: $y_field_type");
     }
     
@@ -430,77 +420,77 @@ try {
     switch ($analysis_type) {
         case 'categorical_distribution':
             // X is categorical (0,1), show distribution of categories
-            $data = getCategoricalDistribution($mysqli, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types);
+            $data = getCategoricalDistribution($pdo, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types);
             break;
             
         case 'numeric_analysis':
             // X is numeric (4,5), show value analysis
-            $data = getNumericAnalysis($mysqli, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $chart_type);
+            $data = getNumericAnalysis($pdo, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $chart_type);
             break;
             
         case 'time_series':
             // X is date/time (3,6), show trends over time
-            $data = getTimeSeriesAnalysis($mysqli, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $time_frame);
+            $data = getTimeSeriesAnalysis($pdo, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $time_frame);
             break;
             
         case 'text_analysis':
             // X is text (2), analyze text patterns
-            $data = getTextAnalysis($mysqli, null, $field_x, $date_condition, $base_params, $base_param_types);
+            $data = getTextAnalysis($pdo, null, $field_x, $date_condition, $base_params, $base_param_types);
             break;
             
         case 'categorical_vs_numeric':
             // X is categorical, Y is numeric - show numeric values per category
-            $data = getCategoricalVsNumeric($mysqli, null, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types);
+            $data = getCategoricalVsNumeric($pdo, null, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types);
             // Fallback to X field analysis if no data
             if (empty($data)) {
                 error_log("Multi-field analysis returned no data, falling back to single field analysis for field $field_x");
-                $data = getCategoricalDistribution($mysqli, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types);
+                $data = getCategoricalDistribution($pdo, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types);
             }
             break;
             
         case 'categorical_vs_categorical':
             // Both categorical - show cross-tabulation
-            $data = getCategoricalVsCategorical($mysqli, null, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types);
+            $data = getCategoricalVsCategorical($pdo, null, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types);
             // Fallback to X field analysis if no data
             if (empty($data)) {
                 error_log("Multi-field analysis returned no data, falling back to single field analysis for field $field_x");
-                $data = getCategoricalDistribution($mysqli, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types);
+                $data = getCategoricalDistribution($pdo, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types);
             }
             break;
             
         case 'numeric_vs_numeric':
             // Both numeric - show correlation/scatter analysis
-            $data = getNumericVsNumeric($mysqli, null, $field_x, $field_y, $date_condition_multi, $base_params, $base_param_types, $chart_type);
+            $data = getNumericVsNumeric($pdo, null, $field_x, $field_y, $date_condition_multi, $base_params, $base_param_types, $chart_type);
             // Fallback to X field analysis if no data
             if (empty($data)) {
                 error_log("Multi-field analysis returned no data, falling back to single field analysis for field $field_x");
-                $data = getNumericAnalysis($mysqli, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $chart_type);
+                $data = getNumericAnalysis($pdo, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $chart_type);
             }
             break;
             
         case 'time_vs_numeric':
             // X is date/time, Y is numeric - show values over time
-            $data = getTimeVsNumeric($mysqli, null, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types, $time_frame);
+            $data = getTimeVsNumeric($pdo, null, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types, $time_frame);
             // Fallback to X field analysis if no data
             if (empty($data)) {
                 error_log("Multi-field analysis returned no data, falling back to single field analysis for field $field_x");
-                $data = getTimeSeriesAnalysis($mysqli, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $time_frame);
+                $data = getTimeSeriesAnalysis($pdo, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $time_frame);
             }
             break;
             
         case 'time_vs_categorical':
             // X is date/time, Y is categorical - show category frequency over time
-            $data = getTimeVsCategorical($mysqli, null, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types, $time_frame);
+            $data = getTimeVsCategorical($pdo, null, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types, $time_frame);
             // Fallback to X field analysis if no data
             if (empty($data)) {
                 error_log("Multi-field analysis returned no data, falling back to single field analysis for field $field_x");
-                $data = getTimeSeriesAnalysis($mysqli, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $time_frame);
+                $data = getTimeSeriesAnalysis($pdo, null, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $time_frame);
             }
             break;
             
         default:
             // Fallback to basic counting
-            $data = getBasicCount($mysqli, null, $field_x, $date_condition, $base_params, $base_param_types);
+            $data = getBasicCount($pdo, null, $field_x, $date_condition, $base_params, $base_param_types);
             break;
     }
     
@@ -524,28 +514,27 @@ try {
         if ($all_users_mode) {
             if ($is_subset_mode) {
                 $setkey = substr($effective_trainkey, 7);
-                $subset_name_stmt = $mysqli->prepare("SELECT subset FROM subset_tbl WHERE setkey = ? LIMIT 1");
-                if ($subset_name_stmt) {
-                    $subset_name_stmt->bind_param("s", $setkey);
-                    $subset_name_stmt->execute();
-                    $subset_name_stmt->bind_result($trainee_name);
-                    $subset_name_stmt->fetch();
-                    $subset_name_stmt->close();
-                    $trainee_name .= " (Group)";
+            $subset_name_stmt = $pdo->prepare("SELECT subset FROM subset_tbl WHERE setkey = ? LIMIT 1");
+            if ($subset_name_stmt) {
+                $subset_name_stmt->execute([$setkey]);
+                $row = $subset_name_stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row) {
+                    $trainee_name = $row['subset'] . " (Group)";
                 }
+            }
             } else {
                 $trainee_name = 'All Users (Aggregated)';
             }
         } else {
-            $name_stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
-            if ($name_stmt) {
-                $name_stmt->bind_param("s", $effective_trainkey);
-                $name_stmt->execute();
-                $name_stmt->bind_result($trainee_name);
-                $name_stmt->fetch();
-                $name_stmt->close();
-                error_log("Trainee name: " . ($trainee_name ?: 'Not found'));
+        $name_stmt = $pdo->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+        if ($name_stmt) {
+            $name_stmt->execute([$effective_trainkey]);
+            $row = $name_stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $trainee_name = $row['name'];
             }
+            error_log("Trainee name: " . ($trainee_name ?: 'Not found'));
+        }
         }
         
         // Debug information for "All Users" mode
@@ -558,40 +547,30 @@ try {
             $debug_query = "SELECT COUNT(*) as total, MIN(date_added) as min_date, MAX(date_added) as max_date 
                            FROM trainee_log 
                            WHERE trainkey IN ($trainkey_placeholders) AND tbid = ?";
-            $debug_stmt = $mysqli->prepare($debug_query);
+            $debug_stmt = $pdo->prepare($debug_query);
             if ($debug_stmt) {
                 $debug_params = array_merge($accessible_trainee_keys, [$table_id]);
-                $debug_types = str_repeat('s', count($accessible_trainee_keys)) . 'i';
-                $debug_stmt->bind_param($debug_types, ...$debug_params);
-                $debug_stmt->execute();
-                $debug_result = $debug_stmt->get_result();
-                $debug_row = $debug_result->fetch_assoc();
+                $debug_stmt->execute($debug_params);
+                $debug_row = $debug_stmt->fetch(PDO::FETCH_ASSOC);
                 error_log("Debug (All Users): Total records in trainee_log: " . $debug_row['total'] . ", Date range: " . $debug_row['min_date'] . " to " . $debug_row['max_date']);
-                $debug_stmt->close();
             }
         } elseif (!$all_users_mode && empty($data)) {
             // Original single user debug
             $debug_query = "SELECT COUNT(*) as total, MIN(date_added) as min_date, MAX(date_added) as max_date FROM trainee_log WHERE trainkey = ? AND tbid = ?";
-            $debug_stmt = $mysqli->prepare($debug_query);
+            $debug_stmt = $pdo->prepare($debug_query);
             if ($debug_stmt) {
-                $debug_stmt->bind_param("si", $effective_trainkey, $table_id);
-                $debug_stmt->execute();
-                $debug_result = $debug_stmt->get_result();
-                $debug_row = $debug_result->fetch_assoc();
+                $debug_stmt->execute([$effective_trainkey, $table_id]);
+                $debug_row = $debug_stmt->fetch(PDO::FETCH_ASSOC);
                 error_log("Debug (Single User): Total records in trainee_log for this trainee/table: " . $debug_row['total'] . ", Date range: " . $debug_row['min_date'] . " to " . $debug_row['max_date']);
-                $debug_stmt->close();
             }
             
             // Check if there's any data for the specific field
             $debug_field_query = "SELECT COUNT(*) as total FROM trainee_log WHERE trainkey = ? AND tbid = ? AND stid = ?";
-            $debug_field_stmt = $mysqli->prepare($debug_field_query);
+            $debug_field_stmt = $pdo->prepare($debug_field_query);
             if ($debug_field_stmt) {
-                $debug_field_stmt->bind_param("sii", $effective_trainkey, $table_id, $field_x);
-                $debug_field_stmt->execute();
-                $debug_field_result = $debug_field_stmt->get_result();
-                $debug_field_row = $debug_field_result->fetch_assoc();
+                $debug_field_stmt->execute([$effective_trainkey, $table_id, $field_x]);
+                $debug_field_row = $debug_field_stmt->fetch(PDO::FETCH_ASSOC);
                 error_log("Debug (Single User): Total records for field $field_x: " . $debug_field_row['total']);
-                $debug_field_stmt->close();
             }
         }
         
@@ -613,26 +592,25 @@ try {
     if ($all_users_mode) {
         if ($is_subset_mode) {
             $setkey = substr($effective_trainkey, 7);
-            $subset_name_stmt = $mysqli->prepare("SELECT subset FROM subset_tbl WHERE setkey = ? LIMIT 1");
+            $subset_name_stmt = $pdo->prepare("SELECT subset FROM subset_tbl WHERE setkey = ? LIMIT 1");
             if ($subset_name_stmt) {
-                $subset_name_stmt->bind_param("s", $setkey);
-                $subset_name_stmt->execute();
-                $subset_name_stmt->bind_result($trainee_name);
-                $subset_name_stmt->fetch();
-                $subset_name_stmt->close();
-                $trainee_name .= " (Group)";
+                $subset_name_stmt->execute([$setkey]);
+                $row = $subset_name_stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row) {
+                    $trainee_name = $row['subset'] . " (Group)";
+                }
             }
         } else {
             $trainee_name = 'All Users (Aggregated)';
         }
     } else {
-        $name_stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+        $name_stmt = $pdo->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
         if ($name_stmt) {
-            $name_stmt->bind_param("s", $effective_trainkey);
-            $name_stmt->execute();
-            $name_stmt->bind_result($trainee_name);
-            $name_stmt->fetch();
-            $name_stmt->close();
+            $name_stmt->execute([$effective_trainkey]);
+            $row = $name_stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $trainee_name = $row['name'];
+            }
             error_log("Trainee name retrieved: " . ($trainee_name ?: 'Not found'));
         }
     }
@@ -680,9 +658,7 @@ try {
     ]);
 }
 
-if (isset($mysqli)) {
-    $mysqli->close();
-}
+// PDO connection is managed automatically
 
 // Function to determine the best analysis type based on field types
 function determineAnalysisType($x_type, $y_type, $field_x, $field_y, $chart_type) {
@@ -740,7 +716,7 @@ function getFieldCategory($type, $type_map) {
 }
 
 // Categorical field distribution analysis
-function getCategoricalDistribution($mysqli, $unused_param, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types) {
+function getCategoricalDistribution($pdo, $unused_param, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types) {
     error_log("Executing categorical distribution analysis for field $field_x with " . count($base_params) . " base params");
     
     // Extract components from base_params
@@ -816,11 +792,11 @@ function getCategoricalDistribution($mysqli, $unused_param, $field_x, $x_field_t
     
     error_log("Final params count: " . count($final_params) . ", types: $final_param_types");
     
-    return executeSimpleQuery($mysqli, $query, $final_params, $final_param_types, 'count');
+    return executeSimpleQuery($pdo, $query, $final_params, $final_param_types, 'count');
 }
 
 // Numeric field analysis
-function getNumericAnalysis($mysqli, $unused_param, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $chart_type) {
+function getNumericAnalysis($pdo, $unused_param, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $chart_type) {
     error_log("Executing numeric analysis for field $field_x with " . count($base_params) . " base params");
     
     // Extract components from base_params
@@ -897,11 +873,11 @@ function getNumericAnalysis($mysqli, $unused_param, $field_x, $x_field_type, $da
     
     error_log("Final params count: " . count($final_params) . ", types: $final_param_types");
     
-    return executeSimpleQuery($mysqli, $query, $final_params, $final_param_types, 'avg_value');
+    return executeSimpleQuery($pdo, $query, $final_params, $final_param_types, 'avg_value');
 }
 
 // Time series analysis
-function getTimeSeriesAnalysis($mysqli, $unused_param, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $time_frame) {
+function getTimeSeriesAnalysis($pdo, $unused_param, $field_x, $x_field_type, $date_condition, $base_params, $base_param_types, $time_frame) {
     error_log("Executing time series analysis for field $field_x with " . count($base_params) . " base params");
     
     // Extract components from base_params
@@ -937,7 +913,7 @@ function getTimeSeriesAnalysis($mysqli, $unused_param, $field_x, $x_field_type, 
         // Date field - analyze actual dates in the field
                 $query = "
                     SELECT 
-                        DATE_FORMAT(STR_TO_DATE(tl.select_val, '%Y-%m-%d'), '%Y-%m') as category,
+                        TO_CHAR(tl.select_val::date, 'YYYY-MM') as category,
                         COUNT(*) as count
                     FROM trainee_log tl
             WHERE $trainkey_condition
@@ -945,6 +921,7 @@ function getTimeSeriesAnalysis($mysqli, $unused_param, $field_x, $x_field_type, 
                     AND tl.stid = ?
                     AND tl.select_val IS NOT NULL 
                     AND tl.select_val != ''
+                    AND tl.select_val ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
                     $date_condition
                     GROUP BY category
             ORDER BY category ASC
@@ -980,10 +957,10 @@ function getTimeSeriesAnalysis($mysqli, $unused_param, $field_x, $x_field_type, 
                 ";
     } else {
         // Entry date analysis - when data was entered
-        $date_format = ($time_frame === 'last30' || $time_frame === 'last90') ? '%Y-%m-%d' : '%Y-%m';
+        $date_format = ($time_frame === 'last30' || $time_frame === 'last90') ? 'YYYY-MM-DD' : 'YYYY-MM';
                 $query = "
                     SELECT 
-                DATE_FORMAT(STR_TO_DATE(tl.date_added, '%Y%m%d'), '$date_format') as category,
+                TO_CHAR(TO_DATE(tl.date_added::text, 'YYYYMMDD'), '$date_format') as category,
                         COUNT(*) as count
                     FROM trainee_log tl
             WHERE $trainkey_condition
@@ -1001,11 +978,11 @@ function getTimeSeriesAnalysis($mysqli, $unused_param, $field_x, $x_field_type, 
     
     error_log("Final params count: " . count($final_params) . ", types: $final_param_types");
     
-    return executeSimpleQuery($mysqli, $query, $final_params, $final_param_types, 'count');
+    return executeSimpleQuery($pdo, $query, $final_params, $final_param_types, 'count');
 }
 
 // Text analysis
-function getTextAnalysis($mysqli, $unused_param, $field_x, $date_condition, $base_params, $base_param_types) {
+function getTextAnalysis($pdo, $unused_param, $field_x, $date_condition, $base_params, $base_param_types) {
     error_log("Executing text analysis for field $field_x with " . count($base_params) . " base params");
     
     // Extract components from base_params
@@ -1076,11 +1053,11 @@ function getTextAnalysis($mysqli, $unused_param, $field_x, $date_condition, $bas
     
     error_log("Final params count: " . count($final_params) . ", types: $final_param_types");
     
-    return executeSimpleQuery($mysqli, $query, $final_params, $final_param_types, 'count');
+    return executeSimpleQuery($pdo, $query, $final_params, $final_param_types, 'count');
 }
 
 // Basic counting fallback
-function getBasicCount($mysqli, $unused_param, $field_x, $date_condition, $base_params, $base_param_types) {
+function getBasicCount($pdo, $unused_param, $field_x, $date_condition, $base_params, $base_param_types) {
     error_log("Executing basic count analysis for field $field_x with " . count($base_params) . " base params");
     
     // Extract components from base_params
@@ -1132,37 +1109,37 @@ function getBasicCount($mysqli, $unused_param, $field_x, $date_condition, $base_
     
     error_log("Final params count: " . count($final_params) . ", types: $final_param_types");
     
-    return executeSimpleQuery($mysqli, $query, $final_params, $final_param_types, 'count');
+    return executeSimpleQuery($pdo, $query, $final_params, $final_param_types, 'count');
 }
 
 // Stub functions for multi-field analysis (to be implemented later)
-function getCategoricalVsNumeric($mysqli, $unused_param, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types) {
+function getCategoricalVsNumeric($pdo, $unused_param, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types) {
     error_log("Executing categorical vs numeric analysis: field $field_x vs field $field_y");
     return []; // Stub for now - will fallback to single field analysis
 }
 
-function getCategoricalVsCategorical($mysqli, $unused_param, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types) {
+function getCategoricalVsCategorical($pdo, $unused_param, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types) {
     error_log("Executing categorical vs categorical analysis: field $field_x vs field $field_y");
     return []; // Stub for now - will fallback to single field analysis
 }
 
-function getNumericVsNumeric($mysqli, $unused_param, $field_x, $field_y, $date_condition_multi, $base_params, $base_param_types, $chart_type) {
+function getNumericVsNumeric($pdo, $unused_param, $field_x, $field_y, $date_condition_multi, $base_params, $base_param_types, $chart_type) {
     error_log("Executing numeric vs numeric analysis: field $field_x vs field $field_y");
     return []; // Stub for now - will fallback to single field analysis
 }
 
-function getTimeVsNumeric($mysqli, $unused_param, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types, $time_frame) {
+function getTimeVsNumeric($pdo, $unused_param, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types, $time_frame) {
     error_log("Executing time vs numeric analysis: field $field_x vs field $field_y");
     return []; // Stub for now - will fallback to single field analysis
 }
 
-function getTimeVsCategorical($mysqli, $unused_param, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types, $time_frame) {
+function getTimeVsCategorical($pdo, $unused_param, $field_x, $field_y, $x_field_type, $y_field_type, $date_condition_multi, $base_params, $base_param_types, $time_frame) {
     error_log("Executing time vs categorical analysis: field $field_x vs field $field_y");
     return []; // Stub for now - will fallback to single field analysis
 }
 
 // Helper function to execute queries consistently
-function executeSimpleQuery($mysqli, $query, $params, $param_types, $value_field = 'count') {
+function executeSimpleQuery($pdo, $query, $params, $param_types, $value_field = 'count') {
     error_log("=== executeSimpleQuery START ===");
     error_log("Query: " . str_replace(["\n", "\t"], [" ", " "], trim($query)));
     error_log("Params count: " . count($params));
@@ -1184,16 +1161,16 @@ function executeSimpleQuery($mysqli, $query, $params, $param_types, $value_field
         return [];
     }
     
-    $stmt = $mysqli->prepare($query);
+    $stmt = $pdo->prepare($query);
     if ($stmt) {
         if (!empty($params)) {
-            $stmt->bind_param($param_types, ...$params);
+            $stmt->execute($params);
+        } else {
+            $stmt->execute();
         }
-        $stmt->execute();
-        $result = $stmt->get_result();
         
         $data = [];
-        while ($row = $result->fetch_assoc()) {
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             $value = isset($row[$value_field]) ? $row[$value_field] : (isset($row['count']) ? $row['count'] : 0);
             
             // Handle different value types appropriately
@@ -1208,14 +1185,13 @@ function executeSimpleQuery($mysqli, $query, $params, $param_types, $value_field
                 'value' => $value
             ];
         }
-        $stmt->close();
         error_log("Query returned " . count($data) . " results");
         error_log("=== executeSimpleQuery END ===");
         return $data;
     }
     
     error_log("Failed to prepare query");
-    error_log("MySQL error: " . $mysqli->error);
+    error_log("PDO error: " . implode(', ', $pdo->errorInfo()));
     error_log("=== executeSimpleQuery END (FAILED) ===");
     return [];
 }

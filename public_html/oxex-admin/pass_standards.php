@@ -3,8 +3,11 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 $pagetitle = "Pass Standards";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Manage Pass/Fail Criteria";
 
 // Function to generate human-readable explanation of a pass standard
@@ -75,17 +78,17 @@ function generateStandardExplanation($row) {
                     $rule_index++;
                     $rule_type = str_replace('_', ' ', strtolower($rule['requirement_type']));
                     // Resolve subfield name
-                    global $mysqli;
+                    global $supabase_pdo;
                     $subfield_name = 'Unknown';
-                    if ($stmt_sf = $mysqli->prepare("SELECT select_val FROM select_gen WHERE pid = ?")) {
+                    $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+                    if ($pdo) {
+                        $stmt_sf = $pdo->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
                         $pid = (int)$rule['subfield_value'];
-                        $stmt_sf->bind_param("i", $pid);
-                        $stmt_sf->execute();
-                        $res_sf = $stmt_sf->get_result();
-                        if ($row_sf = $res_sf->fetch_assoc()) {
+                        $stmt_sf->execute([$pid]);
+                        $row_sf = $stmt_sf->fetch(PDO::FETCH_ASSOC);
+                        if ($row_sf) {
                             $subfield_name = $row_sf['select_val'];
                         }
-                        $stmt_sf->close();
                     }
                     $explanation .= "<br><strong>Rule {$rule_index}:</strong> For subcategory <strong>" . htmlspecialchars($subfield_name) . "</strong>, require <strong>" . htmlspecialchars($rule['specific_value']) . "</strong> " . $rule_type;
                     if ($rule['requirement_type'] == 'PER_CASE_MINIMUM' && !empty($rule['minimum_threshold'])) {
@@ -124,7 +127,7 @@ function generateStandardExplanation($row) {
     return $explanation;
 }
 
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'DV')) {
 
 // Handle Delete Action
 $del = isset($_GET['del']) ? $_GET['del'] : '';
@@ -132,15 +135,16 @@ $which = isset($_GET['which']) ? (int)$_GET['which'] : 0;
 $delalert = '';
 
 if ($del == "del" && $which > 0) {
-    $stmt = $mysqli->prepare("DELETE FROM pass_standards WHERE psid = ? LIMIT 1");
-    $stmt->bind_param("i", $which); 
-    $stmt->execute();
-    if ($stmt->affected_rows > 0) {
-        $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'Record deleted successfully.'];
-    } else {
-        $_SESSION['flash_message'] = ['type' => 'danger', 'message' => 'Failed to delete record.'];
+    $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+    if ($pdo) {
+        $stmt = $pdo->prepare("DELETE FROM pass_standards WHERE psid = ?");
+        $stmt->execute([$which]);
+        if ($stmt->rowCount() > 0) {
+            $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'Record deleted successfully.'];
+        } else {
+            $_SESSION['flash_message'] = ['type' => 'danger', 'message' => 'Failed to delete record.'];
+        }
     }
-    $stmt->close();
     header("Location: pass_standards.php"); // Redirect to clear GET params and show message
     exit();
 }
@@ -168,7 +172,7 @@ if ($del == "del" && $which > 0) {
                     <div class="content-title"><?php echo $pagetitle ?>
                         <a href="pass_standard_detail.php" class="btn btn-sm btn-info ml-5">Add New Standards</a>
                         <small><?php echo $subtitle ?></small>
-                    </div>
+</div>
                 </div>
                 
                 <?php
@@ -214,26 +218,27 @@ if ($del == "del" && $which > 0) {
                                             st.str as field_name,
                                             ps.field_value,
                                             parent.standard_name as parent_name,
-                                            (SELECT GROUP_CONCAT(st_or.str SEPARATOR ', ') 
+                                            (SELECT STRING_AGG(st_or.str, ', ') 
                                              FROM pass_standard_fields psf 
-                                             JOIN select_types st_or ON psf.stid = st_or.stid 
-                                             WHERE psf.standard_id = ps.psid) as or_fields
+                                             JOIN select_types st_or ON psf.stid::int = st_or.stid 
+                                             WHERE psf.standard_id::int = ps.psid) as or_fields
                                         FROM 
                                             pass_standards ps
                                         LEFT JOIN 
-                                            tabs_tbl t ON ps.tbid = t.tbid
+                                            tabs_tbl t ON ps.tbid::int = t.tbid
                                         LEFT JOIN
-                                            select_types st ON ps.stid = st.stid
+                                            select_types st ON ps.stid::int = st.stid
                                         LEFT JOIN
-                                            pass_standards parent ON ps.parent_standard_id = parent.psid
+                                            pass_standards parent ON ps.parent_standard_id::int = parent.psid
                                         ORDER BY 
                                             t.tab_name, parent.standard_name, ps.standard_name";
                                     
-                                    if ($stmt = $mysqli->prepare($query)) {
+                                    $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+                                    if ($pdo) {
+                                        $stmt = $pdo->prepare($query);
                                         $stmt->execute();
-                                        $result = $stmt->get_result();
                                         
-                                        while ($row = $result->fetch_assoc()) {
+                                        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                                             $status_badge = $row['is_active'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-secondary">Inactive</span>';
                                             
                                             // Determine what to show in the category column
@@ -251,14 +256,11 @@ if ($del == "del" && $which > 0) {
                                                                 if (!empty($rule['subfield_value'])) {
                                                                     // Get subfield name from select_gen table
                                                                     $subfield_query = "SELECT select_val FROM select_gen WHERE pid = ?";
-                                                                    if ($subfield_stmt = $mysqli->prepare($subfield_query)) {
-                                                                        $subfield_stmt->bind_param("i", $rule['subfield_value']);
-                                                                        $subfield_stmt->execute();
-                                                                        $subfield_result = $subfield_stmt->get_result();
-                                                                        if ($subfield_row = $subfield_result->fetch_assoc()) {
-                                                                            $subfield_names[] = htmlspecialchars($subfield_row['select_val']);
-                                                                        }
-                                                                        $subfield_stmt->close();
+                                                                    $subfield_stmt = $pdo->prepare($subfield_query);
+                                                                    $subfield_stmt->execute([$rule['subfield_value']]);
+                                                                    $subfield_row = $subfield_stmt->fetch(PDO::FETCH_ASSOC);
+                                                                    if ($subfield_row) {
+                                                                        $subfield_names[] = htmlspecialchars($subfield_row['select_val']);
                                                                     }
                                                                 }
                                                             }
@@ -300,15 +302,12 @@ if ($del == "del" && $which > 0) {
                                                 </td>
                                             </tr>";
                                         }
-                                        $stmt->close();
                                     }
                                     ?>
                                 </tbody>
                             </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
+</div>
+</div>
         </section>
     </div>
 

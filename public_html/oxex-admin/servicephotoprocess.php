@@ -79,10 +79,8 @@ ini_set('max_execution_time', 300);
  if ( $result )
  {
    // update new image and delete any webp/avif
-   $stmt = $mysqli->prepare("UPDATE panel_tbl SET image = ?, webp = ?, avif = ? WHERE paid = ?"); 
-   $stmt->bind_param("sssi", $actualname, $valueblank, $valueblank, $which);
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $supabase_pdo->prepare("UPDATE panel_tbl SET image = ?, webp = ?, avif = ? WHERE paid = ?"); 
+   $stmt->execute([$actualname, $valueblank, $valueblank, $which]);
 	
 		echo "<p><a href=\"servicedetail.php?which=$which&amp;del=delphoto\"<span class=\"btn btn-danger\"> <i class=\"fa fa-times-circle\"></i> Delete Image</span></a></p>";
 		echo "<p><img src=\"../services/$actualname\" width=\"200px\"></p>";

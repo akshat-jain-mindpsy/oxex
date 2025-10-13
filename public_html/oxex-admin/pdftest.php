@@ -6,6 +6,7 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 require 'fpdf/fpdf.php';
 require_once('fpdi2/src/autoload.php');
 
@@ -14,50 +15,54 @@ $disptoday = date('D jS F Y', $todaydisp);
  
 // Get the trainee and supervisor from traineedetail.php
 $trainee = isset($_GET['trainee']) ? $_GET['trainee'] : ''; # get id for trainee
-   $stmt = $mysqli->prepare("SELECT name, year, uid FROM trainee_tbl WHERE trainkey = ?");
-   $stmt->bind_param("s", $trainee);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($name, $cohort, $uid);
-   $stmt->fetch();
-   $stmt->close();
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+   $stmt = $pdo->prepare("SELECT name, year, uid FROM trainee_tbl WHERE trainkey = ?");
+   $stmt->execute([$trainee]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   if ($row) {
+       $name = $row['name'];
+       $cohort = $row['year'];
+       $uid = $row['uid'];
+   }
    // get uni
-   $stmt = $mysqli->prepare("SELECT university FROM uni_tbl WHERE uid = ?");
-   $stmt->bind_param("i", $uid);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($university);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT university FROM uni_tbl WHERE uid = ?");
+   $stmt->execute([$uid]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   if ($row) {
+       $university = $row['university'];
+   }
+}
 
 $trid = isset($_GET['trid']) ? $_GET['trid'] : 0; # get id for report pass data
-   $stmt = $mysqli->prepare("SELECT who_by, super_pass, date_added FROM trainee_report_ok WHERE trid = ? AND trainkey = ?");
-   $stmt->bind_param("is", $trid, $trainee);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($who_by, $super_pass, $date_added);
-   $stmt->fetch();
-   $stmt->close();
-      $date_added = strtotime($date_added);
-      $date_added = date('D jS F Y', $date_added);
+if ($pdo) {
+   $stmt = $pdo->prepare("SELECT who_by, super_pass, date_added FROM trainee_report_ok WHERE trid = ? AND trainkey = ?");
+   $stmt->execute([$trid, $trainee]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   if ($row) {
+       $who_by = $row['who_by'];
+       $super_pass = $row['super_pass'];
+       $date_added = $row['date_added'];
+   }
+   $date_added = strtotime($date_added);
+   $date_added = date('D jS F Y', $date_added);
 
    // get supervisor details who added pass
-   $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $who_by);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($supername);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+   $stmt->execute([$who_by]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   if ($row) {
+       $supername = $row['realname'];
+   }
 
    // get which competency
-   $stmt = $mysqli->prepare("SELECT tab_name FROM tabs_tbl WHERE tbid = ?");
-   $stmt->bind_param("i", $super_pass);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($tab_name);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $pdo->prepare("SELECT tab_name FROM tabs_tbl WHERE tbid = ?");
+   $stmt->execute([$super_pass]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   if ($row) {
+       $tab_name = $row['tab_name'];
+   }
+}
 
 //echo "$name $supername";
 $pdftemplate = "oxexpdf1.pdf";

@@ -1,4 +1,7 @@
 <?php 
+// Start output buffering to prevent headers already sent errors
+ob_start();
+
 include 'OXEXfolder/config.php';
 include 'OXEXfolder/p_functions.php';
 sec_session_start();
@@ -6,6 +9,7 @@ check_session_timeout();
 
 include 'incl/sess.php';
 $formurl = 'logbook.php'; # which page send form
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
 // this page shows the logbook data entry for the selected table
 //  1. show a date selector to enter data for that date
 //  2. show a list of previously-entered data
@@ -35,6 +39,8 @@ $dupe = isset($_POST['dupe']) ? $_POST['dupe'] : 'no';
   $dupe = preg_replace("/[^A-Z, a-z]/", "", $dupe);
 $del = isset($_GET['del']) ? $_GET['del'] : ''; # if from table
   $del = preg_replace("/[^A-Z, a-z]/", "", $del);
+// Ensure $logkey is always defined before use
+if (!isset($logkey)) { $logkey = ''; }
 if ($done == 'done') {# if from data form
   $tbid = isset($_POST['tab']) ? $_POST['tab'] : 0; # which table
     $tbid = (int)$tbid;
@@ -47,15 +53,10 @@ if ($done == 'date' || $dupe == 'dupe' ) {# if from new data button or duplicati
     $numids = 1;
     while (!$numids == 0) {
       // make unique 32 digit hex string
-      $logkey = substr(md5(rand()), 0, 32);   
-      $stmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE logkey = ? LIMIT 1");
-      $stmt->bind_param('s', $logkey);
-      $stmt->execute();
-      $stmt->store_result();
-      $stmt->bind_result($tlogid);
-      $stmt->fetch();
-      $numids = $stmt->num_rows;
-      $stmt->close();
+      $logkey = substr(md5(rand()), 0, 32);
+      $stmt = $supabase_pdo->prepare('select tlogid from trainee_log where logkey = ? limit 1');
+      $stmt->execute([$logkey]);
+      $numids = $stmt->fetch(PDO::FETCH_ASSOC) ? 1 : 0;
     }
 }
 
@@ -80,124 +81,90 @@ if ($table == 'table') {# if from table
 }
 if ($del == 'del') {# if deleting log
   $logkey = isset($_GET['logkey']) ? $_GET['logkey'] : ''; # unique ID for data set
-  
-  $stmt = $mysqli->prepare("DELETE FROM trainee_log WHERE trainkey = ? AND logkey = ?");
-  $stmt->bind_param("ss", $trainkey, $logkey); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
+  $stmt = $supabase_pdo->prepare('delete from trainee_log where trainkey = ? and logkey = ?');
+  $stmt->execute([$trainkey, $logkey]);
+  if ($stmt->rowCount() > 0) {
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
   }
-  $stmt->close();
   
 }
 
 // has this trainee entered data for this $logkey already?
-$vids = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND tbid = ? AND logkey = ?");
-$vids->bind_param("sis", $trainkey, $tbid, $logkey);
-$vids->execute();
-$vids->store_result();
-$modifylog = $vids->num_rows;
-$vids->close();
+$vids = $supabase_pdo->prepare('select tlogid from trainee_log where trainkey = ? and tbid = ? and logkey = ?');
+$vids->execute([$trainkey, $tbid, $logkey]);
+$modifylog = $vids->rowCount();
 //echo "trainkey $trainkey | tbid $tbid | logdate $logdate | modifylog $modifylog";
 
 if ($done == 'done' && $table != 'table') {
   //$logkey = isset($_POST['logkey']) ? $_POST['logkey'] : ''; # unique ID for data set
+  // When saving, prefer posted logkey if present
+  if (isset($_POST['logkey'])) { $logkey = $_POST['logkey']; }
   if ($modifylog > 0) {
-  // we're overwriting data so delete the old data for this user/tab/date
-    $stmt = $mysqli->prepare("DELETE FROM trainee_log WHERE trainkey = ? AND tbid = ? AND logkey = ?");
-    $stmt->bind_param("sis", $trainkey, $tbid, $logkey); 
-    $stmt->execute();
-    $stmt->close();
-  } 
+    // we're overwriting data so delete the old data for this user/tab/date
+    $stmt = $supabase_pdo->prepare('delete from trainee_log where trainkey = ? and tbid = ? and logkey = ?');
+    $stmt->execute([$trainkey, $tbid, $logkey]);
+  }
         
   // receive logbook data
-  $tableset = $mysqli->prepare("SELECT stid FROM tab_fields WHERE tbid = ? AND sort_order != ? ORDER BY sort_order ASC");
-  $tableset->bind_param("ii", $tbid, $value0); 
-  $tableset->execute();
-  $tableset->store_result();
-  $tableset->bind_result($stid);
-  while ($tableset->fetch()){
-    $posmarker = 'stid'.$stid;
-    // what sort of data are we expecting?
-    // 0=single select, 1=allow multiple, 2 = text, 3 = date, 4=numeric (0.1) 5=numeric(int), 6=time
-    $stmt = $mysqli->prepare("SELECT single FROM select_types WHERE stid = ?");
-    $stmt->bind_param("i", $stid);
-    $stmt->execute();
-    $stmt->store_result();
-    $stmt->bind_result($single);
-    $stmt->fetch();
-    $stmt->close();
-
-
-    
+  $tablesStmt = $supabase_pdo->prepare('select stid from tab_fields where tbid = ? and sort_order != ? order by sort_order asc');
+  $tablesStmt->execute([$tbid, $value0]);
+  $tfRows = $tablesStmt->fetchAll(PDO::FETCH_ASSOC);
+  foreach ($tfRows as $tfRow) { $stid = (int)$tfRow['stid'];
+    $posmarker = 'stid' . $stid;
+  
+    $stmt = $supabase_pdo->prepare('select single from select_types where stid = ?');
+    $stmt->execute([$stid]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $single = $row ? (int)$row['single'] : 0;
+  
     if ($single == 0) {
-      // store select value
-      $logvalue = isset($_POST[$posmarker]) ? $_POST[$posmarker] : 0;
-        // insert new value
-      $insert_stmt = $mysqli->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-      $insert_stmt->bind_param("siiisiis", $trainkey, $tbid, $stid, $logvalue, $valueblank, $logdate, $today, $logkey);
-      $insert_stmt->execute();
-      $newid = $insert_stmt->insert_id;
-      $insert_stmt->close();
+      $logvalue = isset($_POST[$posmarker]) ? intval($_POST[$posmarker]) : 0;
+      $insert_stmt = $supabase_pdo->prepare('insert into trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) values (?, ?, ?, ?, ?, ?, ?, ?)');
+      $insert_stmt->execute([$trainkey, $tbid, $stid, $logvalue, $valueblank, $logdate, $today, $logkey]);
     }
     if ($single == 1 && (isset($_POST[$posmarker]))) {
-      // will be array, step through values
-        foreach(($_POST[$posmarker]) as $mval) {
-          // insert new value
-          $insert_stmt = $mysqli->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-          $insert_stmt->bind_param("siiisiis", $trainkey, $tbid, $stid, $mval, $valueblank, $logdate, $today, $logkey);
-          $insert_stmt->execute();
-          $newid = $insert_stmt->insert_id;
-          $insert_stmt->close();
-        }
+      foreach(($_POST[$posmarker]) as $mval) {
+        $mval = intval($mval);
+        $insert_stmt = $supabase_pdo->prepare('insert into trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) values (?, ?, ?, ?, ?, ?, ?, ?)');
+        $insert_stmt->execute([$trainkey, $tbid, $stid, $mval, $valueblank, $logdate, $today, $logkey]);
+      }
     }
     if ($single == 2 || $single == 4 || $single == 5 || $single == 6) {
-      // expect text or numeric or hr:min input
       $logvalue = isset($_POST[$posmarker]) ? $_POST[$posmarker] : '';
-      // insert new value
-      $insert_stmt = $mysqli->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-      $insert_stmt->bind_param("siiisiis", $trainkey, $tbid, $stid, $value0, $logvalue, $logdate, $today, $logkey);
-      $insert_stmt->execute();
-      $newid = $insert_stmt->insert_id;
-      $insert_stmt->close();
+      $insert_stmt = $supabase_pdo->prepare('insert into trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) values (?, ?, ?, ?, ?, ?, ?, ?)');
+      $insert_stmt->execute([$trainkey, $tbid, $stid, $value0, $logvalue, $logdate, $today, $logkey]);
     }
     if ($single == 3) {
-      // convert dd-mm-yyyy date to yyyymmdd
       $logvalue = isset($_POST[$posmarker]) ? $_POST[$posmarker] : '';
-      $logvalue = preg_replace("/[^0-9]/", "", $logvalue); # convert to ddmmyyyy
+      $logvalue = preg_replace("/[^0-9]/", "", $logvalue);
       $fromddd = substr($logvalue, 0, 2);
       $frommm = substr($logvalue, 2, 2);
       $fromyyyy = substr($logvalue, 4, 4);
       $logvalue = $fromyyyy.$frommm.$fromddd;
-
-      // insert new value
-      $insert_stmt = $mysqli->prepare("INSERT INTO trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-      $insert_stmt->bind_param("siiisiis", $trainkey, $tbid, $stid, $value0, $logvalue, $logdate, $today, $logkey);
-      $insert_stmt->execute();
-      $newid = $insert_stmt->insert_id;
-      $insert_stmt->close();
+      $insert_stmt = $supabase_pdo->prepare('insert into trainee_log (trainkey, tbid, stid, pid, select_val, date_added, date_modified, logkey) values (?, ?, ?, ?, ?, ?, ?, ?)');
+      $insert_stmt->execute([$trainkey, $tbid, $stid, $value0, $logvalue, $logdate, $today, $logkey]);
     }
   }
-  $tableset->close();
 
   $modifylog = 1; # either way, there is now data for this date
+  
+  // Redirect to logbook.php with tab=1 after successful save
+  $redirectUrl = '/oxex/public_html/logbook.php?tab=1';
+  ob_end_clean(); // Clear any output before redirect
+  header('Location: ' . $redirectUrl);
+  exit();
 }
 
 // which Table is this and is this user entitled to it
-$stmt = $mysqli->prepare("SELECT tab_name, tab_notes FROM tabs_tbl WHERE tbid = ?");
-$stmt->bind_param("i", $tbid);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($tab_name, $tab_notes);
-$stmt->fetch();
-$stmt->close();
+$stmt = $supabase_pdo->prepare('select tab_name, tab_notes from tabs_tbl where tbid = ?');
+$stmt->execute([$tbid]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+$tab_name = $row['tab_name'] ?? '';
+$tab_notes = $row['tab_notes'] ?? '';
 
-$vids = $mysqli->prepare("SELECT ttid FROM trainee_tab_link ttl JOIN tabs_tbl tt ON ttl.tbid = tt.tbid WHERE ttl.tbid = ? AND ttl.trainkey = ? AND tt.isvis = 1");
-$vids->bind_param("is", $tbid, $trainkey);
-$vids->execute();
-$vids->store_result();
-$numlinks = $vids->num_rows;
-$vids->close();
+$vids = $supabase_pdo->prepare('select ttl.ttid from trainee_tab_link ttl join tabs_tbl tt on ttl.tbid = tt.tbid where ttl.tbid = ? and ttl.trainkey = ? and tt.isvis = 1');
+$vids->execute([$tbid, $trainkey]);
+$numlinks = $vids->rowCount();
 
 function validateAndConvertTime($timeValue) {
     // Handle null or empty values
@@ -699,7 +666,7 @@ function validateAndConvertTime($timeValue) {
     </style>
   </head>
   <?php
-    if (login_check($mysqli) != false) {
+    if (login_check($pdo) != false) {
       // logged in only!
     ?>
   <body>
@@ -773,25 +740,7 @@ function validateAndConvertTime($timeValue) {
             //echo $tab_notes;
             //echo "modifylog $modifylog";
             
-            // Debug: Show what tables user has access to
-            echo "<!-- DEBUG: User has access to these tables: -->";
-            $debug_tables = $mysqli->prepare("SELECT tbid, tab_name FROM tabs_tbl WHERE isvis = 1 ORDER BY sort_order");
-            $debug_tables->execute();
-            $debug_tables->store_result();
-            $debug_tables->bind_result($debug_tbid, $debug_tab_name);
-            while ($debug_tables->fetch()){
-              $debug_isok = 0;
-              $debug_vids = $mysqli->prepare("SELECT ttid FROM trainee_tab_link WHERE tbid = ? AND trainkey = ? ");
-              $debug_vids->bind_param("is", $debug_tbid, $trainkey);
-              $debug_vids->execute();
-              $debug_vids->store_result();
-              $debug_isok = $debug_vids->num_rows;
-              $debug_vids->close();
-              if ($debug_isok == 1) {
-                echo "<!-- DEBUG: User can access: " . htmlentities($debug_tab_name) . " (ID: $debug_tbid) -->";
-              }
-            }
-            $debug_tables->close();
+            // Debug block omitted for Supabase-only mode
             ?>
           </div>
         </div>
@@ -820,21 +769,13 @@ function validateAndConvertTime($timeValue) {
                     $wanted_fields = array('Placement Number', 'Placement', 'Patient ID', 'Clinical specialism', 'Date (latest session/contact)', 
                     'Supervision type', 'Format', 'Leadership activity',	'Supervision model','Supervision methods used');
                     
-                    $tableset = $mysqli->prepare("SELECT tab_fields.stid, select_types.str 
-                      FROM tab_fields, select_types 
-                      WHERE tab_fields.tbid = ? 
-                      AND tab_fields.sort_order != ? 
-                      AND tab_fields.stid = select_types.stid 
-                      AND select_types.str IN ('" . implode("','", $wanted_fields) . "')
-                      ORDER BY FIELD(select_types.str, '" . implode("','", $wanted_fields) . "'), tab_fields.sort_order ASC");
-                    $tableset->bind_param("ii", $tbid, $value0);
-                    $tableset->execute();
-                    $tableset->store_result();
-                    $tableset->bind_result($stid, $str);
-                    while ($tableset->fetch()){
-                      echo "<th>$str</th>";
-                    }
-                    $tableset->close();
+                    $placeholders = rtrim(str_repeat('?,', count($wanted_fields)), ',');
+                    $sql = "select tf.stid, st.str from tab_fields tf join select_types st on tf.stid = st.stid where tf.tbid = ? and tf.sort_order != ? and st.str in (" . $placeholders . ") order by tf.sort_order asc";
+                    $params = array_merge([$tbid, $value0], $wanted_fields);
+                    $tableset = $supabase_pdo->prepare($sql);
+                    $tableset->execute($params);
+                    $hdrRows = $tableset->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($hdrRows as $hr) { echo "<th>" . $hr['str'] . "</th>"; }
                     echo "<th>Changed:</th>";
                     echo "<th>Delete</th>";
                     ?>
@@ -847,77 +788,51 @@ function validateAndConvertTime($timeValue) {
 
                       // define 'set' as a date
                       // then get any results entered for the $stid for that date
-                    $dataset = $mysqli->prepare("SELECT 
-                        MIN(date_added) as date_added, 
-                        logkey, 
-                        MAX(date_modified) as date_modified
-                        FROM trainee_log 
-                        WHERE trainkey = ? AND tbid = ? 
-                        AND date_added >= ? AND date_added <= ? 
-                        GROUP BY logkey 
-                        ORDER BY MAX(date_modified) DESC");
-                    $dataset->bind_param("siii", $trainkey, $tbid, $valueyearstart, $valueyearend);
-                    $dataset->execute();
-                    $dataset->store_result();
-                    if ($dataset->num_rows > 0) {
-                      $dataset->bind_result($date_added, $tablelogkey, $tabledate_modified);
-                      while ($dataset->fetch()){
+                    $dataset = $supabase_pdo->prepare('select min(date_added) as date_added, logkey, max(date_modified) as date_modified from trainee_log where trainkey = ? and tbid = ? and date_added >= ? and date_added <= ? group by logkey order by max(date_modified) desc');
+                    $dataset->execute([$trainkey, $tbid, $valueyearstart, $valueyearend]);
+                    $rows = $dataset->fetchAll(PDO::FETCH_ASSOC);
+                    if ($rows) {
+                      foreach ($rows as $drow) {
+                        $date_added = $drow['date_added'];
+                        $tablelogkey = $drow['logkey'];
+                        $tabledate_modified = $drow['date_modified'];
                         $exlogdate = strtotime($date_added);
                         $exlogdate = date("d-m-Y", $exlogdate);
                         $exmoddate = strtotime($tabledate_modified);
                         $exmoddate = date("d-m-Y", $exmoddate);
-                        // loop through chosen fields
                         echo "<tr>";
-                        $ctr = 0; # a counter to know the first column
-                        // loop through same fields as the <th> cells
-                        // Removed  LIMIT 10 which constrained how many columns
-                        $tableset = $mysqli->prepare("SELECT tab_fields.stid, select_types.single 
-                          FROM tab_fields, select_types 
-                          WHERE tab_fields.tbid = ? 
-                          AND tab_fields.sort_order != ? 
-                          AND tab_fields.stid = select_types.stid 
-                          AND select_types.str IN ('" . implode("','", $wanted_fields) . "')
-                          ORDER BY FIELD(select_types.str, '" . implode("','", $wanted_fields) . "'), tab_fields.sort_order ASC");
-                        $tableset->bind_param("ii", $tbid, $value0);
-                        $tableset->execute();
-                        $tableset->store_result();
-                        $tableset->bind_result($stid, $single);
-                        while ($tableset->fetch()){
+                        $ctr = 0;
+                        // fetch field list for wanted_fields
+                        $placeholders = rtrim(str_repeat('?,', count($wanted_fields)), ',');
+                        $fsql = "select tf.stid, st.single from tab_fields tf join select_types st on tf.stid = st.stid where tf.tbid = ? and tf.sort_order != ? and st.str in (" . $placeholders . ") order by tf.sort_order asc";
+                        $fparams = array_merge([$tbid, $value0], $wanted_fields);
+                        $tableset = $supabase_pdo->prepare($fsql);
+                        $tableset->execute($fparams);
+                        while ($fr = $tableset->fetch(PDO::FETCH_ASSOC)) {
+                          $stid = (int)$fr['stid'];
+                          $single = (int)$fr['single'];
                           $exselect_val = '';
-                          // get data for each in turn
-                          // TAKEN TBID out of the search!!??
-                          $stmt = $mysqli->prepare("SELECT pid, select_val FROM trainee_log WHERE trainkey = ?  AND stid = ? AND logkey = ?");
-                          $stmt->bind_param("sis", $trainkey,  $stid, $tablelogkey);
-                          $stmt->execute();
-                          $stmt->store_result();
-                          $stmt->bind_result($expid, $exselect_val);
-                          $stmt->fetch();
-                          $stmt->close();
-                          // format data according to data type
-                          // 0=single select, 2 = text, 3 = date, 4=numeric (0.1) 5=numeric(int)
                           if ($single == 2 || $single == 4 || $single == 5 || $single == 6) {
-                            // for the first column in each row we create a link
-                            // to view the data as if we'd chiosen trhat date
-                            // in case the data is blank we add 'N/A'
-                            if ($exselect_val == '' && $ctr == 0) {
-                              $exselect_val = 'N/A';
-                            }
+                            $stmt = $supabase_pdo->prepare('select pid, select_val from trainee_log where trainkey = ? and stid = ? and logkey = ? limit 1');
+                            $stmt->execute([$trainkey, $stid, $tablelogkey]);
+                            $rowx = $stmt->fetch(PDO::FETCH_ASSOC);
+                            $exselect_val = $rowx['select_val'] ?? '';
+                            if ($exselect_val == '' && $ctr == 0) { $exselect_val = 'N/A'; }
                             if ($ctr == 0) {
                               echo "<td><a class=\"btn btn-sm btn-nhs\" href=\"$formurl?table=table&amp;tab=$tbid&amp;logkey=$tablelogkey\">" . htmlspecialchars($exselect_val ?? '') . "</a></td>\n";
                             } else {
                               echo "<td>" . htmlspecialchars($exselect_val ?? '') . "</td>\n";
                             }
-                            
                           }
                           if ($single == 0) {
-                            // fetch the select menu value for $pid
-                            $stmt = $mysqli->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
-                            $stmt->bind_param("i", $expid);
-                            $stmt->execute();
-                            $stmt->store_result();
-                            $stmt->bind_result($exselect_val);
-                            $stmt->fetch();
-                            $stmt->close();
+                            $stmt = $supabase_pdo->prepare('select pid, select_val from trainee_log where trainkey = ? and stid = ? and logkey = ? limit 1');
+                            $stmt->execute([$trainkey, $stid, $tablelogkey]);
+                            $rowx = $stmt->fetch(PDO::FETCH_ASSOC);
+                            $expid = $rowx['pid'] ?? null;
+                            $g = $supabase_pdo->prepare('select select_val from select_gen where pid = ?');
+                            $g->execute([$expid]);
+                            $gx = $g->fetch(PDO::FETCH_ASSOC);
+                            $exselect_val = $gx['select_val'] ?? '';
                             if ($ctr == 0) {
                               echo "<td><a class=\"btn btn-sm btn-nhs\" href=\"$formurl?table=table&amp;tab=$tbid&amp;logkey=$tablelogkey\">" . htmlspecialchars($exselect_val ?? '') . "</a></td>\n";
                             } else {
@@ -925,60 +840,40 @@ function validateAndConvertTime($timeValue) {
                             }
                           }
                           if ($single == 3) {
-                            // $exselect_val is date YYYYMMDD
+                            $stmt = $supabase_pdo->prepare('select select_val from trainee_log where trainkey = ? and stid = ? and logkey = ? limit 1');
+                            $stmt->execute([$trainkey, $stid, $tablelogkey]);
+                            $rowx = $stmt->fetch(PDO::FETCH_ASSOC);
+                            $exselect_val = $rowx['select_val'] ?? null;
                             if ($exselect_val > 1 && $exselect_val !== null) {
-                              // null 01-01/1970 dates
                               $exselect_val = strtotime($exselect_val);
                               echo "<td>".date("d-m-y", $exselect_val)."</td>\n";
-                            } else {
-                              echo "<td>&nbsp;</td>";
-                            }             
+                            } else { echo "<td>&nbsp;</td>"; }
                           }
                           if ($single == 1) {
-                            // $exselect_val is multiple values, one per record
-                            $exarr = array();
-                            $fieldset = $mysqli->prepare("SELECT pid FROM trainee_log WHERE stid = ? AND logkey = ?");
-                            $fieldset->bind_param("is", $stid, $tablelogkey);
-                            $fieldset->execute();
-                            $fieldset->store_result();
-                            $fieldset->bind_result($expid);
-                            while ($fieldset->fetch()){
-                              array_push($exarr, $expid); # add to array for checking in select
-                            }
-                            $fieldset->close();
-                            // now make array unique as this will create for each seperate record
-                            $exarruq = (array_unique($exarr));
-                            // now loop through array of pids to get values
+                            $fieldset = $supabase_pdo->prepare('select pid from trainee_log where stid = ? and logkey = ?');
+                            $fieldset->execute([$stid, $tablelogkey]);
+                            $exarr = [];
+                            while ($rx = $fieldset->fetch(PDO::FETCH_ASSOC)) { $exarr[] = $rx['pid']; }
+                            $exarruq = array_unique($exarr);
                             $exselect_val = '';
-                            $mult_val = 0;
-                            foreach($exarruq as $x) {
-                              // fetch the select menu value for $pid
-                              $stmt = $mysqli->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
-                              $stmt->bind_param("i", $x);
-                              $stmt->execute();
-                              $stmt->store_result();
-                              $stmt->bind_result($mult_val);
-                              $stmt->fetch();
-                              $stmt->close();
+                            foreach ($exarruq as $x) {
+                              $g = $supabase_pdo->prepare('select select_val from select_gen where pid = ?');
+                              $g->execute([$x]);
+                              $gx = $g->fetch(PDO::FETCH_ASSOC);
+                              $mult_val = $gx['select_val'] ?? '';
                               $exselect_val = $exselect_val." ".$mult_val;
                             }
                             echo "<td>" . htmlspecialchars($exselect_val ?? '') . "</td>\n";
-                            $exselect_val = '';
-                            unset($exarruq);
                           }
-                          $ctr++; # increment counter
+                          $ctr++;
                         }
-                        $tableset->close();
                         echo "<td>" . htmlspecialchars($exmoddate ?? '') . "</td>";
                         echo "<td><a class=\"btn btn-sm btn-danger\" href=\"$formurl?del=del&amp;tab=$tbid&amp;logkey=$tablelogkey\" onclick=\"return confirm('Are you sure you want to immediately delete this line in your logbook (there  is NO undo)?')\">Delete</a></td>\n";
                         echo "</tr>";
-                          
                       }
                     } else {
-                      // If no data, show "No data available"
                       echo "<tr><td colspan=\"100%\" class=\"text-center\">No data available</td></tr>";
-                  }
-                    $dataset->close();
+                    }
                   ?>
                 </tbody>
               </table>
@@ -1007,7 +902,7 @@ function validateAndConvertTime($timeValue) {
         
         <?php
         // Start form
-        echo '<form method="post" name="logbook" action="' . $formurl . '">';
+        echo '<form method="post" name="logbook-main" action="' . $formurl . '">';
         echo '<div class="row g-4">';
 
         // Get all sections from the database
@@ -1020,166 +915,112 @@ function validateAndConvertTime($timeValue) {
           ORDER BY fs.section_order ASC, fs.section_name ASC
         ";
         
-        $sections_stmt = $mysqli->prepare($sections_query);
-        if ($sections_stmt) {
-          $sections_stmt->bind_param("i", $tbid);
-          $sections_stmt->execute();
-          $sections_result = $sections_stmt->get_result();
-          $sections_stmt->close();
-        } else {
-          // Fallback to original query if prepare fails
-          $sections_result = $mysqli->query("SELECT section_id, section_name FROM field_sections ORDER BY section_order ASC");
+        if ($usingSupabase) {
+          $sections = array();
+          $sections_stmt = $supabase_pdo->prepare('select fs.section_id, fs.section_name, fs.section_order from field_sections fs join section_table_link stl on fs.section_id = stl.section_id where stl.tbid = ? order by fs.section_order asc, fs.section_name asc');
+          $sections_stmt->execute([$tbid]);
+          while ($row = $sections_stmt->fetch(PDO::FETCH_ASSOC)) {
+            $sections[] = $row;
+          }
         }
         
         // Track which fields have been displayed in sections
         $displayed_field_ids = array();
 
-        if ($sections_result && $sections_result->num_rows > 0) {
-          while ($section = $sections_result->fetch_assoc()) {
-            $section_id = $section['section_id'];
-            $section_name = $section['section_name'];
-            
-            // Generate section heading with a clear button
-            echo '<div class="col-12 mb-4 d-flex justify-content-between align-items-center">';
-            echo '<h4>' . htmlspecialchars($section_name ?? '') . '</h4>';
-            echo '<button type="button" class="btn btn-secondary btn-sm clear-section" data-section="' . md5($section_name ?? '') . '">Clear</button>';
-            echo '</div>';
-            
-            // Wrap the fields of this section in a container with a unique identifier
-            echo '<div class="row g-4 section-container" id="section-' . md5($section_name ?? '') . '">';
-            
-            // Get fields for this section AND table
-            $fields_query = "
-              SELECT st.stid, st.str, st.single 
-              FROM select_types st
-              JOIN tab_fields tf ON st.stid = tf.stid
-              WHERE st.section_id = ? AND tf.tbid = ?
-              ORDER BY tf.sort_order ASC, st.str ASC
-            ";
-            
-            $fields_stmt = $mysqli->prepare($fields_query);
-            $fields_stmt->bind_param("ii", $section_id, $tbid);
-            $fields_stmt->execute();
-            $fields_result = $fields_stmt->get_result();
-            $fields_stmt->close();
-            
-            if ($fields_result && $fields_result->num_rows > 0) {
-              $field_count = 0;
-              
-              while ($field = $fields_result->fetch_assoc()) {
-                $stid = $field['stid'];
-                $str = $field['str'];
-                $single = $field['single'];
-                
-                // Add to displayed fields tracker
-                $displayed_field_ids[] = $stid;
-                
-                // Check if required
-                $isreqd = ($stid == 59 || $stid == 2) ? 'required' : '';
-                
-                // Retrieve existing values
-                $stmt = $mysqli->prepare("SELECT pid, select_val FROM trainee_log WHERE trainkey = ? AND tbid = ? AND stid = ? AND logkey = ?");
-                $stmt->bind_param("siis", $trainkey, $tbid, $stid, $logkey);
-                $stmt->execute();
-                $stmt->store_result();
-                $stmt->bind_result($expid, $exlogvalue);
-                $stmt->fetch();
-                $stmt->close();
-                
-                echo '<div class="col-sm-6 col-lg-4">';
-                echo '<div class="form-group mb-4">';
-                echo '<label class="form-label" for="stid' . $stid . '">' . htmlspecialchars($str ?? '') . '</label>';
-                
-                // Render the appropriate input field
-                switch ($single) {
-                  case 0: // Single select menu
-                    echo "<select class='form-control' id='stid$stid' name='stid$stid' $isreqd style='word-wrap: break-word; white-space: normal;'>";
-                    
-                    // Add default "Please Pick" option
-                    $defaultSelected = ($expid == 0 || $expid == null) ? 'selected' : '';
-                    echo "<option value='' $defaultSelected style='word-wrap: break-word; white-space: normal;'>Please Pick</option>";
-                    
-                    $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ?");
-                    $fieldset->bind_param("i", $stid);
-                    $fieldset->execute();
-                    $fieldset->store_result();
-                    $fieldset->bind_result($pid, $select_val);
-                    while ($fieldset->fetch()) {
-                      $selected = ($pid == $expid) ? 'selected' : '';
-                      echo "<option value='$pid' $selected style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</option>";
-                    }
-                    $fieldset->close();
-                    echo "</select>";
-                    break;
-                    
-                  case 1: // Multi-select menu
-                    $exarr = [];
-                    $fieldset = $mysqli->prepare("SELECT pid FROM trainee_log WHERE stid = ? AND logkey = ?");
-                    $fieldset->bind_param("is", $stid, $logkey);
-                    $fieldset->execute();
-                    $fieldset->store_result();
-                    $fieldset->bind_result($expid);
-                    while ($fieldset->fetch()) {
-                      $exarr[] = $expid;
-                    }
-                    $fieldset->close();
-                    
-                    // Create checkbox options instead of multiple select
-                    echo "<div class='checkbox-group' id='stid$stid' style='max-height: 200px; overflow-y: auto; border: 1px solid #ced4da; border-radius: 4px; padding: 10px; background-color: #f8f9fa;'>";
-                    
-                    $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ?");
-                    $fieldset->bind_param("i", $stid);
-                    $fieldset->execute();
-                    $fieldset->store_result();
-                    $fieldset->bind_result($pid, $select_val);
-                    while ($fieldset->fetch()) {
-                      $checked = in_array($pid, $exarr) ? 'checked' : '';
-                      echo "<div class='custom-checkbox-item'>";
-                      echo "<input type='checkbox' name='stid{$stid}[]' value='$pid' id='stid{$stid}_{$pid}' $checked>";
-                      echo "<label for='stid{$stid}_{$pid}' style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</label>";
+        if ($usingSupabase) {
+          if (count($sections) > 0) {
+            foreach ($sections as $section) {
+              $section_id = $section['section_id'];
+              $section_name = $section['section_name'];
+              echo '<div class="col-12 mb-4 d-flex justify-content-between align-items-center">';
+              echo '<h4>' . htmlspecialchars($section_name ?? '') . '</h4>';
+              echo '<button type="button" class="btn btn-secondary btn-sm clear-section" data-section="' . md5($section_name ?? '') . '">Clear</button>';
+              echo '</div>';
+              echo '<div class="row g-4 section-container" id="section-' . md5($section_name ?? '') . '">';
+              $fields_stmt = $supabase_pdo->prepare('select st.stid, st.str, st.single from select_types st join tab_fields tf on st.stid = tf.stid where st.section_id = ? and tf.tbid = ? order by tf.sort_order asc, st.str asc');
+              $fields_stmt->execute([$section_id, $tbid]);
+              $fields_rows = $fields_stmt->fetchAll(PDO::FETCH_ASSOC);
+              if ($fields_rows && count($fields_rows) > 0) {
+                $field_count = 0;
+                foreach ($fields_rows as $field) {
+                  $stid = $field['stid'];
+                  $str = $field['str'];
+                  $single = $field['single'];
+                  $displayed_field_ids[] = $stid;
+                  $isreqd = ($stid == 59 || $stid == 2) ? 'required' : '';
+                  $stmt = $supabase_pdo->prepare('select pid, select_val from trainee_log where trainkey = ? and tbid = ? and stid = ? and logkey = ? limit 1');
+                  $stmt->execute([$trainkey, $tbid, $stid, $logkey]);
+                  $rowx = $stmt->fetch(PDO::FETCH_ASSOC);
+                  $expid = $rowx['pid'] ?? null;
+                  $exlogvalue = $rowx['select_val'] ?? '';
+                  echo '<div class="col-sm-6 col-lg-4">';
+                  echo '<div class="form-group mb-4">';
+                  echo '<label class="form-label" for="stid' . $stid . '">' . htmlspecialchars($str ?? '') . '</label>';
+                  switch ($single) {
+                    case 0:
+                      echo "<select class='form-control' id='stid$stid' name='stid$stid' $isreqd style='word-wrap: break-word; white-space: normal;'>";
+                      $defaultSelected = ($expid == 0 || $expid == null) ? 'selected' : '';
+                      echo "<option value='' $defaultSelected style='word-wrap: break-word; white-space: normal;'>Please Pick</option>";
+                      $fieldset = $supabase_pdo->prepare('select pid, select_val from select_gen where stid = ?');
+                      $fieldset->execute([$stid]);
+                      while ($fr = $fieldset->fetch(PDO::FETCH_ASSOC)) {
+                        $pid = $fr['pid'];
+                        $select_val = $fr['select_val'];
+                        $selected = ($pid == $expid) ? 'selected' : '';
+                        echo "<option value='$pid' $selected style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</option>";
+                      }
+                      echo "</select>";
+                      break;
+                    case 1:
+                      $exarr = [];
+                      $fieldset = $supabase_pdo->prepare('select pid from trainee_log where stid = ? and logkey = ?');
+                      $fieldset->execute([$stid, $logkey]);
+                      while ($fr = $fieldset->fetch(PDO::FETCH_ASSOC)) { $exarr[] = $fr['pid']; }
+                      echo "<div class='checkbox-group' id='stid$stid' style='max-height: 200px; overflow-y: auto; border: 1px solid #ced4da; border-radius: 4px; padding: 10px; background-color: #f8f9fa;'>";
+                      $fieldset = $supabase_pdo->prepare('select pid, select_val from select_gen where stid = ?');
+                      $fieldset->execute([$stid]);
+                      while ($fr = $fieldset->fetch(PDO::FETCH_ASSOC)) {
+                        $pid = $fr['pid'];
+                        $select_val = $fr['select_val'];
+                        $checked = in_array($pid, $exarr) ? 'checked' : '';
+                        echo "<div class='custom-checkbox-item'>";
+                        echo "<input type='checkbox' name='stid{$stid}[]' value='$pid' id='stid{$stid}_{$pid}' $checked>";
+                        echo "<label for='stid{$stid}_{$pid}' style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</label>";
+                        echo "</div>";
+                      }
                       echo "</div>";
-                    }
-                    $fieldset->close();
-                    echo "</div>";
-                    break;
-                    
-                  case 2: // Text input
-                    echo "<input type='text' class='form-control' id='stid$stid' name='stid$stid' value='" . htmlspecialchars($exlogvalue ?? '') . "'>";
-                    break;
-                    
-                  case 3: // Date input
-                    $dispdate = ($exlogvalue > 0 && $exlogvalue !== null) ? date("d-m-Y", strtotime($exlogvalue)) : '';
-                    echo "<input type='text' class='form-control datepicker' id='stid$stid' name='stid$stid' value='$dispdate'>";
-                    break;
-                    
-                  case 4: // Numeric (0.1 step)
-                    echo "<input type='number' class='form-control' id='stid$stid' name='stid$stid' min='0' step='0.1' value='$exlogvalue'>";
-                    break;
-                    
-                  case 5: // Numeric integer
-                    echo "<input type='number' class='form-control' id='stid$stid' name='stid$stid' min='0' step='1' value='$exlogvalue' $isreqd>";
-                    break;
-                    
-                  case 6: // Time input
-                    $posmarker = 'stid'.$stid;
-                    $timeValue = isset($_POST[$posmarker]) ? $_POST[$posmarker] : $exlogvalue;
-                    $timeValue = validateAndConvertTime($timeValue);
-                    echo "<input type='time' class='form-control' id='stid$stid' name='stid$stid' min='00:00' step='300' value='$timeValue'>";
-                    break;
+                      break;
+                    case 2:
+                      echo "<input type='text' class='form-control' id='stid$stid' name='stid$stid' value='" . htmlspecialchars($exlogvalue ?? '') . "'>";
+                      break;
+                    case 3:
+                      $dispdate = ($exlogvalue > 0 && $exlogvalue !== null) ? date("d-m-Y", strtotime($exlogvalue)) : '';
+                      echo "<input type='text' class='form-control datepicker' id='stid$stid' name='stid$stid' value='$dispdate'>";
+                      break;
+                    case 4:
+                      echo "<input type='number' class='form-control' id='stid$stid' name='stid$stid' min='0' step='0.1' value='$exlogvalue'>";
+                      break;
+                    case 5:
+                      echo "<input type='number' class='form-control' id='stid$stid' name='stid$stid' min='0' step='1' value='$exlogvalue' $isreqd>";
+                      break;
+                    case 6:
+                      $posmarker = 'stid'.$stid;
+                      $timeValue = isset($_POST[$posmarker]) ? $_POST[$posmarker] : $exlogvalue;
+                      $timeValue = validateAndConvertTime($timeValue);
+                      echo "<input type='time' class='form-control' id='stid$stid' name='stid$stid' min='00:00' step='300' value='$timeValue'>";
+                      break;
+                  }
+                  echo '</div></div>';
+                  $field_count++;
                 }
-                
-                echo '</div></div>';
-                $field_count++;
-              }
-              
-              if ($field_count == 0) {
+                if ($field_count == 0) {
+                  echo '<div class="col-12"><p class="text-muted">No categories found in this section</p></div>';
+                }
+              } else {
                 echo '<div class="col-12"><p class="text-muted">No categories found in this section</p></div>';
               }
-            } else {
-              echo '<div class="col-12"><p class="text-muted">No categories found in this section</p></div>';
+              echo '</div>'; // Close section-container
             }
-            
-            echo '</div>'; // Close section-container
           }
         }
         
@@ -1203,119 +1044,86 @@ function validateAndConvertTime($timeValue) {
           ORDER BY tf.sort_order ASC, st.str ASC
         ";
         
-        $unsectioned_stmt = $mysqli->prepare($unsectioned_query);
-        $unsectioned_stmt->bind_param("i", $tbid);
-        $unsectioned_stmt->execute();
-        $unsectioned_result = $unsectioned_stmt->get_result();
-        $unsectioned_stmt->close();
+        if ($usingSupabase) {
+          $unsectioned_stmt = $supabase_pdo->prepare('select st.stid, st.str, st.single from tab_fields tf join select_types st on tf.stid = st.stid where tf.tbid = ? and (st.section_id is null or st.section_id = 0) and tf.sort_order != 0 and st.stid not in (' . (count($displayed_field_ids) > 0 ? implode(',', $displayed_field_ids) : '0') . ') order by tf.sort_order asc, st.str asc');
+          $unsectioned_stmt->execute([$tbid]);
+          $unsectioned_rows = $unsectioned_stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
 
-        if ($unsectioned_result && $unsectioned_result->num_rows > 0) {
-          while ($field = $unsectioned_result->fetch_assoc()) {
-            $stid = $field['stid'];
-            
-            // Skip if this field was already displayed in a section
-            if (in_array($stid, $displayed_field_ids)) {
-              continue;
-            }
-            
-            $str = $field['str'];
-            $single = $field['single'];
-            
-            // Check if required
-            $isreqd = ($stid == 59 || $stid == 2) ? 'required' : '';
-            
-            // Retrieve existing values
-            $stmt = $mysqli->prepare("SELECT pid, select_val FROM trainee_log WHERE trainkey = ? AND tbid = ? AND stid = ? AND logkey = ?");
-            $stmt->bind_param("siis", $trainkey, $tbid, $stid, $logkey);
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($expid, $exlogvalue);
-            $stmt->fetch();
-            $stmt->close();
-            
-            echo '<div class="col-sm-6 col-lg-4">';
-            echo '<div class="form-group mb-4">';
-            echo '<label class="form-label" for="stid' . $stid . '">' . htmlspecialchars($str ?? '') . '</label>';
-            
-            // Render the appropriate input field (same switch case as above)
-            switch ($single) {
-              case 0: // Single select menu
-                echo "<select class='form-control' id='stid$stid' name='stid$stid' $isreqd style='word-wrap: break-word; white-space: normal;'>";
-                
-                // Add default "Please Pick" option
-                $defaultSelected = ($expid == 0 || $expid == null) ? 'selected' : '';
-                echo "<option value='' $defaultSelected style='word-wrap: break-word; white-space: normal;'>Please Pick</option>";
-                
-                $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ?");
-                $fieldset->bind_param("i", $stid);
-                $fieldset->execute();
-                $fieldset->store_result();
-                $fieldset->bind_result($pid, $select_val);
-                while ($fieldset->fetch()) {
-                  $selected = ($pid == $expid) ? 'selected' : '';
-                  echo "<option value='$pid' $selected style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</option>";
-                }
-                $fieldset->close();
-                echo "</select>";
-                break;
-                
-              case 1: // Multi-select menu
-                $exarr = [];
-                $fieldset = $mysqli->prepare("SELECT pid FROM trainee_log WHERE stid = ? AND logkey = ?");
-                $fieldset->bind_param("is", $stid, $logkey);
-                $fieldset->execute();
-                $fieldset->store_result();
-                $fieldset->bind_result($expid);
-                while ($fieldset->fetch()) {
-                  $exarr[] = $expid;
-                }
-                $fieldset->close();
-                
-                // Create checkbox options instead of multiple select
-                echo "<div class='checkbox-group' id='stid$stid' style='max-height: 200px; overflow-y: auto; border: 1px solid #ced4da; border-radius: 4px; padding: 10px; background-color: #f8f9fa;'>";
-                
-                $fieldset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ?");
-                $fieldset->bind_param("i", $stid);
-                $fieldset->execute();
-                $fieldset->store_result();
-                $fieldset->bind_result($pid, $select_val);
-                while ($fieldset->fetch()) {
-                  $checked = in_array($pid, $exarr) ? 'checked' : '';
-                  echo "<div class='custom-checkbox-item'>";
-                  echo "<input type='checkbox' name='stid{$stid}[]' value='$pid' id='stid{$stid}_{$pid}' $checked>";
-                  echo "<label for='stid{$stid}_{$pid}' style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</label>";
+        if ($usingSupabase) {
+          if ($unsectioned_rows && count($unsectioned_rows) > 0) {
+            foreach ($unsectioned_rows as $field) {
+              $stid = $field['stid'];
+              if (in_array($stid, $displayed_field_ids)) { continue; }
+              $str = $field['str'];
+              $single = $field['single'];
+              $isreqd = ($stid == 59 || $stid == 2) ? 'required' : '';
+              $stmt = $supabase_pdo->prepare('select pid, select_val from trainee_log where trainkey = ? and tbid = ? and stid = ? and logkey = ? limit 1');
+              $stmt->execute([$trainkey, $tbid, $stid, $logkey]);
+              $rowx = $stmt->fetch(PDO::FETCH_ASSOC);
+              $expid = $rowx['pid'] ?? null;
+              $exlogvalue = $rowx['select_val'] ?? '';
+              echo '<div class="col-sm-6 col-lg-4">';
+              echo '<div class="form-group mb-4">';
+              echo '<label class="form-label" for="stid' . $stid . '">' . htmlspecialchars($str ?? '') . '</label>';
+              switch ($single) {
+                case 0:
+                  echo "<select class='form-control' id='stid$stid' name='stid$stid' $isreqd style='word-wrap: break-word; white-space: normal;'>";
+                  $defaultSelected = ($expid == 0 || $expid == null) ? 'selected' : '';
+                  echo "<option value='' $defaultSelected style='word-wrap: break-word; white-space: normal;'>Please Pick</option>";
+                  $fieldset = $supabase_pdo->prepare('select pid, select_val from select_gen where stid = ?');
+                  $fieldset->execute([$stid]);
+                  while ($fr = $fieldset->fetch(PDO::FETCH_ASSOC)) {
+                    $pid = $fr['pid'];
+                    $select_val = $fr['select_val'];
+                    $selected = ($pid == $expid) ? 'selected' : '';
+                    echo "<option value='$pid' $selected style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</option>";
+                  }
+                  echo "</select>";
+                  break;
+                case 1:
+                  $exarr = [];
+                  $fieldset = $supabase_pdo->prepare('select pid from trainee_log where stid = ? and logkey = ?');
+                  $fieldset->execute([$stid, $logkey]);
+                  while ($fr = $fieldset->fetch(PDO::FETCH_ASSOC)) { $exarr[] = $fr['pid']; }
+                  echo "<div class='checkbox-group' id='stid$stid' style='max-height: 200px; overflow-y: auto; border: 1px solid #ced4da; border-radius: 4px; padding: 10px; background-color: #f8f9fa;'>";
+                  $fieldset = $supabase_pdo->prepare('select pid, select_val from select_gen where stid = ?');
+                  $fieldset->execute([$stid]);
+                  while ($fr = $fieldset->fetch(PDO::FETCH_ASSOC)) {
+                    $pid = $fr['pid'];
+                    $select_val = $fr['select_val'];
+                    $checked = in_array($pid, $exarr) ? 'checked' : '';
+                    echo "<div class='custom-checkbox-item'>";
+                    echo "<input type='checkbox' name='stid{$stid}[]' value='$pid' id='stid{$stid}_{$pid}' $checked>";
+                    echo "<label for='stid{$stid}_{$pid}' style='word-wrap: break-word; white-space: normal;'>" . htmlspecialchars($select_val ?? '') . "</label>";
+                    echo "</div>";
+                  }
                   echo "</div>";
-                }
-                $fieldset->close();
-                echo "</div>";
-                break;
-                
-              case 2: // Text input
-                echo "<input type='text' class='form-control' id='stid$stid' name='stid$stid' value='" . htmlspecialchars($exlogvalue ?? '') . "'>";
-                break;
-                
-              case 3: // Date input
-                $dispdate = ($exlogvalue > 0 && $exlogvalue !== null) ? date("d-m-Y", strtotime($exlogvalue)) : '';
-                echo "<input type='text' class='form-control datepicker' id='stid$stid' name='stid$stid' value='$dispdate'>";
-                break;
-                
-              case 4: // Numeric (0.1 step)
-                echo "<input type='number' class='form-control' id='stid$stid' name='stid$stid' min='0' step='0.1' value='$exlogvalue'>";
-                break;
-                
-              case 5: // Numeric integer
-                echo "<input type='number' class='form-control' id='stid$stid' name='stid$stid' min='0' step='1' value='$exlogvalue' $isreqd>";
-                break;
-                
-              case 6: // Time input
-                $posmarker = 'stid'.$stid;
-                $timeValue = isset($_POST[$posmarker]) ? $_POST[$posmarker] : $exlogvalue;
-                $timeValue = validateAndConvertTime($timeValue);
-                echo "<input type='time' class='form-control' id='stid$stid' name='stid$stid' min='00:00' step='300' value='$timeValue'>";
-                break;
+                  break;
+                case 2:
+                  echo "<input type='text' class='form-control' id='stid$stid' name='stid$stid' value='" . htmlspecialchars($exlogvalue ?? '') . "'>";
+                  break;
+                case 3:
+                  $dispdate = ($exlogvalue > 0 && $exlogvalue !== null) ? date("d-m-Y", strtotime($exlogvalue)) : '';
+                  echo "<input type='text' class='form-control datepicker' id='stid$stid' name='stid$stid' value='$dispdate'>";
+                  break;
+                case 4:
+                  echo "<input type='number' class='form-control' id='stid$stid' name='stid$stid' min='0' step='0.1' value='$exlogvalue'>";
+                  break;
+                case 5:
+                  echo "<input type='number' class='form-control' id='stid$stid' name='stid$stid' min='0' step='1' value='$exlogvalue' $isreqd>";
+                  break;
+                case 6:
+                  $posmarker = 'stid'.$stid;
+                  $timeValue = isset($_POST[$posmarker]) ? $_POST[$posmarker] : $exlogvalue;
+                  $timeValue = validateAndConvertTime($timeValue);
+                  echo "<input type='time' class='form-control' id='stid$stid' name='stid$stid' min='00:00' step='300' value='$timeValue'>";
+                  break;
+              }
+              echo '</div></div>';
             }
-            
-            echo '</div></div>';
+          } else {
+            echo '<div class="col-12"><p class="text-muted">No additional categories found</p></div>';
           }
         } else {
           echo '<div class="col-12"><p class="text-muted">No additional categories found</p></div>';
@@ -1331,7 +1139,7 @@ function validateAndConvertTime($timeValue) {
         echo '<input type="hidden" name="tab" value="' . $tbid . '">';
         echo '<input type="hidden" name="logkey" value="' . $logkey . '">';
         echo '<input type="hidden" name="logdate" value="' . date("dmY", $todaydisp) . '">';
-        echo '<button type="submit" id="save-button" class="btn btn-nhs btn-lg">Save</button>';
+        echo '<button type="button" id="save-button" class="btn btn-nhs btn-lg" data-toggle="modal" data-target="#saveConfirmModal">Save</button>';
         echo '</div></div>';
         echo '</form>';
       ?>
@@ -1362,9 +1170,30 @@ function validateAndConvertTime($timeValue) {
   <?php
   }// not entitled
   ?>
-  <?php include 'incl/footer.php' ?>
+     <!-- Save confirmation modal (temporary test) -->
+     <div class="modal fade" id="saveConfirmModal" tabindex="-1" role="dialog" aria-labelledby="saveConfirmLabel" aria-hidden="true">
+       <div class="modal-dialog" role="document">
+         <div class="modal-content">
+           <div class="modal-header bg_nhsuk-blue">
+             <h5 class="modal-title text-white" id="saveConfirmLabel">Confirm Save</h5>
+             <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+               <span aria-hidden="true">&times;</span>
+             </button>
+           </div>
+           <div class="modal-body">
+             Are you sure you want to save these changes?
+           </div>
+           <div class="modal-footer">
+             <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+             <button type="button" class="btn btn-nhs" id="confirm-save-btn">Confirm Save</button>
+           </div>
+         </div>
+       </div>
+     </div>
+
+     <?php include 'incl/footer.php' ?>
   <?php
-  if (login_check($mysqli) != false) {
+  if (login_check($pdo) != false) {
     include 'incl/glossary.php';
   }
   ?>
@@ -1380,27 +1209,31 @@ function validateAndConvertTime($timeValue) {
     });
   });
   $(document).ready(function () {
-     $.fn.dataTable.moment( 'D-MM-YY' );
+    // Match our date format (e.g., 05-10-2025)
+    $.fn.dataTable.moment('DD-MM-YYYY');
+    var thCount = $('#logbk thead th').length;
+    // Order by the 'Changed:' column (penultimate column)
+    var changedIdx = thCount >= 2 ? thCount - 2 : 0;
     $('#logbk').DataTable({
-        paging: false,
-        ordering: true,
-        info: false,
-        order: [[4, 'desc']],
+      paging: false,
+      ordering: true,
+      info: false,
+      order: [[changedIdx, 'desc']]
     });
-});
+  });
   </script>
   <script>
-  document.addEventListener('DOMContentLoaded', function () {
-      // Attach click event to the Save button
-      const saveButton = document.getElementById('save-button');
-      if (saveButton) {
-          saveButton.addEventListener('click', function (e) {
-          const confirmSave = confirm('Are you sure you want to save these changes?');
-          if (!confirmSave) {
-              e.preventDefault(); // Prevent form submission if the user cancels
-          }
-      });
-      }
+    document.addEventListener('DOMContentLoaded', function () {
+       // Handle modal confirm to submit the form
+       const confirmBtn = document.getElementById('confirm-save-btn');
+       if (confirmBtn) {
+           confirmBtn.addEventListener('click', function () {
+               const form = document.querySelector('form[name="logbook-main"]');
+               if (form) {
+                   form.submit();
+               }
+           });
+       }
 
       // Show success message if form is submitted successfully
       const urlParams = new URLSearchParams(window.location.search);
@@ -1506,7 +1339,11 @@ function validateAndConvertTime($timeValue) {
         const options = Array.from(select.options);
         const maxLength = Math.max(...options.map(opt => opt.text.length));
         if (maxLength > 50) {
-          select.style.minWidth = Math.min(maxLength * 6, containerWidth - 20) + 'px';
+          const container2 = group.closest('.col-sm-6, .col-lg-4');
+          const cw = container2 ? container2.offsetWidth : 0;
+          if (cw > 0) {
+            select.style.minWidth = Math.min(maxLength * 6, cw - 20) + 'px';
+          }
         }
       }
       
@@ -1593,4 +1430,8 @@ function validateAndConvertTime($timeValue) {
 }// logged in only!
 ?>
 </html>
+<?php
+// End output buffering and flush content
+ob_end_flush();
+?>
 

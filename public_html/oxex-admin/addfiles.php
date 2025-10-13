@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "File Manager";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Add Files for inline content";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -97,8 +100,7 @@ define ("FILEREPOSITORY","../files/");
                      closedir($handle);
                      ?>
                      <!-- space for Ajax result -->
-                     </div>
-               </div>
+</div>
                <div class="col-xl-4">
                   <div class="card card-default">
                      <div class="card-header">Add Files</div>
@@ -121,10 +123,8 @@ define ("FILEREPOSITORY","../files/");
                      </div>
                      <div class="card-footer">
                         <?php echo $uploadmsg ?>
-                     </div>
-                  </div>
-               </div>
-            </div>
+</div>
+</div>
          </div>
       </section>
    </div>

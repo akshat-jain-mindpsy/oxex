@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = 'Categories';
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Admin";
 $listurl = "categories.php"; # where the delete script is found
 $listname = "Categories";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -36,28 +39,29 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
    $single = isset($_POST['single']) ? $_POST['single'] : 0;
    $musthave = isset($_POST['musthave']) ? $_POST['musthave'] : 0;
    $wouldlike = isset($_POST['wouldlike']) ? $_POST['wouldlike'] : 0;
-   $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
+   $sort_order = isset($_POST['sort_order']) ? (int)$_POST['sort_order'] : 0;
    $section_id = isset($_POST['section_id']) ? $_POST['section_id'] : null;
    
 
   // Update record including section_id
-  $stmt = $mysqli->prepare("UPDATE select_types SET str = ?, single = ?, musthave = ?, wouldlike = ?, sort_order = ?, section_id = ? WHERE stid = ?"); 
-    $stmt->bind_param("siiiisi", $str, $single, $musthave, $wouldlike, $sort_order, $section_id, $which);
-    $stmt->execute();
-    $anyerror = $mysqli->errno." ".$mysqli->error;
-    $stmt->close();
+  $stmt = $supabase_pdo->prepare("UPDATE select_types SET str = ?, single = ?, musthave = ?, wouldlike = ?, sort_order = ?, section_id = ? WHERE stid = ?"); 
+  $stmt->execute([$str, $single, $musthave, $wouldlike, $sort_order, $section_id, $which]);
 
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT single, str, musthave, wouldlike, sort_order, section_id FROM select_types WHERE stid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($single, $str, $musthave, $wouldlike, $sort_order, $current_section_id);
-$stmt->fetch();
-$stmt->close();
+$stmt = $supabase_pdo->prepare("SELECT single, str, musthave, wouldlike, sort_order, section_id FROM select_types WHERE stid = ?");
+$stmt->execute([$which]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+if ($row) {
+    $single = (int)$row['single'];
+    $str = $row['str'];
+    $musthave = (int)$row['musthave'];
+    $wouldlike = (int)$row['wouldlike'];
+    $sort_order = (int)$row['sort_order'];
+    $current_section_id = $row['section_id'];
+}
 
 ?>
 <body>
@@ -72,7 +76,7 @@ $stmt->close();
          <!-- Page content-->
          <div class="content-wrapper">
             <div class="content-header">
-               <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
+           <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
             </div>
 
             <div class="row">
@@ -103,7 +107,7 @@ $stmt->close();
                                             </select>
                                         </div>
                                     </div>
-                                </div>
+                                </div> <!-- /row -->
                                 <h6>Reporting Data</h6>
                                 <p>here we select competencies trainees must achieve/complete by the end of their three years of training. We also record how many different values are required for completion, if applicable (0 otherwise)</p>
                                 <div class="row">
@@ -120,9 +124,9 @@ $stmt->close();
                                      <div class="form-group">
                                         <label class="col-form-label" for="wouldlike">Qty  values to reach</label>
                                         <input class="form-control" type="number" id="wouldlike" name="wouldlike" min="0" step="1" value="<?php echo $wouldlike ?>" >
-                                     </div>
+                                        </div>
                                     </div>
-                                </div>
+                                </div> <!-- /row -->
                                 <div class="row">
                                     <div class="col">
                                         <div class="form-group">
@@ -130,27 +134,27 @@ $stmt->close();
                                             <select class="custom-select custom-select mb-3" id="section_id" name="section_id">
                                                 <option value="">No Section</option>
                                                 <?php
-                                                $section_stmt = $mysqli->prepare("SELECT section_id, section_name FROM field_sections ORDER BY section_order ASC");
+                                                $section_stmt = $supabase_pdo->prepare("SELECT section_id, section_name FROM field_sections ORDER BY section_order ASC");
                                                 $section_stmt->execute();
-                                                $section_stmt->bind_result($section_id, $section_name);
-                                                while ($section_stmt->fetch()) {
+                                                while ($row = $section_stmt->fetch(PDO::FETCH_ASSOC)) {
+                                                    $section_id = (int)$row['section_id'];
+                                                    $section_name = $row['section_name'];
                                                     $selected = ($current_section_id == $section_id) ? 'selected' : '';
                                                     echo "<option value=\"$section_id\" $selected>$section_name</option>";
                                                 }
-                                                $section_stmt->close();
                                                 ?>
                                             </select>
                                             <small class="form-text text-muted">Assign this field to a section in the logbook form</small>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
+                                </div> <!-- /row -->
+                            </div> <!-- /card-body -->
                             <div class="card-footer">
                                 <input type="hidden" name="done" value="done">
                                 <input type="hidden" name="which" value="<?PHP echo $which ?>">
                                 <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                            </div>
-                        </div>
+</div>
+                        </div> <!-- /card -->
                     </form>
 
                     <!-- Values List Card -->
@@ -161,20 +165,18 @@ $stmt->close();
                         <div class="card-body">
                             <?php
                             // find all values for this list
-                            $tableset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ORDER BY select_val");
-                            $tableset->bind_param("i", $which);
-                            $tableset->execute();
-                            $tableset->store_result();
-                            $tableset->bind_result($pid, $select_val);
-                            while ($tableset->fetch()){
+                            $tableset = $supabase_pdo->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ORDER BY select_val");
+                            $tableset->execute([$which]);
+                            while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                                $pid = (int)$row['pid'];
+                                $select_val = $row['select_val'];
                                 echo "<a href=\"listdetail.php?which=$pid\" class=\"btn btn-primary mb-1 mr-1 d-inline-block\">$select_val</a>";
                             }
-                            $tableset->close();
                             ?>
                             <div id="err"></div>
                         </div>
                         <div class="card-footer">
-                        </div>
+</div>
                     </div>
 
                     <!-- Delete Card -->
@@ -190,12 +192,11 @@ $stmt->close();
                                    onclick="return confirm('Are you sure you want to delete this report and all associated data?')">
                                     <span class="btn-label"><i class="fa fa-times"></i></span>Delete now!
                                 </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-         </div>
+</div>
+</div>
+</div>
+                </div><!-- /.col-12 -->
+            </div><!-- /.row -->
       </section>
    </div>
    <?php include 'incl/adminjs.php' ?>

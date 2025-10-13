@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "University Course";
+
 $subtitle = "Courses";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,14 +30,14 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM uni_tbl WHERE uid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
-    // show message when deleting, not refreshing
-    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("DELETE FROM uni_tbl WHERE uid = ? LIMIT 1");
+    $stmt->execute([$which]);
+    if ($stmt->rowCount() > 0) {
+      // show message when deleting, not refreshing
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+    }
   }
-  $stmt->close();
 
 }
 
@@ -43,12 +46,11 @@ if ($newadmin == 'newadmin') {
   $ident = isset($_POST['ident']) ? $_POST['ident'] : '';
   
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO uni_tbl (university, ident) VALUES (?, ?)");
-  $insert_stmt->bind_param("ss", $university, $ident);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  if ($usingSupabase) {
+    $insert_stmt = $supabase_pdo->prepare("INSERT INTO uni_tbl (university, ident) VALUES (?, ?)");
+    $insert_stmt->execute([$university, $ident]);
+    $newid = $supabase_pdo->lastInsertId();
+  }
 
   
 }
@@ -68,8 +70,8 @@ if ($newadmin == 'newadmin') {
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
             </div>
             <?php echo $delalert ?>
-            <div class="row">
-               <div class="col-xl-12">
+           <div class="row">
+               <div class="col-12 col-xl-12">
                   <div class="table-responsive">
                         <table class="table table-striped my-4 w-100" id="maintable">
                            <thead>
@@ -80,11 +82,18 @@ if ($newadmin == 'newadmin') {
                            </thead>
                            <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT uid, university, ident FROM uni_tbl ");
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($uid, $university, $ident);
-while ($tableset->fetch()){
+if ($usingSupabase) {
+    $tableset = $supabase_pdo->prepare("SELECT uid, university, ident FROM uni_tbl ");
+    $tableset->execute();
+    $courses = $tableset->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $courses = [];
+}
+
+foreach ($courses as $course) {
+    $uid = (int)$course['uid'];
+    $university = $course['university'];
+    $ident = $course['ident'];
 ?>
 <tr>
    <td><a href="coursedetail.php?which=<?php echo $uid ?>"><?php echo $university ?></a></td>
@@ -92,17 +101,15 @@ while ($tableset->fetch()){
 </tr>
  <?php
  }
-$numrows = $tableset->num_rows;
-$tableset->close();
 ?>
                            </tbody>
                         </table>
                      </div>
-               </div>
+                  </div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
-               <div class="col-xl-8">
+               <div class="col-12 col-xl-8">
                   <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>" data-parsley-validate="" novalidate="">
                      <!-- START card-->
                      <div class="card border-info">
@@ -119,17 +126,15 @@ $tableset->close();
                               <label class="col-form-label" for="ident">2-Character Identifier</label>
                               <input class="form-control" type="text" id="ident" name="ident" maxlength="2" required>
                            </div>
-                           
                         </div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
+                        </div><!-- END card-footer -->
                      </div><!-- END card-->
                   </form>
                </div>
             </div>
-         </div>
       </section>
    </div>
    <?php include 'incl/adminjs.php' ?>

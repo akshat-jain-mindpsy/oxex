@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Gallery";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Gallery";
 $listurl = "gallery.php"; # where the delete script is found
 $listname = "Gallery";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,35 +31,38 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($delicon == "delicon" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete image ref
-  $stmt = $mysqli->prepare("UPDATE cs_gallery SET filename = ? WHERE gid = ?"); 
-  $stmt->bind_param("si", $valueblank, $which);
-  $stmt->execute();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("UPDATE cs_gallery SET filename = ? WHERE gid = ?"); 
+  $stmt->execute([$valueblank, $which]);
 }
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  
   $which = isset($_POST['which']) ? $_POST['which'] : 0;
     $which = (int)$which;
-  $sort_order = isset($_POST['sort_order']) ? $_POST['sort_order'] : 0;
-    $sort_order = (int)$sort_order;
+  $$value0 = 0; // Default value for sort_order
+$subtitle = "_POST['sort_order'] : 0;
+    $$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order;
   $category = isset($_POST['category']) ? $_POST['category'] : '';
   $caption = isset($_POST['caption']) ? $_POST['caption'] : '';
   
   // Update record
-  $stmt = $mysqli->prepare("UPDATE cs_gallery SET category = ?, sort_order = ?, caption = ? WHERE gid = ?"); 
-  $stmt->bind_param("sisi", $category, $sort_order, $caption, $which);
-  $stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("UPDATE cs_gallery SET category = ?, sort_order = ?, caption = ? WHERE gid = ?"); 
+  $stmt->execute([$category, $$value0 = 0; // Default value for sort_order
+$subtitle = "which]);
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT category, sort_order, caption, filename, date_created FROM cs_gallery WHERE gid =  ? ");
-$stmt->bind_param("i", $which); 
-$stmt->bind_result($category, $sort_order, $caption, $filename, $date_created);
-$stmt->execute();
-$stmt->fetch();
-$stmt->close();
+$stmt = $supabase_pdo->prepare("SELECT category, sort_order, caption, filename, date_created FROM cs_gallery WHERE gid =  ? ");
+$stmt->execute([$which]); 
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+if ($row) {
+    $category = $row['category'];
+    $$value0 = 0; // Default value for sort_order
+$subtitle = "row['sort_order'];
+    $caption = $row['caption'];
+    $filename = $row['filename'];
+    $date_created = $row['date_created'];
+}
 $date_created = strtotime($date_created);
 $where = substr($category, 0, 1); # first char
 $pageid = ltrim($category, $where); # remaining id ref
@@ -65,34 +71,31 @@ $dispage = '-'; # all on one page
 
 if ($where == 'p') {
   $dispcat = "Pages";
-  $stmt = $mysqli->prepare("SELECT page_name FROM pages_tbl WHERE pid = ?");
-  $stmt->bind_param("i", $pageid);
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($dispage);
-  $stmt->fetch();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("SELECT page_name FROM pages_tbl WHERE pid = ?");
+  $stmt->execute([$pageid]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($row) {
+      $dispage = $row['page_name'];
+  }
 }
 if ($where == 'e') {
     $dispcat = "Projects";
-    $stmt = $mysqli->prepare("SELECT proj_name FROM proj_tbl WHERE pid = ?");
-    $stmt->bind_param("i", $pageid);
-    $stmt->execute();
-    $stmt->store_result();
-    $stmt->bind_result($dispage);
-    $stmt->fetch();
-    $stmt->close();
+    $stmt = $supabase_pdo->prepare("SELECT proj_name FROM proj_tbl WHERE pid = ?");
+    $stmt->execute([$pageid]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row) {
+        $dispage = $row['proj_name'];
+    }
   }
 
 if ($where == 'b') {
   $dispcat = "Blog";
-  $stmt = $mysqli->prepare("SELECT blog_title FROM semantic_blog WHERE sbid = ?");
-  $stmt->bind_param("i", $pageid);
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($dispage);
-  $stmt->fetch();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("SELECT blog_title FROM semantic_blog WHERE sbid = ?");
+  $stmt->execute([$pageid]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($row) {
+      $dispage = $row['blog_title'];
+  }
 }
 
 // whatever the record name is
@@ -111,7 +114,8 @@ if ($where == 'b') {
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -137,60 +141,56 @@ if ($where == 'b') {
                                     }
                                   echo ">Gallery</option>";
                                   // list projects
-                                  $tableset = $mysqli->prepare("SELECT pid, proj_name FROM proj_tbl ");
+                                  $tableset = $supabase_pdo->prepare("SELECT pid, proj_name FROM proj_tbl ");
                                   $tableset->execute();
-                                  $tableset->store_result();
-                                  $tableset->bind_result($pid, $proj_name);
-                                  while ($tableset->fetch()){
+                                  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                                    $pid = (int)$row['pid'];
+                                    $proj_name = $row['proj_name'];
                                     echo "<option value=\"e$pid\"";
                                     if ($where == 'e' && $pageid == $pid) {
                                       echo "selected='selected'";
                                     }
                                     echo ">Project - $proj_name</option>";
                                   }
-                                  $tableset->close();
                                   // list pages
-                                  $tableset = $mysqli->prepare("SELECT pid, page_name FROM pages_tbl ");
+                                  $tableset = $supabase_pdo->prepare("SELECT pid, page_name FROM pages_tbl ");
                                   $tableset->execute();
-                                  $tableset->store_result();
-                                  $tableset->bind_result($pid, $page_name);
-                                  while ($tableset->fetch()){
+                                  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                                    $pid = (int)$row['pid'];
+                                    $page_name = $row['page_name'];
                                     echo "<option value=\"p$pid\"";
                                     if ($where == 'p' && $pageid == $pid) {
                                       echo "selected='selected'";
                                     }
                                     echo ">Page - $page_name</option>";
                                   }
-                                  $tableset->close();
                                   
                                   
                                   // list blog
-                                  $tableset = $mysqli->prepare("SELECT sbid, blog_title FROM semantic_blog ");
+                                  $tableset = $supabase_pdo->prepare("SELECT sbid, blog_title FROM semantic_blog ");
                                   $tableset->execute();
-                                  $tableset->store_result();
-                                  $tableset->bind_result($sbid, $blog_title);
-                                  while ($tableset->fetch()){
+                                  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                                    $sbid = (int)$row['sbid'];
+                                    $blog_title = $row['blog_title'];
                                     echo "<option value=\"b$sbid\"";
                                     if ($where == 'b' && $pageid == $sbid) {
                                       echo "selected='selected'";
                                     }
                                     echo ">Blog - $blog_title</option>";
                                   }
-                                  $tableset->close();
                                   ?>
                                 </select>
                           </div>
                            <div class="form-group">
                               <label class="col-form-label" for="sort_order">Sort order</label>
-                              <input class="form-control" type="number" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
-                           </div>
-                        </div>
+                              <input class="form-control" type="number" id="$value0 = 0; // Default value for sort_order
+$subtitle = "sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
                </div>
                <div class="col-xl-4">
@@ -224,10 +224,8 @@ if ($where == 'b') {
                     <div id="err"></div>
                   </div>
                   <div class="card-footer">
-                  </div>
-                </div>
-               </div>
-            </div>
+</div>
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">
@@ -240,11 +238,9 @@ if ($where == 'b') {
                            <div class="float-right">
                             <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
                             <span class="form-text">This will immediately &amp; permanently delete this image. There is NO 'undo'!</span>
-                          </div>
-                        </div>
+</div>
                      </div><!-- END card-->
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

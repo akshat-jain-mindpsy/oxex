@@ -7,7 +7,9 @@ $pagetitle = "Email Content";
 $subtitle = "Email content";
 $listurl = "emails.php"; # where the delete script is found
 $listname = "Emails";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -38,22 +40,35 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   $page_txt12 = isset($_POST['page_txt12']) ? $_POST['page_txt12'] : '';
 
   // Update record
-  $stmt = $mysqli->prepare("UPDATE site_emails_tbl SET email_title = ?, email_subject = ?, email_body = ?, email_body2 = ?, email_body3 = ?, used_on = ? WHERE sei = ? "); 
-  $stmt->bind_param("ssssssi", $email_title, $email_subject, $email_body, $email_body2, $email_body3, $used_on, $which);
-  $stmt->execute();
-  $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("UPDATE site_emails_tbl SET email_title = ?, email_subject = ?, email_body = ?, email_body2 = ?, email_body3 = ?, used_on = ? WHERE sei = ? "); 
+    $stmt->execute([$email_title, $email_subject, $email_body, $email_body2, $email_body3, $used_on, $which]);
+  }
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT email_title, email_subject, email_body, email_body2, email_body3, used_on FROM site_emails_tbl WHERE sei = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($email_title, $email_subject, $email_body, $email_body2, $email_body3, $used_on);
-$stmt->fetch();
-$stmt->close();
-  $date_added = strtotime($date_added);
+if ($usingSupabase) {
+  $stmt = $supabase_pdo->prepare("SELECT email_title, email_subject, email_body, email_body2, email_body3, used_on, date_added FROM site_emails_tbl WHERE sei = ?");
+  $stmt->execute([$which]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  $email_title = $row ? $row['email_title'] : '';
+  $email_subject = $row ? $row['email_subject'] : '';
+  $email_body = $row ? $row['email_body'] : '';
+  $email_body2 = $row ? $row['email_body2'] : '';
+  $email_body3 = $row ? $row['email_body3'] : '';
+  $used_on = $row ? $row['used_on'] : '';
+  $date_added = $row ? $row['date_added'] : '';
+} else {
+  $email_title = '';
+  $email_subject = '';
+  $email_body = '';
+  $email_body2 = '';
+  $email_body3 = '';
+  $used_on = '';
+  $date_added = '';
+}
+  $date_added = $date_added ? strtotime($date_added) : time();
 // whatever the record name is
   $changename = " this email";
 ?>
@@ -70,7 +85,9 @@ $stmt->close();
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-            </div>
+
+ 
+</div>
 
             <div class="row my-5">
                <div class="col-xl-8">

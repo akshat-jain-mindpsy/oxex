@@ -3,14 +3,20 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'DV'))) {
+if(!(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'DV'))) {
     header("Location: index.php");
     exit();
 }
 
 $pagetitle = "View Pass Standard";
+
+// Set variables needed by adminjs.php
+$whichDocModal = 3; // Tables section
+$value0 = 0; // Default value for $value0 = 0; // Default value for sort_order
+$subtitle = "View Pass Standard";
 $listurl = "pass_standards.php";
 $listname = "Pass Standards";
 
@@ -76,18 +82,18 @@ function generateStandardExplanation($row) {
                         $rule_num = $index + 1;
                         $rule_type = str_replace('_', ' ', strtolower($rule['requirement_type']));
                         
-                        // Get subfield name from database
-                        global $mysqli;
+                        // Get subfield name from database (PDO)
+                        global $supabase_pdo;
+                        $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
                         $subfield_query = "SELECT select_val FROM select_gen WHERE pid = ?";
                         $subfield_name = "Unknown Subfield";
-                        if ($subfield_stmt = $mysqli->prepare($subfield_query)) {
-                            $subfield_stmt->bind_param("i", $rule['subfield_value']);
-                            $subfield_stmt->execute();
-                            $subfield_result = $subfield_stmt->get_result();
-                            if ($subfield_row = $subfield_result->fetch_assoc()) {
+                        if ($pdo) {
+                            $subfield_stmt = $pdo->prepare($subfield_query);
+                            $subfield_stmt->execute([(int)$rule['subfield_value']]);
+                            $subfield_row = $subfield_stmt->fetch(PDO::FETCH_ASSOC);
+                            if ($subfield_row) {
                                 $subfield_name = $subfield_row['select_val'];
                             }
-                            $subfield_stmt->close();
                         }
                         
                         $explanation .= "<br><strong>Rule {$rule_num}:</strong> For subfield <strong>{$subfield_name}</strong>, require <strong>{$rule['specific_value']}</strong> " . $rule_type;
@@ -137,34 +143,37 @@ if (!$psid) {
     exit();
 }
 
-// Fetch the pass standard with related data
-$stmt = $mysqli->prepare("
+// Fetch the pass standard with related data using PDO
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if (!$pdo) {
+    header("Location: $listurl");
+    exit();
+}
+
+$stmt = $pdo->prepare("
     SELECT 
         ps.*,
         t.tab_name,
         st.str as field_name,
         parent.standard_name as parent_name,
-        (SELECT GROUP_CONCAT(st_or.str SEPARATOR ', ') 
+        (SELECT STRING_AGG(st_or.str, ', ')
          FROM pass_standard_fields psf 
-         JOIN select_types st_or ON psf.stid = st_or.stid 
-         WHERE psf.standard_id = ps.psid) as or_fields
+         JOIN select_types st_or ON psf.stid::int = st_or.stid 
+         WHERE psf.standard_id::int = ps.psid) as or_fields
     FROM pass_standards ps
-    LEFT JOIN tabs_tbl t ON ps.tbid = t.tbid
-    LEFT JOIN select_types st ON ps.stid = st.stid
-    LEFT JOIN pass_standards parent ON ps.parent_standard_id = parent.psid
+    LEFT JOIN tabs_tbl t ON ps.tbid::int = t.tbid
+    LEFT JOIN select_types st ON ps.stid::int = st.stid
+    LEFT JOIN pass_standards parent ON ps.parent_standard_id::int = parent.psid
     WHERE ps.psid = ?
 ");
-$stmt->bind_param("i", $psid);
-$stmt->execute();
-$result = $stmt->get_result();
+$stmt->execute([$psid]);
+$standard = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if ($result->num_rows === 0) {
+if (!$standard) {
     header("Location: $listurl");
     exit();
 }
-
-$standard = $result->fetch_assoc();
-$stmt->close();
+// PDO: no explicit close needed
 
 // Extract data from the main query
 $table_name = $standard['tab_name'] ?? 'Unknown';
@@ -222,14 +231,12 @@ if (!empty($subfield_rules)) {
     foreach ($subfield_rules as $rule) {
         if (!empty($rule['subfield_value'])) {
             $subfield_query = "SELECT select_val FROM select_gen WHERE pid = ?";
-            $subfield_stmt = $mysqli->prepare($subfield_query);
-            $subfield_stmt->bind_param("i", $rule['subfield_value']);
-            $subfield_stmt->execute();
-            $subfield_result = $subfield_stmt->get_result();
-            if ($subfield_row = $subfield_result->fetch_assoc()) {
+            $subfield_stmt = $pdo->prepare($subfield_query);
+            $subfield_stmt->execute([(int)$rule['subfield_value']]);
+            $subfield_row = $subfield_stmt->fetch(PDO::FETCH_ASSOC);
+            if ($subfield_row) {
                 $subfield_names[$rule['subfield_value']] = $subfield_row['select_val'];
             }
-            $subfield_stmt->close();
         }
     }
 }
@@ -237,18 +244,16 @@ if (!empty($subfield_rules)) {
 // Extract parent name from the main query
 $parent_name = $standard['parent_name'] ?? '';
 
-// Fetch who created/modified - get actual user name
+// Fetch who created/modified - get actual user name (PDO)
 $who_by_name = 'Unknown';
 if (!empty($standard['who_by'])) {
     $user_query = "SELECT realname FROM who_there WHERE usrkey = ?";
-    $user_stmt = $mysqli->prepare($user_query);
-    $user_stmt->bind_param("s", $standard['who_by']);
-    $user_stmt->execute();
-    $user_result = $user_stmt->get_result();
-    if ($user_row = $user_result->fetch_assoc()) {
+    $user_stmt = $pdo->prepare($user_query);
+    $user_stmt->execute([$standard['who_by']]);
+    $user_row = $user_stmt->fetch(PDO::FETCH_ASSOC);
+    if ($user_row) {
         $who_by_name = $user_row['realname'];
     }
-    $user_stmt->close();
 }
 ?>
 <!DOCTYPE html>
@@ -290,7 +295,7 @@ if (!empty($standard['who_by'])) {
         }
         .info-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr;
             gap: 20px;
             margin-bottom: 20px;
         }
@@ -339,24 +344,25 @@ if (!empty($standard['who_by'])) {
                         <small>View Standard Details</small>
                     </div>
                 </div>
-                
+
                 <div class="card card-default">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h3 class="card-title"><?php echo htmlspecialchars($standard['standard_name']); ?></h3>
-                        <div>
+                        <span class="card-title">Standard Details</span>
+                        <div class="d-flex align-items-center">
+                            <h3 class="mb-0 mr-3"><?php echo htmlspecialchars($standard['standard_name']); ?></h3>
                             <button type="button" class="btn btn-info btn-sm" data-toggle="modal" data-target="#explanationModal" data-explanation="<?php echo htmlspecialchars(generateStandardExplanation($standard), ENT_QUOTES); ?>" data-title="<?php echo htmlspecialchars($standard['standard_name'], ENT_QUOTES); ?>">
                                 <i class="fa fa-info-circle"></i> Explain Rule
                             </button>
-                            <a href="pass_standard_detail.php?which=<?php echo $psid; ?>" class="btn btn-primary btn-sm">
+                            <a href="pass_standard_detail.php?which=<?php echo $psid; ?>" class="btn btn-primary btn-sm ml-2">
                                 <i class="fas fa-edit"></i> Edit Standard
                             </a>
-                            <a href="<?php echo $listurl; ?>" class="btn btn-secondary btn-sm">
+                            <a href="<?php echo $listurl; ?>" class="btn btn-secondary btn-sm ml-2">
                                 <i class="fas fa-arrow-left"></i> Back to List
                             </a>
                         </div>
                     </div>
-                        
-                        <div class="card-body">
+
+                    <div class="card-body">
                             <!-- Basic Information -->
                             <div class="info-grid">
                                 <div class="info-item">
@@ -369,8 +375,7 @@ if (!empty($standard['who_by'])) {
                                         <span class="badge <?php echo $standard['is_active'] ? 'badge-success' : 'badge-secondary'; ?>">
                                             <?php echo $standard['is_active'] ? 'Active' : 'Inactive'; ?>
                                         </span>
-                                    </div>
-                                </div>
+</div>
                                 <div class="info-item">
                                     <div class="info-label">Applies to Table</div>
                                     <div class="info-value"><?php echo htmlspecialchars($table_name); ?></div>
@@ -404,8 +409,7 @@ if (!empty($standard['who_by'])) {
                                 <div class="info-item">
                                     <div class="info-label">Date Modified</div>
                                     <div class="info-value"><?php echo $standard['date_modified'] ? date('Y-m-d H:i:s', $standard['date_modified']) : 'N/A'; ?></div>
-                                </div>
-                            </div>
+</div>
 
 
                             <!-- Subfield Rules -->
@@ -430,8 +434,7 @@ if (!empty($standard['who_by'])) {
                                             <div><?php echo htmlspecialchars($rule['specific_value']); ?></div>
                                             <div>
                                                 <span class="badge badge-info">Rule <?php echo $index + 1; ?></span>
-                                            </div>
-                                        </div>
+</div>
                                         <?php endforeach; ?>
                                     </div>
                                     <small class="text-muted">These rules define specific requirements for individual subfield values.</small>
@@ -442,11 +445,8 @@ if (!empty($standard['who_by'])) {
                                         <p>Click "Edit Standard" to add subfield rules.</p>
                                     </div>
                                 <?php endif; ?>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
+</div>
+</div>
             </div>
         </section>
     </div>

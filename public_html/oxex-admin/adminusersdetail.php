@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Admin";
+
 $subtitle = "Admin users";
 $listurl = "adminusers.php"; # where the delete script is found
 $listname = "Admin Users";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'DV')) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -60,11 +63,10 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
      $photo = 'wizard.jpg';
   }
   // Update record
-  $stmt = $mysqli->prepare("UPDATE who_there SET realname = ?, email = ?, admintype = ?, isdev = ?, photo = ? WHERE whid = ?"); 
-  $stmt->bind_param("sssisi", $realname, $email, $accesslevel, $isdev, $photo, $which);
-  $stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $stmt->close();
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("UPDATE who_there SET realname = ?, email = ?, admintype = ?, isdev = ?, photo = ? WHERE whid = ?"); 
+    $stmt->execute([$realname, $email, $accesslevel, $isdev, $photo, $which]);
+  }
 
   // if changing password create salt and secure pw and update
     $pwmsg = '';
@@ -73,23 +75,34 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
     $random_salt = hash('sha512', uniqid(mt_rand(1, mt_getrandmax()), true));
     // Create salted password (Careful not to over season)
     $password = hash('sha512', $password.$random_salt);
-      $stmt = $mysqli->prepare("UPDATE who_there SET password = ?, salt = ?, realname = ?, email = ?, accesslevel = ?, isdev = ?, photo = ? WHERE whid = ?");
-      $stmt->bind_param("sssssisi", $password, $random_salt, $realname, $email, $pageadmintype, $isdev, $photo, $which);
-      $stmt->execute();
-      $stmt->close();
+      if ($usingSupabase) {
+        $stmt = $supabase_pdo->prepare("UPDATE who_there SET password = ?, salt = ?, realname = ?, email = ?, accesslevel = ?, isdev = ?, photo = ? WHERE whid = ?");
+        $stmt->execute([$password, $random_salt, $realname, $email, $pageadmintype, $isdev, $photo, $which]);
+      }
       $pwmsg = "<p>Password changed</p>";
     }
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT realname, email, admintype, startdate, usrkey, lastlogin FROM who_there WHERE whid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($adrealname, $email, $pageadmintype, $startdate, $usrkey, $lastlogin);
-$stmt->fetch();
-$stmt->close();
+if ($usingSupabase) {
+  $stmt = $supabase_pdo->prepare("SELECT realname, email, admintype, startdate, usrkey, lastlogin FROM who_there WHERE whid = ?");
+  $stmt->execute([$which]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  $adrealname = $row ? $row['realname'] : '';
+  $email = $row ? $row['email'] : '';
+  $pageadmintype = $row ? $row['admintype'] : '';
+  $startdate = $row ? $row['startdate'] : '';
+  $usrkey = $row ? $row['usrkey'] : '';
+  $lastlogin = $row ? $row['lastlogin'] : '';
+} else {
+  $adrealname = '';
+  $email = '';
+  $pageadmintype = '';
+  $startdate = '';
+  $usrkey = '';
+  $lastlogin = '';
+}
 // whatever the record name is
   $changename = " this Admin User";
   $startdate = strtotime($startdate);
@@ -175,34 +188,27 @@ $stmt->close();
                           <div class="form-group">
                             <label class="col-form-label" for="password">New Password</label>
                               <input type="password" class="form-control" id="inputPassword" name="p"><span toggle="#inputPassword" class="fa fa-fw fa-eye field-icon toggle-password"></span>
-                          </div>
                         </div>
                         <div class="card-footer">
                            <input type="hidden" name="done" value="done">
                            <input type="hidden" name="which" value="<?PHP echo $which ?>">
                            <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                        </div>
-                     </div><!-- END card-->
+                        </div><!-- END card footer -->
                   </form>
+                  
+                  </div>
+                  
                </div>
-            </div>
-
-            <div class="row my-5">
-               <div class="col-xl-8">
-                     <!-- START card-->
-                     <div class="card border-danger">
-                        <div class="card-header bg-danger text-white">
-                           <div class="card-title">Delete <?php echo $changename ?></div>
+               <!-- START delete card placed just below amend card, outside the form -->
+               <div class="card border-danger mt-4">
+                     <div class="card-header bg-danger text-white">
+                        <div class="card-title">Delete <?php echo $changename ?></div>
+                     </div>
+                     <div class="card-footer">
+                        <div class="float-right">
+                           <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button" onclick="return confirm('Are you sure you want to delete this Admin User?')"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
                         </div>
-                        <div class="card-footer">
-                           <div class="float-right">
-                            <a href="<?php echo $listurl ?>?del=del&amp;which=<?php echo $which ?>" class="btn btn-labeled btn-danger" role="button" onclick="return confirm('Are you sure you want to delete this Admin User?')"><span class="btn-label"><i class="fa fa-times"></i></span>Delete now!</a>
-                          </div>
-                        </div>
-                     </div><!-- END card-->
-               </div>
-            </div>
-         </div>
+                     </div><!-- END delete card -->
       </section>
    </div>
    <?php include 'incl/adminjs.php' ?>

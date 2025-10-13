@@ -10,7 +10,7 @@ header('Content-Type: application/json');
 $admintype = isset($_SESSION['admintype']) ? $_SESSION['admintype'] : '';
 
 // Check login and permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     echo json_encode([
         'status' => 'error', 
         'message' => 'Unauthorized access'
@@ -49,16 +49,15 @@ try {
     
     error_log("get_sections.php: executing query");
     
-    $stmt = $mysqli->prepare($query);
-    $stmt->bind_param("i", $table_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    $stmt = $supabase_pdo->prepare($query);
+    $stmt->execute([$table_id]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $sections = [];
     
-    error_log("get_sections.php: result rows = " . ($result ? $result->num_rows : 'null'));
+    error_log("get_sections.php: result rows = " . count($rows));
     
-    if ($result && $result->num_rows > 0) {
-        while ($row = $result->fetch_assoc()) {
+    if (!empty($rows)) {
+        foreach ($rows as $row) {
             error_log("get_sections.php: found section - " . json_encode($row));
             $sections[] = [
                 'section_id' => (int)$row['section_id'],
@@ -68,13 +67,11 @@ try {
                 'is_used_in_table' => (bool)$row['is_used_in_table']
             ];
         }
-        $result->free();
     } else {
         error_log("get_sections.php: No sections found in database");
     }
     
     error_log("get_sections.php: total sections found = " . count($sections));
-    $stmt->close();
     
     echo json_encode([
         'status' => 'success',
@@ -90,5 +87,4 @@ try {
     ]);
 }
 
-$mysqli->close();
 ?> 

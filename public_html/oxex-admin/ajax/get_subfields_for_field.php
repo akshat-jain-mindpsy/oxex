@@ -5,7 +5,7 @@ sec_session_start();
 include '../incl/sess.php';
 
 // Only allow authorized admins
-if (login_check($mysqli) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) {
+if (login_check($pdo) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) {
     header('HTTP/1.1 403 Forbidden');
     echo json_encode(['status' => 'error', 'message' => 'Not authorized.']);
     exit;
@@ -29,17 +29,14 @@ $sql = "SELECT pid, select_val
         WHERE stid = ? 
         ORDER BY select_val ASC";
 
-if ($stmt = $mysqli->prepare($sql)) {
-    $stmt->bind_param("i", $stid);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    while ($row = $result->fetch_assoc()) {
-        $subfields[] = [
-            'pid' => $row['pid'],
-            'str' => $row['select_val'] // Using 'str' for consistency with existing code
-        ];
-    }
-    $stmt->close();
+$stmt = $supabase_pdo->prepare($sql);
+$stmt->execute([$stid]);
+$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+foreach ($rows as $row) {
+    $subfields[] = [
+        'pid' => $row['pid'],
+        'str' => $row['select_val'] // Using 'str' for consistency with existing code
+    ];
 }
 
 echo json_encode($subfields);

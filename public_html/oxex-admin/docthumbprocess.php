@@ -1,6 +1,9 @@
 <?PHP
 include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
+
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
 $valueblank = '';
 $value0 = 0;
 $value1 = 1;
@@ -77,10 +80,10 @@ ini_set('max_execution_time', 300);
  if ( $result )
  {
 
-	$stmt = $mysqli->prepare("UPDATE docs_tbl SET imgthumb = ? WHERE did = ?"); 
-	$stmt->bind_param("si", $actualname, $which);
-	$stmt->execute();
-	$stmt->close();
+	if ($usingSupabase) {
+		$stmt = $supabase_pdo->prepare("UPDATE docs_tbl SET imgthumb = ? WHERE did = ?"); 
+		$stmt->execute([$actualname, $which]);
+	}
 	
 		echo "<p><a href=\"docdetail.php?which=$which&amp;del=delphoto&amp;photo=$whevattid\"<span class=\"btn btn-danger\"> <i class=\"fa fa-times-circle\"></i> Delete Image</span></a></p>";
 		echo "<p><img src=\"../docthumbs/$actualname\" width=\"200px\"></p>";

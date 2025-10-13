@@ -3,9 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Sheets ('Sheet names')";
 $subtitle = "Sheets";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+
+// Set variables needed by adminjs.php
+setAdminVars(3); // Tables section
+
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,19 +32,15 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
    // delete all field links
-   $stmt = $mysqli->prepare("DELETE FROM tab_fields WHERE tbid = ?");
-   $stmt->bind_param("i", $which); 
-   $stmt->execute();
-   $stmt->close();
+   $stmt = $supabase_pdo->prepare("DELETE FROM tab_fields WHERE tbid = ?");
+   $stmt->execute([$which]);
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM tabs_tbl WHERE tbid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
+  $stmt = $supabase_pdo->prepare("DELETE FROM tabs_tbl WHERE tbid = ? LIMIT 1");
+  $stmt->execute([$which]);
+  if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
   }
-  $stmt->close();
 }
 
 if ($newadmin == 'newadmin') {
@@ -49,11 +50,9 @@ if ($newadmin == 'newadmin') {
   $isvis = isset($_POST['isvis']) ? $_POST['isvis'] : 1;
   
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO tabs_tbl (tab_name, tab_notes, sort_order, isvis) VALUES (?, ?, ?, ?)");
-  $insert_stmt->bind_param("ssii", $tab_name, $tab_notes, $sort_order, $isvis);
-  $insert_stmt->execute();
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  $insert_stmt = $supabase_pdo->prepare("INSERT INTO tabs_tbl (tab_name, tab_notes, sort_order, isvis) VALUES (?, ?, ?, ?)");
+  $insert_stmt->execute([$tab_name, $tab_notes, $sort_order, $isvis]);
+  $newid = $supabase_pdo->lastInsertId();
 }
 ?>
 <body>
@@ -86,18 +85,18 @@ if ($newadmin == 'newadmin') {
                            </thead>
                            <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT tbid, tab_name, sort_order, isvis FROM tabs_tbl ORDER BY sort_order");
+$tableset = $supabase_pdo->prepare("SELECT tbid, tab_name, sort_order, isvis FROM tabs_tbl ORDER BY sort_order");
 $tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($tbid, $tab_name, $sort_order, $isvis);
-while ($tableset->fetch()){
+while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+   $tbid = $row['tbid'];
+   $tab_name = $row['tab_name'];
+   $sort_order = $row['sort_order'];
+   $isvis = $row['isvis'];
+   
    // Count number of fields for this table
-   $fieldstmt = $mysqli->prepare("SELECT COUNT(*) FROM tab_fields WHERE tbid = ?");
-   $fieldstmt->bind_param("i", $tbid);
-   $fieldstmt->execute();
-   $fieldstmt->bind_result($num_fields);
-   $fieldstmt->fetch();
-   $fieldstmt->close();
+   $fieldstmt = $supabase_pdo->prepare("SELECT COUNT(*) FROM tab_fields WHERE tbid = ?");
+   $fieldstmt->execute([$tbid]);
+   $num_fields = $fieldstmt->fetchColumn();
 
    // Determine sort order display
    $sort_order_display = $sort_order == 0 
@@ -131,12 +130,10 @@ while ($tableset->fetch()){
 </tr>
 <?php
 }
-$tableset->close();
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -168,18 +165,15 @@ $tableset->close();
                               <div class="col form-group">
                                  <label class="col-form-label" for="sort_order">Sort order</label>
                                  <input class="form-control" type="number" id="sort_order" name="sort_order" value="<?php echo $sort_order ?>" min="0" max="999"><span class="form-text">Enter 0 if not to be displayed</span>
-                              </div>
-                            </div>
+</div>
                            
                         </div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

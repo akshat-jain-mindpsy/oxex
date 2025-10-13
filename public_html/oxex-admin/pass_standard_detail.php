@@ -3,14 +3,21 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
+
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'DV'))) {
+if(!(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'DV'))) {
     header("Location: index.php");
     exit();
 }
 
 $pagetitle = "Pass Standard Details";
+
+// Set variables needed by adminjs.php
+$whichDocModal = 3; // Tables section
+$value0 = 0; // Default value for sort_order
 $listurl = "pass_standards.php";
 $listname = "Pass Standards";
 $done = false;
@@ -35,48 +42,61 @@ $selected_or_fields = [];
 
 if ($is_editing) {
     $subtitle = "Edit Pass Standard";
-    $stmt = $mysqli->prepare("SELECT * FROM pass_standards WHERE psid = ?");
-    $stmt->bind_param("i", $psid);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    if ($result->num_rows > 0) {
-        $standard = $result->fetch_assoc();
-        // If the main stid is null, it's an OR condition, so fetch the fields
-        if (is_null($standard['stid'])) {
-            $or_stmt = $mysqli->prepare("SELECT stid FROM pass_standard_fields WHERE standard_id = ?");
-            $or_stmt->bind_param("i", $psid);
-            $or_stmt->execute();
-            $or_result = $or_stmt->get_result();
-            while($row = $or_result->fetch_assoc()) {
-                $selected_or_fields[] = $row['stid'];
+    if ($usingSupabase) {
+        $stmt = $supabase_pdo->prepare("SELECT * FROM pass_standards WHERE psid = ?");
+        $stmt->execute([$psid]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            $standard = $row;
+            // If the main stid is null, it's an OR condition, so fetch the fields
+            if (is_null($standard['stid'])) {
+                $or_stmt = $supabase_pdo->prepare("SELECT stid FROM pass_standard_fields WHERE standard_id = ?");
+                $or_stmt->execute([$psid]);
+                $or_data = $or_stmt->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($or_data as $row) {
+                    $selected_or_fields[] = $row['stid'];
+                }
             }
-            $or_stmt->close();
         }
     }
-    $stmt->close();
 } else {
     $subtitle = "Add New Pass Standard";
 }
 
 // Fetch all tables for the dropdown
-$tables_query = "SELECT tbid, tab_name FROM tabs_tbl ORDER BY tab_name ASC";
-$tables_result = $mysqli->query($tables_query);
+if ($usingSupabase) {
+    $tables_stmt = $supabase_pdo->prepare("SELECT tbid, tab_name FROM tabs_tbl ORDER BY tab_name ASC");
+    $tables_stmt->execute();
+    $tables_result = $tables_stmt->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $tables_result = [];
+}
 
 // Fetch all possible parent standards
-$parents_query = "SELECT psid, standard_name, tbid FROM pass_standards";
-if ($is_editing) {
-    // A standard cannot be its own parent
-    $parents_query .= " WHERE psid != " . $psid;
-}
-$parents_result = $mysqli->query($parents_query);
-$all_parents = [];
-while($parent = $parents_result->fetch_assoc()) {
-    $all_parents[] = $parent;
+if ($usingSupabase) {
+    $parents_query = "SELECT psid, standard_name, tbid FROM pass_standards";
+    if ($is_editing) {
+        // A standard cannot be its own parent
+        $parents_query .= " WHERE psid != ?";
+        $parents_stmt = $supabase_pdo->prepare($parents_query);
+        $parents_stmt->execute([$psid]);
+    } else {
+        $parents_stmt = $supabase_pdo->prepare($parents_query);
+        $parents_stmt->execute();
+    }
+    $all_parents = $parents_stmt->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $all_parents = [];
 }
 
 // Fetch all categories for the dropdown
-$fields_query = "SELECT stid, str FROM select_types ORDER BY str ASC";
-$fields_result = $mysqli->query($fields_query);
+if ($usingSupabase) {
+    $fields_stmt = $supabase_pdo->prepare("SELECT stid, str FROM select_types ORDER BY str ASC");
+    $fields_stmt->execute();
+    $fields_result = $fields_stmt->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $fields_result = [];
+}
 
 ?>
 <!DOCTYPE html>
@@ -184,8 +204,11 @@ $fields_result = $mysqli->query($fields_query);
             </div>
 
             <div class="card card-default">
-                <div class="card-header"><?php echo $is_editing ? 'Edit Standard: ' . htmlspecialchars($standard['standard_name']) : 'Create New Pass Standard'; ?></div>
+                <div class="card-header"><?php echo $is_editing ? 'Edit Pass Standard' : 'Create New Pass Standard'; ?></div>
                 <div class="card-body">
+                    <?php if ($is_editing): ?>
+                    <h5 class="mb-3">Edit Standard: <?php echo htmlspecialchars($standard['standard_name']); ?></h5>
+                    <?php endif; ?>
                     <form id="standardForm" novalidate>
                                 <input type="hidden" name="psid" value="<?php echo $psid; ?>">
 
@@ -199,11 +222,11 @@ $fields_result = $mysqli->query($fields_query);
                                 <label for="tbid">Applies to Table*</label>
                                 <select class="form-control" id="tbid" name="tbid" required>
                                             <option value="">-- Select a Table --</option>
-                                            <?php while($row = $tables_result->fetch_assoc()): ?>
+                                            <?php foreach($tables_result as $row): ?>
                                                 <option value="<?php echo $row['tbid']; ?>" <?php echo ($standard['tbid'] == $row['tbid']) ? 'selected' : ''; ?>>
                                                     <?php echo htmlspecialchars($row['tab_name']); ?>
                                                 </option>
-                                            <?php endwhile; ?>
+                                            <?php endforeach; ?>
                                         </select>
                                     </div>
                                     <div class="col-md-6 form-group">
@@ -215,8 +238,7 @@ $fields_result = $mysqli->query($fields_query);
                                             <option value="UNIQUE_VALUES_IN_RANGE" <?php echo ($standard['requirement_type'] == 'UNIQUE_VALUES_IN_RANGE') ? 'selected' : ''; ?>>Unique Values in Range</option>
                                             <option value="PER_CASE_MINIMUM" <?php echo ($standard['requirement_type'] == 'PER_CASE_MINIMUM') ? 'selected' : ''; ?>>Per-Case Minimum</option>
                                         </select>
-                                    </div>
-                                </div>
+</div>
 
                                 <div class="form-group">
                             <label for="parent_standard_id">Parent Standard (for nested rules)</label>
@@ -241,8 +263,7 @@ $fields_result = $mysqli->query($fields_query);
                                         <div class="form-check">
                                     <input class="form-check-input" type="radio" name="field_logic_mode" id="logicMultiple" value="multiple" <?php echo (is_null($standard['stid']) && !empty($selected_or_fields)) ? 'checked' : ''; ?>>
                                     <label class="form-check-label" for="logicMultiple">On Multiple Categories (OR condition)</label>
-                                        </div>
-                                    </div>
+</div>
                                 
                                     <div class="form-group" id="singleFieldContainer">
                                 <label for="stid">Category to Check</label>
@@ -263,8 +284,7 @@ $fields_result = $mysqli->query($fields_query);
                                 </div>
                                     <div id="subfieldRulesContainer">
                                         <!-- Rules will be added here dynamically -->
-                                    </div>
-                                </div>
+</div>
                                 <button type="button" id="addSubfieldRuleBtn" class="btn btn-success btn-sm mt-2">
                                     <i class="fa fa-plus"></i> Add Rule
                                 </button>
@@ -283,8 +303,7 @@ $fields_result = $mysqli->query($fields_query);
                                 <label for="field_value">Category Value Filter (Optional)</label>
                                 <input type="text" class="form-control" id="field_value" name="field_value" value="<?php echo htmlspecialchars($standard['field_value'] ?? ''); ?>">
                                 <small class="form-text text-muted">Filter the main category before applying subcategory rules. For ranges, use a hyphen (e.g., 18-64). Leave empty to check all category values.</small>
-                                    </div>
-                                </div>
+</div>
 
                                 <div class="row">
                                     <div class="col-md-6 form-group">
@@ -296,8 +315,7 @@ $fields_result = $mysqli->query($fields_query);
                                         <label for="minimum_threshold">Minimum Threshold per Case*</label>
                                         <input type="number" class="form-control" id="minimum_threshold" name="minimum_threshold" value="<?php echo (int)($standard['minimum_threshold'] ?? 0); ?>" min="0" step="0.1">
                                         <small class="form-text text-muted">Minimum value each case must meet (e.g., 5 hours)</small>
-                                    </div>
-                                </div>
+</div>
                                 
                                 <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="is_active" name="is_active" value="1" <?php echo ($standard['is_active']) ? 'checked' : ''; ?>>
@@ -311,10 +329,11 @@ $fields_result = $mysqli->query($fields_query);
                                 <a href="<?php echo $listurl; ?>" class="btn btn-secondary">Cancel</a>
                             </form>
                         </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    </section>
-</div>
+        </section>
+    </div>
 <?php include 'incl/adminjs.php' ?>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
@@ -572,8 +591,7 @@ $(document).ready(function() {
                 </div>
                 <div class="rule-col-actions">
                     <button type="button" class="remove-rule-btn" onclick="removeSubfieldRule(${ruleIndex})">×</button>
-                        </div>
-                    </div>
+</div>
                 `;
         
         console.log('   Appending new row to container');
@@ -641,8 +659,7 @@ $(document).ready(function() {
                 </div>
                 <div class="rule-col-actions">
                     <button type="button" class="remove-rule-btn" onclick="removeSubfieldRule(${ruleIndex})">×</button>
-                </div>
-            </div>
+</div>
         `;
         
         console.log('   Appending new row to container');

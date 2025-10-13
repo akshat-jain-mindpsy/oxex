@@ -81,7 +81,7 @@ if (!empty($missing_vars)) {
 }
 
 // Perform login check
-if (!login_check($mysqli)) {
+if (!login_check($pdo)) {
 	custom_log('Login check failed');
 	
 	// Check if this is an AJAX request
@@ -111,27 +111,33 @@ if (!in_array($_SESSION['admintype'], $allowed_admin_types)) {
 
 // Fetch additional user details for verification
 $usrkey = $_SESSION['usrkey'];
-$stmt = $mysqli->prepare("SELECT realname, email, isonline, photo, admintype FROM who_there WHERE usrkey = ?");
-$stmt->bind_param("s", $usrkey);
-$stmt->execute();
-$stmt->store_result();
+try {
+	$stmt = $pdo->prepare("SELECT realname, email, isonline, photo, admintype FROM who_there WHERE usrkey = ?");
+	$stmt->execute([$usrkey]);
+	$row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if ($stmt->num_rows === 0) {
-	custom_log('No user found with usrkey: ' . $usrkey);
-	
-	// Check if this is an AJAX request
-	if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
-		header('Content-Type: application/json');
-		echo json_encode(['status' => 'error', 'message' => 'User not found', 'redirect' => 'login.html?error=user_not_found']);
-		exit();
-	} else {
-		redirect_to_login('user_not_found');
+	if (!$row) {
+		custom_log('No user found with usrkey: ' . $usrkey);
+		
+		// Check if this is an AJAX request
+		if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+			header('Content-Type: application/json');
+			echo json_encode(['status' => 'error', 'message' => 'User not found', 'redirect' => 'login.html?error=user_not_found']);
+			exit();
+		} else {
+			redirect_to_login('user_not_found');
+		}
 	}
-}
 
-$stmt->bind_result($realname, $email, $isonline, $photo, $admintype);
-$stmt->fetch();
-$stmt->close();
+	$realname = $row['realname'];
+	$email = $row['email'];
+	$isonline = $row['isonline'];
+	$photo = $row['photo'];
+	$admintype = $row['admintype'];
+} catch (Exception $e) {
+	custom_log('Database error in sess.php: ' . $e->getMessage());
+	redirect_to_login('database_error');
+}
 
 // Verify admin type consistency
 if ($admintype !== $_SESSION['admintype']) {

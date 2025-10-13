@@ -3,9 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Graph Key Colours";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Reports";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,15 +34,14 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM report_colour WHERE rcid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
-    // show message when deleting, not refreshing
-    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+  if ($usingSupabase) {
+    $stmt = $supabase_pdo->prepare("DELETE FROM report_colour WHERE rcid = ? LIMIT 1");
+    $stmt->execute([$which]); 
+    if ($stmt->rowCount() > 0) {
+      // show message when deleting, not refreshing
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+    }
   }
-  $stmt->close();
-
 }
 if ($newadmin == 'newadmin') {
   $colour = isset($_POST['colour']) ? $_POST['colour'] : '';
@@ -46,12 +50,13 @@ if ($newadmin == 'newadmin') {
   $colour = str_replace("#", "", $colour);
   
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO report_colour (colour) VALUES (?)");
-  $insert_stmt->bind_param("s", $colour);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  if ($usingSupabase) {
+    $insert_stmt = $supabase_pdo->prepare("INSERT INTO report_colour (colour) VALUES (?)");
+    $insert_stmt->execute([$colour]);
+    $newid = $supabase_pdo->lastInsertId();
+  } else {
+    $newid = 0;
+  }
 
   
 }
@@ -69,7 +74,8 @@ if ($newadmin == 'newadmin') {
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
-            </div>
+
+setAdminVars(0); // Dashboard section            </div>
             <?php echo $delalert ?>
             <div class="row">
                <div class="col-xl-12">
@@ -84,11 +90,17 @@ if ($newadmin == 'newadmin') {
                            </thead>
                            <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT rcid, colour FROM report_colour ");
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($rcid, $colour);
-while ($tableset->fetch()){
+if ($usingSupabase) {
+    $tableset = $supabase_pdo->prepare("SELECT rcid, colour FROM report_colour ");
+    $tableset->execute();
+    $colours = $tableset->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $colours = [];
+}
+
+foreach ($colours as $colour_item) {
+    $rcid = $colour_item['rcid'];
+    $colour = $colour_item['colour'];
    $hex      = str_replace('#', '', $colour);
    $length   = strlen($hex);
    $rgbr = hexdec($length == 6 ? substr($hex, 0, 2) : ($length == 3 ? str_repeat(substr($hex, 0, 1), 2) : 0));
@@ -102,13 +114,11 @@ while ($tableset->fetch()){
 </tr>
  <?php
  }
-$numrows = $tableset->num_rows;
-$tableset->close();
+$numrows = count($colours);
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -128,19 +138,14 @@ $tableset->close();
                                 <div class="form-group">
                                     <label class="col-form-label" for="colour">Key Colour</label>
                                     <input class="form-control" type="text" id="color-picker" name="colour" required>
-                                 </div>
-                             </div>
-                          </div>
-                           
-                        </div>
+</div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

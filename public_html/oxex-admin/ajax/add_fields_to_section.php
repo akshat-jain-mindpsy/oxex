@@ -13,7 +13,7 @@ ini_set('log_errors', 1);
 error_log("Add fields to section request received: " . print_r($_POST, true));
 
 // Check authorization
-if (login_check($mysqli) != true || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (login_check($pdo) != true || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     echo json_encode([
         'status' => 'error',
         'message' => 'Not authorized'
@@ -46,44 +46,27 @@ if (empty($field_ids)) {
 
 try {
     // Verify section exists
-    $section_stmt = $mysqli->prepare("SELECT section_name FROM field_sections WHERE section_id = ?");
-    if (!$section_stmt) {
-        throw new Exception("Failed to prepare section query: " . $mysqli->error);
-    }
-    
-    $section_stmt->bind_param("i", $section_id);
-    $section_stmt->execute();
-    $section_result = $section_stmt->get_result();
-    
-    if ($section_result->num_rows === 0) {
+    $section_stmt = $supabase_pdo->prepare("SELECT section_name FROM field_sections WHERE section_id = ?");
+    $section_stmt->execute([$section_id]);
+    $section_row = $section_stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$section_row) {
         throw new Exception("Section not found with ID: $section_id");
     }
-    
-    $section_name = $section_result->fetch_assoc()['section_name'];
-    $section_stmt->close();
-    
+    $section_name = $section_row['section_name'];
+
     // Update each field to assign it to the section - without transaction for simplicity
-    $update_stmt = $mysqli->prepare("UPDATE select_types SET section_id = ? WHERE stid = ?");
-    if (!$update_stmt) {
-        throw new Exception("Failed to prepare update query: " . $mysqli->error);
-    }
-    
+    $update_stmt = $supabase_pdo->prepare("UPDATE select_types SET section_id = ? WHERE stid = ?");
+
     $updated_count = 0;
-    
     foreach ($field_ids as $field_id) {
         $field_id = (int)$field_id;
-        $update_stmt->bind_param("ii", $section_id, $field_id);
-        
-        if (!$update_stmt->execute()) {
-            error_log("Failed to update field ID $field_id: " . $update_stmt->error);
+        if (!$update_stmt->execute([$section_id, $field_id])) {
+            error_log("Failed to update field ID $field_id");
             continue;
         }
-        
         // Count as updated even if no change was made
         $updated_count++;
     }
-    
-    $update_stmt->close();
     
     echo json_encode([
         'status' => 'success',

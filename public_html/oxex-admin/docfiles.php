@@ -7,12 +7,13 @@ $add = $_POST['add'];
 $which = $_POST['which'];
 // is there a thumbnail?
 $imgthumb = '';
-$stmt = $mysqli->prepare("SELECT imgthumb FROM docs_tbl WHERE did =  ? ");
-$stmt->bind_param("i", $which); 
-$stmt->bind_result($imgthumb);
-$stmt->execute();
-$stmt->fetch();
-$stmt->close();
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+    $stmt = $pdo->prepare("SELECT imgthumb FROM docs_tbl WHERE did = ? ");
+    $stmt->execute([$which]); 
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $imgthumb = $row ? $row['imgthumb'] : '';
+}
 ?>
 <?PHP
 $ok = 1;
@@ -116,10 +117,11 @@ if ($ok == 1) {
 	//move_uploaded_file($_FILES["ufile"]["tmp_name"], "../docs/" . $_FILES["ufile"]["filename"]);
 	$result = move_uploaded_file($_FILES['ufile']['tmp_name'], FILEREPOSITORY."$filename");
 	echo "<p>File successfully uploaded.</p>";
-	$stmt = $mysqli->prepare("UPDATE docs_tbl SET filename = ?, filetype = ? WHERE did = ?"); 
-	$stmt->bind_param("sii", $filename, $imgtype, $which);
-	$stmt->execute();
-	$stmt->close();
+	$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+	if ($pdo) {
+		$stmt = $pdo->prepare("UPDATE docs_tbl SET filename = ?, filetype = ? WHERE did = ?"); 
+		$stmt->execute([$filename, $imgtype, $which]);
+	}
 	// if pdf and no thumb exists, create thumb
 	if ($imgtype == 1 && $imgthumb == '') {
 		// create thumbnail if pdf
@@ -128,10 +130,11 @@ if ($ok == 1) {
 		// create png image and thumb from pdf first page
 		$result1 = exec("/usr/bin/convert  \"$startpdf\" -quality 70 -colorspace rgb -background white -flatten -thumbnail 180x270 \"$largepng\"");
 
-		$stmt = $mysqli->prepare("UPDATE docs_tbl SET imgthumb = ? WHERE did = ?"); 
-		$stmt->bind_param("si", $generateID, $which);
-		$stmt->execute();
-		$stmt->close();
+		$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+		if ($pdo) {
+			$stmt = $pdo->prepare("UPDATE docs_tbl SET imgthumb = ? WHERE did = ?"); 
+			$stmt->execute([$generateID, $which]);
+		}
 		echo "<p>(start $startpdf) (largepng $largepng) (result1 $result1) Thumbnail created</p>";
 		echo "<img src=\"$largepng\" width=\"100\">";
 

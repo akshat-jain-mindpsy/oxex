@@ -2,6 +2,11 @@
 // Set default values if not defined
 $adminstatus = $adminstatus ?? 'Active';
 $admintype = $admintype ?? 'Unknown';
+
+// Debug: Check if variables are set
+echo "<!-- SIDEBAR DEBUG: Admin type: " . (isset($admintype) ? $admintype : 'NOT SET') . " -->";
+echo "<!-- SIDEBAR DEBUG: Admin name: " . (isset($adminname) ? $adminname : 'NOT SET') . " -->";
+echo "<!-- SIDEBAR DEBUG: Real name: " . (isset($realname) ? $realname : 'NOT SET') . " -->";
 ?>
 <aside class="aside-container">
    <!-- START Sidebar (left)-->
@@ -15,7 +20,7 @@ $admintype = $admintype ?? 'Unknown';
                   <div class="item user-block">
                      <div class="user-block-content">
                         <div class="user-block-picture"><img class="img-thumbnail rounded-circle" src="assets/img/user/<?php echo $adminphoto ?>" alt="Avatar" width="60" height="60"></div><!-- Name and Job-->
-                        <div class="user-block-info"><span class="user-block-name"><?echo $realname ?></span><!-- START Dropdown to change status-->
+                        <div class="user-block-info"><span class="user-block-name"><?php echo $realname ?></span><!-- START Dropdown to change status-->
                            <div class="btn-group user-block-status"><button class="btn btn-inverse btn-xs dropdown-toggle no-caret" type="button" data-toggle="dropdown">
                               <?php
                               // our status
@@ -61,13 +66,12 @@ $admintype = $admintype ?? 'Unknown';
             ?>
             
             <!-- DATA MANAGEMENT SECTION -->
-            <li class=" "><a href="#data" title="Data Management" data-toggle="collapse"><span>Data Management</span></a>
+            <li class=" "><a href="#data" title="Data Management" data-toggle="collapse" data-target="#data"><span>Data Management</span></a>
                <ul class="sidebar-nav sidebar-subnav collapse" id="data">
-                  <li class="sidebar-subnav-header">Data Structure & Content</li>
+                  <!-- <li class="sidebar-subnav-header">Data Structure & Content</li> -->
                   
                                      <!-- Core Data Structure -->
-                   <?php if ($admintype == "DV" || $admintype == "AT"): ?>
-                   <li class="sidebar-subnav-header-sub">Structure</li>
+                  <?php if ($admintype == "DV" || $admintype == "AT"): ?>
                   <?php
                      $url = 'sheets.php';
                      $urldetail = 'sheetdetail.php';
@@ -119,7 +123,7 @@ $admintype = $admintype ?? 'Unknown';
                   
                                      <!-- Data Standards & Rules -->
                    <?php if ($admintype == "DV" || $admintype == "AT"): ?>
-                   <li class="sidebar-subnav-header-sub">Standards & Rules</li>
+                   <!-- <li class="sidebar-subnav-header-sub">Standards & Rules</li> -->
                   <?php
                      $url = 'pass_standards.php';
                      $urldetail = 'pass_standard_detail.php';
@@ -151,9 +155,9 @@ $admintype = $admintype ?? 'Unknown';
             </li>
             
             <!-- USER MANAGEMENT SECTION -->
-            <li class=" "><a href="#users" title="User Management" data-toggle="collapse"><span>User Management</span></a>
+            <li class=" "><a href="#users" title="User Management" data-toggle="collapse" data-target="#users"><span>User Management</span></a>
                <ul class="sidebar-nav sidebar-subnav collapse" id="users">
-                  <li class="sidebar-subnav-header">Trainees & Groups</li>
+                  <!-- <li class="sidebar-subnav-header">Trainees & Groups</li> -->
                   
                   <!-- Trainee Management -->
                   <?php
@@ -187,8 +191,7 @@ $admintype = $admintype ?? 'Unknown';
                   ?>
                   
                                      <!-- Admin Users -->
-                   <?php if ($admintype == "DV" || $admintype == "AT"): ?>
-                   <li class="sidebar-subnav-header-sub">System Users</li>
+                  <?php if ($admintype == "DV" || $admintype == "AT"): ?>
                   <?php
                      $url = 'adminusers.php';
                      $urldetail = 'adminusersdetail.php';
@@ -206,9 +209,9 @@ $admintype = $admintype ?? 'Unknown';
             </li>
             
             <!-- ANALYSIS & REPORTING SECTION -->
-            <li class=" "><a href="#analysis" title="Analysis & Reporting" data-toggle="collapse"><span>Analysis & Reporting</span></a>
+            <li class=" "><a href="#analysis" title="Analysis & Reporting" data-toggle="collapse" data-target="#analysis"><span>Analysis & Reporting</span></a>
                <ul class="sidebar-nav sidebar-subnav collapse" id="analysis">
-                  <li class="sidebar-subnav-header">Reports & Analytics</li>
+                  <!-- <li class="sidebar-subnav-header">Reports & Analytics</li> -->
                   
                   <!-- Trainee Statistics -->
                   <?php if ($admintype == "DV" || $admintype == "AT" || $admintype == "AO" || $admintype == "AE" || $admintype == "SO" || $admintype == "SE"): ?>
@@ -290,8 +293,7 @@ $admintype = $admintype ?? 'Unknown';
                    <?php endif; ?>
                    
                    <!-- Data Export -->
-                   <?php if ($admintype == "DV" || $admintype == "AT"): ?>
-                   <li class="sidebar-subnav-header-sub">Export</li>
+                  <?php if ($admintype == "DV" || $admintype == "AT"): ?>
                    <?php
                       $url = 'csv_editor.php';
                       $page = 'CSV Templates';
@@ -308,9 +310,9 @@ $admintype = $admintype ?? 'Unknown';
             </li>
             
             <!-- CONTENT MANAGEMENT SECTION -->
-            <li class=" "><a href="#content" title="Content Management" data-toggle="collapse"><span>Content Management</span></a>
+            <li class=" "><a href="#content" title="Content Management" data-toggle="collapse" data-target="#content"><span>Content Management</span></a>
                <ul class="sidebar-nav sidebar-subnav collapse" id="content">
-                  <li class="sidebar-subnav-header">Website Content</li>
+                  <!-- <li class="sidebar-subnav-header">Website Content</li> -->
                   
                   <!-- Main Content -->
                   <?php if ($admintype == "DV" || $admintype == "AT"): ?>
@@ -362,9 +364,9 @@ $admintype = $admintype ?? 'Unknown';
             </li>
             
             <!-- SYSTEM ADMINISTRATION SECTION -->
-            <li class=" "><a href="#admin" title="System Administration" data-toggle="collapse"><span>System Administration</span></a>
+            <li class=" "><a href="#admin" title="System Administration" data-toggle="collapse" data-target="#admin"><span>System Administration</span></a>
                <ul class="sidebar-nav sidebar-subnav collapse" id="admin">
-                  <li class="sidebar-subnav-header">System Configuration</li>
+                  <!-- <li class="sidebar-subnav-header">System Configuration</li> -->
                   
                   <!-- System Configuration -->
                   <?php if ($admintype == "DV" || $admintype == "AT"): ?>

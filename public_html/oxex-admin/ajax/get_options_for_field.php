@@ -5,7 +5,7 @@ sec_session_start();
 include '../incl/sess.php';
 
 // Only allow authorized admins
-if (login_check($mysqli) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) {
+if (login_check($pdo) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) {
     header('HTTP/1.1 403 Forbidden');
     echo json_encode(['status' => 'error', 'message' => 'Not authorized.']);
     exit;
@@ -25,14 +25,10 @@ $options = [];
 // Adjust the table and column names if your schema is different.
 $sql = "SELECT select_val FROM select_gen WHERE stid = ? ORDER BY select_val ASC";
 
-if ($stmt = $mysqli->prepare($sql)) {
-    $stmt->bind_param("i", $stid);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    while ($row = $result->fetch_assoc()) {
-        $options[] = $row['select_val'];
-    }
-    $stmt->close();
+$stmt = $supabase_pdo->prepare($sql);
+$stmt->execute([$stid]);
+while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    $options[] = $row['select_val'];
 }
 
 echo json_encode($options); 

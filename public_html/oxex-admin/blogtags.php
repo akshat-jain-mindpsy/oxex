@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Blog Tags";
+
+setAdminVars(4); // Blog section
 $subtitle = "Blog";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,14 +30,13 @@ $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM blog_subject_tags WHERE btagid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
+  $stmt = $pdo->prepare("DELETE FROM blog_subject_tags WHERE btagid = ? LIMIT 1");
+  $stmt->execute([$which]); 
+  if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
   }
-  $stmt->close();
+  $stmt->closeCursor();
 
 }
 
@@ -42,12 +44,10 @@ if ($newadmin == 'newadmin') {
   $btag = isset($_POST['btag']) ? $_POST['btag'] : '';
   
   // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO blog_subject_tags (btag) VALUES (?)");
-  $insert_stmt->bind_param("s", $btag);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+  $insert_stmt = $pdo->prepare("INSERT INTO blog_subject_tags (btag) VALUES (?)");
+  $insert_stmt->execute([$btag]);
+  $newid = $pdo->lastInsertId();
+  $insert_stmt->closeCursor();
 }
 ?>
 <body>
@@ -63,7 +63,8 @@ if ($newadmin == 'newadmin') {
          <div class="content-wrapper">
             <div class="content-header">
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
-            </div>
+
+setAdminVars(4); // Blog section            </div>
             <?php echo $delalert ?>
             <div class="row">
                <div class="col-xl-12">
@@ -76,24 +77,22 @@ if ($newadmin == 'newadmin') {
                            </thead>
                            <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT btagid, btag FROM blog_subject_tags ");
+$tableset = $pdo->prepare("SELECT btagid, btag FROM blog_subject_tags ");
 $tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($btagid, $btag);
-while ($tableset->fetch()){
+while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+  $btagid = $row['btagid'];
+  $btag = $row['btag'];
 ?>
 <tr>
    <td><a href="blogtagdetail.php?which=<?php echo $btagid ?>"><?php echo $btag ?></a></td>
 </tr>
  <?php
  }
-$numrows = $tableset->num_rows;
-$tableset->close();
+$tableset->closeCursor();
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
@@ -109,17 +108,13 @@ $tableset->close();
                            <div class="form-group">
                               <label class="col-form-label" for="btag">Tag</label>
                               <input class="form-control" type="text" id="btag" name="btag">
-                           </div>
-                           
-                        </div>
+</div>
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+</div><!-- END card-->
                   </form>
-               </div>
-            </div>
+</div>
          </div>
       </section>
    </div>

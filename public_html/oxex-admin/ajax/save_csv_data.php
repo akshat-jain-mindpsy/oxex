@@ -7,7 +7,7 @@ include '../OXEXfolder/u_functions.php';
 sec_session_start();
 
 // Check user permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     http_response_code(403);
     echo json_encode(['status' => 'error', 'message' => 'Unauthorized access']);
     exit;

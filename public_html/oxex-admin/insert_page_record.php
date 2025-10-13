@@ -15,12 +15,15 @@ $sql = "INSERT INTO pages_tbl
     'CSV Template Download', $current_time, $current_time, 0.5)";
 
 // Execute the query
-if ($mysqli->query($sql)) {
-    echo "Success: Record added for csv-template-download.php";
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+    try {
+        $pdo->exec($sql);
+        echo "Success: Record added for csv-template-download.php";
+    } catch (PDOException $e) {
+        echo "Error: " . $e->getMessage();
+    }
 } else {
-    echo "Error: " . $mysqli->error;
+    echo "Error: No database connection available";
 }
-
-// Close connection
-$mysqli->close();
 ?> 

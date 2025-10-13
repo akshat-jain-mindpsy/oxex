@@ -10,7 +10,7 @@ ini_set('display_startup_errors', 1);
 error_log("Search fields request received: " . print_r($_GET, true));
 
 // Check authorization
-if (login_check($mysqli) != true || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (login_check($pdo) != true || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     echo json_encode([
         'status' => 'error',
         'message' => 'Not authorized'
@@ -46,24 +46,11 @@ try {
         LIMIT 20
     ";
     
-    $stmt = $mysqli->prepare($query);
-    if (!$stmt) {
-        throw new Exception("Prepare failed: " . $mysqli->error);
-    }
-    
-    $stmt->bind_param("si", $search_pattern, $section_id);
-    $success = $stmt->execute();
-    if (!$success) {
-        throw new Exception("Execute failed: " . $stmt->error);
-    }
-    
-    $result = $stmt->get_result();
-    if (!$result) {
-        throw new Exception("Get result failed: " . $stmt->error);
-    }
+    $stmt = $supabase_pdo->prepare($query);
+    $stmt->execute([$search_pattern, $section_id]);
     
     $fields = [];
-    while ($row = $result->fetch_assoc()) {
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         // Get field type text
         $type_text = '';
         switch ($row['single']) {

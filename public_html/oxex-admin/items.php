@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = "Items (Dropdown List) ";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Items";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,15 +31,15 @@ $delalert = '';
 $select_type = '';
 if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row from detail page
-  $stmt = $mysqli->prepare("DELETE FROM select_gen WHERE pid = ? LIMIT 1");
-  $stmt->bind_param("i", $which); 
-  $stmt->execute();
-  if ($mysqli->affected_rows > 0) {
-    // show message when deleting, not refreshing
-    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("DELETE FROM select_gen WHERE pid = ? LIMIT 1");
+    $stmt->execute([$which]);
+    if ($stmt->rowCount() > 0) {
+      // show message when deleting, not refreshing
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Record Deleted</strong></div></div></div>";
+    }
   }
-  $stmt->close();
-
 }
 
 if ($newadmin == 'newadmin') {
@@ -44,35 +47,37 @@ if ($newadmin == 'newadmin') {
   $select_val = isset($_POST['select_val']) ? $_POST['select_val'] : 0;
   
   // get single/multiple from select_types
-   $stmt = $mysqli->prepare("SELECT stid, single FROM select_types WHERE str = ?");
-   $stmt->bind_param("s", $select_type);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($stid, $single);
-   $stmt->fetch();
-   $stmt->close();
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("SELECT stid, single FROM select_types WHERE str = ?");
+    $stmt->execute([$select_type]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row) {
+      $stid = $row['stid'];
+      $single = $row['single'];
+    }
 
-
-  // write new record
-  $insert_stmt = $mysqli->prepare("INSERT INTO select_gen (select_type, single, select_val, stid) VALUES (?, ?, ?, ?)");
-  $insert_stmt->bind_param("sisi", $select_type, $single, $select_val, $stid);
-  $insert_stmt->execute();
-  //printf("[%d] %s\n", $mysqli->errno, $mysqli->error);
-  $newid = $insert_stmt->insert_id;
-  $insert_stmt->close();
+    // write new record
+    $insert_stmt = $pdo->prepare("INSERT INTO select_gen (select_type, single, select_val, stid) VALUES (?, ?, ?, ?)");
+    $insert_stmt->execute([$select_type, $single, $select_val, $stid]);
+    $newid = $pdo->lastInsertId();
+  }
 
   
 }
 
 function getSimilarExistingValues($type) {
-    global $mysqli;
-    $stmt = $mysqli->prepare("SELECT select_val FROM select_gen 
+    global $supabase_pdo;
+    $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+    if ($pdo) {
+        $stmt = $pdo->prepare("SELECT select_val FROM select_gen 
                                WHERE select_type = ? 
                                ORDER BY SIMILARITY(select_val, ?) 
                                LIMIT 5");
-    $stmt->bind_param("ss", $type, $newValue);
-    $stmt->execute();
-    return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->execute([$type, $newValue]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    return [];
 }
 ?>
 <body>
@@ -103,30 +108,41 @@ function getSimilarExistingValues($type) {
                            </thead>
                            <tbody>
 <?PHP
-$tableset = $mysqli->prepare("SELECT pid, select_type, single, select_val FROM select_gen ");
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($pid, $listselect_type, $single, $select_val);
-// 'listselect_type' to avoid intereference with retaining selection
-while ($tableset->fetch()){
-   if ($single == 1) {
-      $listtype = 'Multiple Selection';
-   }
-   if ($single == 2) {
-      $listtype = 'Text';
-   }
-   if ($single == 3) {
-      $listtype = 'Date';
-   }
-   if ($single == 6) {
-      $listtype = 'Time';
-   }
-   if ($single == 4) {
-      $listtype = 'Numeric (step 0.1)';
-   }
-   if ($single == 5) {
-      $listtype = 'Numeric (step integer)';
-   }
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $tableset = $pdo->prepare("SELECT pid, select_type, single, select_val FROM select_gen ");
+  $tableset->execute();
+  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+  $pid = $row['pid'];
+  $listselect_type = $row['select_type'];
+  $single = $row['single'];
+  $select_val = $row['select_val'];
+ if ($single == 1) {
+    $listtype = 'Multiple Selection';
+ }
+ // Ensure $listtype is always defined and handle all known $single values
+ $listtype = 'Unknown';
+ if ($single == 0) {
+    $listtype = 'Single Selection';
+ }
+ if ($single == 1) {
+    $listtype = 'Multiple Selection';
+ }
+ if ($single == 2) {
+    $listtype = 'Text';
+ }
+ if ($single == 3) {
+    $listtype = 'Date';
+ }
+ if ($single == 6) {
+    $listtype = 'Time';
+ }
+ if ($single == 4) {
+    $listtype = 'Numeric (step 0.1)';
+ }
+ if ($single == 5) {
+    $listtype = 'Numeric (step integer)';
+ }
 ?>
 <tr>
    <td><a href="listdetail.php?which=<?php echo $pid ?>"><?php echo $select_val?></a></td>
@@ -134,17 +150,16 @@ while ($tableset->fetch()){
    <td><?php echo $listtype ?></td>
 </tr>
  <?php
- }
-$tableset->close();
+  }
+}
 ?>
                            </tbody>
                         </table>
-                     </div>
-               </div>
+</div>
             </div><!-- end table row -->
 
             <div class="row my-5" id="newform">
-               <div class="col-xl-8">
+               <div class="col-12">
                   <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>" data-parsley-validate="" novalidate="">
                      <!-- START card-->
                      <div class="card border-info">
@@ -165,39 +180,38 @@ $tableset->close();
                                         <select class="custom-select custom-select-lg mb-3" id="select_type" name="select_type" required>
                                           <option <?php if ($select_type == '') echo "selected='selected'" ?> value="">Select...</option>
                                           <?php
-$tableset = $mysqli->prepare("SELECT str, single FROM select_types ORDER BY str ");
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($str, $single);
-while ($tableset->fetch()){
-   if ($single == 0) {
-      $listtype = 'Single Selection';
-   } else {
-      $listtype = 'Multiple Selection';
-   }
-   echo "<option value=\"$str\"";
-   if ($select_type == $str) {
-      echo "selected='selected'";
-   }
-   echo ">$str ($listtype)</option>";
-}
-$numrows = $tableset->num_rows;
-$tableset->close();                                         
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $tableset = $pdo->prepare("SELECT str, single FROM select_types ORDER BY str ");
+  $tableset->execute();
+  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+  $str = $row['str'];
+  $single = $row['single'];
+ if ($single == 0) {
+    $listtype = 'Single Selection';
+ } else {
+    $listtype = 'Multiple Selection';
+ }
+ echo "<option value=\"$str\"";
+ if ($select_type == $str) {
+    echo "selected='selected'";
+ }
+ echo ">$str ($listtype)</option>";
+  }
+}                                         
                                            ?>
                                        </select>
-                                    </div>
-                                </div>
-                             </div>
-
-                        </div>
+</div>
+</div>
+                            </div>
+                         </div><!-- /card-body -->
                         <div class="card-footer">
                            <input type="hidden" name="newadmin" value="newadmin">
                            <div class="float-right"><button class="btn btn-info" type="submit">Add</button></div>
-                        </div>
-                     </div><!-- END card-->
+                        </div><!-- /card-footer -->
+                     </div><!-- END card -->
                   </form>
                </div>
-            </div>
          </div>
       </section>
    </div>

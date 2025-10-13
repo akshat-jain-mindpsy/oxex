@@ -5,7 +5,7 @@ sec_session_start();
 include '../incl/sess.php';
 
 // Only allow authorized admins
-if (login_check($mysqli) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) {
+if (login_check($pdo) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) {
     header('HTTP/1.1 403 Forbidden');
     echo json_encode(['status' => 'error', 'message' => 'Not authorized.']);
     exit;
@@ -73,12 +73,10 @@ if (!is_null($parent_standard_id)) {
         echo json_encode($response);
         exit;
     }
-    $parent_stmt = $mysqli->prepare("SELECT tbid FROM pass_standards WHERE psid = ?");
-    $parent_stmt->bind_param("i", $parent_standard_id);
-    $parent_stmt->execute();
-    $parent_res = $parent_stmt->get_result();
-    $parent_row = $parent_res->fetch_assoc();
-    $parent_stmt->close();
+    $parent_stmt = $pdo->prepare("SELECT tbid FROM pass_standards WHERE psid = ?");
+    $parent_stmt->execute([$parent_standard_id]);
+    $parent_row = $parent_stmt->fetch(PDO::FETCH_ASSOC);
+    $parent_stmt->closeCursor();
     if (!$parent_row) {
         $response['message'] = 'Selected parent standard does not exist.';
         echo json_encode($response);
@@ -107,9 +105,9 @@ $sql = "UPDATE pass_standards SET
             date_modified = ?
         WHERE psid = ?";
 
-if ($stmt = $mysqli->prepare($sql)) {
-    // Types: s i i s i s i s i i
-    $stmt->bind_param("siisisiisii", 
+$stmt = $pdo->prepare($sql);
+if ($stmt) {
+    if ($stmt->execute([
         $standard_name, 
         $tbid, 
         $stid, 
@@ -121,19 +119,17 @@ if ($stmt = $mysqli->prepare($sql)) {
         $usrkey, 
         $date_modified,
         $psid
-    );
-    
-    if ($stmt->execute()) {
+    ])) {
         $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'Pass standard updated successfully.'];
         $response['status'] = 'success';
         $response['message'] = 'Pass standard updated successfully.';
     } else {
-        $response['message'] = 'Database execution failed: ' . $stmt->error;
+        $response['message'] = 'Database execution failed: ' . $stmt->errorInfo()[2];
     }
-    $stmt->close();
+    $stmt->closeCursor();
 } else {
-    $response['message'] = 'Database prepare statement failed: ' . $mysqli->error;
+    $response['message'] = 'Database prepare statement failed: ' . $pdo->errorInfo()[2];
 }
 
-$mysqli->close();
+$pdo = null;
 echo json_encode($response); 

@@ -29,15 +29,14 @@ $trainkey = '62964670bbcc04fd96d854e0ba56ba16'; # Ali Marg
 $rmid = 84; # Range of backgrounds and complexity (Ethnicity) LD
 //$rmid = 145; # Range of backgrounds and complexity (Ethnicity) non-LD
 
-$dataset = $mysqli->prepare("SELECT select_gen.select_val, report_data.valuea FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
-$dataset->bind_param("i", $rmid); 
-$dataset->execute();
-$dataset->store_result();
-$dataset->bind_result($select_val, $valuea);
-while ($dataset->fetch()){
+$dataset = $supabase_pdo->prepare("SELECT select_gen.select_val, report_data.valuea FROM report_data, select_gen WHERE report_data.rmid = ? AND select_gen.pid = report_data.valuea ORDER BY report_data.rdid");
+$dataset->execute([$rmid]); 
+$rows = $dataset->fetchAll(PDO::FETCH_ASSOC);
+foreach ($rows as $row) {
+   $select_val = $row['select_val'];
+   $valuea = $row['valuea'];
    array_push($valarr,$valuea); # the id's to look for in Trainee's data
 }
-$dataset->close();
 print_r($valarr);
 
 foreach ($valarr as $valueA) {
@@ -45,24 +44,19 @@ foreach ($valarr as $valueA) {
 
 
     $numages = 0;
-    $vids = $mysqli->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ?"); 
-    $vids->bind_param("sii", $trainkey, $stid, $valueA);
-    $vids->execute();
-    $vids->store_result();
-    $vids->bind_result($checklogkey);
-    while ($vids->fetch()){
+    $vids = $supabase_pdo->prepare("SELECT logkey FROM trainee_log WHERE trainkey = ? AND stid = ? AND pid = ?"); 
+    $vids->execute([$trainkey, $stid, $valueA]);
+    $log_rows = $vids->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($log_rows as $log_row) {
+        $checklogkey = $log_row['logkey'];
         if ($elldee == 1) {
 //echo "($stid $valueA $checklogkey) ";
          // Any data must have Learning Disability selected, else data not used
          // For this $logkey, check the LD 'Clinical Specialism' field data
          // this is $stid = 2, $pid = 3
-         $ldstmt = $mysqli->prepare("SELECT tlogid FROM trainee_log WHERE stid = ? AND pid = ? AND logkey = ?");
-         $ldstmt->bind_param("iis", $value2, $value3, $checklogkey);
-         $ldstmt->execute();
-         $ldstmt->store_result();
-         $numld = $ldstmt->num_rows;
-         $ldstmt->fetch();
-         $ldstmt->close();
+         $ldstmt = $supabase_pdo->prepare("SELECT tlogid FROM trainee_log WHERE stid = ? AND pid = ? AND logkey = ?");
+         $ldstmt->execute([$value2, $value3, $checklogkey]);
+         $numld = $ldstmt->rowCount();
 echo "$checklogkey ($numld)<br>";
          if ($numld == 0) { # no LD 'Placement Type'
             //$numages = 0; # clear data if 'LD' not selected in Clinical Specialism question for the same data set specified by $checklogkey
@@ -76,7 +70,6 @@ echo "$checklogkey ($numld)<br>";
                               }
         
     }
-    $vids->close();
     array_push($ansarr, $numages);
 }
 print_r($ansarr);

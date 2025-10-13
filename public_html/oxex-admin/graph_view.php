@@ -3,9 +3,12 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
+
+$usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
 
 // Ensure proper access control
-if(!(login_check($mysqli) == true && 
+if(!(login_check($pdo) == true && 
      ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || 
       $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV'))) {
     header("Location: index.php");
@@ -14,13 +17,20 @@ if(!(login_check($mysqli) == true &&
 
 // Page setup
 $pagetitle = "Graph View";
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Data Visualization";
 $listurl = "indextable.php";
 $listname = "Dashboard";
 
 // Fetch table details for graph data sources
-$tables_query = "SELECT tbid, tab_name FROM tabs_tbl WHERE isvis = 1 ORDER BY sort_order ASC";
-$tables_result = $mysqli->query($tables_query);
+if ($usingSupabase) {
+    $tables_stmt = $supabase_pdo->prepare("SELECT tbid, tab_name FROM tabs_tbl WHERE isvis = 1 ORDER BY sort_order ASC");
+    $tables_stmt->execute();
+    $tables_result = $tables_stmt->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $tables_result = [];
+}
 
 // Fetch trainee data for user filtering
 $trainees = array();
@@ -28,10 +38,11 @@ $canViewAll = ($admintype == 'AT' || $admintype == 'DV');
 
 // Fetch trainee subsets (groups)
 $subsets = [];
-$subsets_query = "SELECT setkey, subset, usrkey FROM subset_tbl ORDER BY subset ASC";
-$subsets_result = $mysqli->query($subsets_query);
-if ($subsets_result) {
-    while ($subset = $subsets_result->fetch_assoc()) {
+if ($usingSupabase) {
+    $subsets_stmt = $supabase_pdo->prepare("SELECT setkey, subset, usrkey FROM subset_tbl ORDER BY subset ASC");
+    $subsets_stmt->execute();
+    $subsets_data = $subsets_stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($subsets_data as $subset) {
         if ($canViewAll || $subset['usrkey'] == $usrkey) {
             $subsets[] = $subset;
         }
@@ -39,14 +50,15 @@ if ($subsets_result) {
 }
 
 // Determine which trainees this admin can view
-$trainee_query = "SELECT t.trainkey, t.name, t.uid, t.year, t.supervisor, t.supervisor2, t.supervisor3, t.tutor, u.university 
-                 FROM trainee_tbl t 
-                 LEFT JOIN uni_tbl u ON t.uid = u.uid
-                 ORDER BY t.name ASC";
-$trainee_result = $mysqli->query($trainee_query);
-
-if ($trainee_result && $trainee_result->num_rows > 0) {
-    while ($trainee = $trainee_result->fetch_assoc()) {
+if ($usingSupabase) {
+    $trainee_stmt = $supabase_pdo->prepare("SELECT t.trainkey, t.name, t.uid, t.year, t.supervisor, t.supervisor2, t.supervisor3, t.tutor, u.university 
+                     FROM trainee_tbl t 
+                     LEFT JOIN uni_tbl u ON t.uid = u.uid
+                     ORDER BY t.name ASC");
+    $trainee_stmt->execute();
+    $trainee_data = $trainee_stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    foreach ($trainee_data as $trainee) {
         $canView = $canViewAll;
         
         // Check if user is supervisor or tutor for this trainee
@@ -136,9 +148,9 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
            <!-- Page content-->
            <div class="content-wrapper">
                <!-- Page header -->
-               <div class="content-header">
-                   <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
-               </div>
+              <div class="content-header">
+                  <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
+              </div>
 
                <!-- Filters section -->
                <div class="row">
@@ -149,8 +161,8 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                            </div>
                            <div class="card-body">
                                <form id="graphFilterForm">
-                                   <div class="row">
-                                       <div class="col-md-4">
+                                  <div class="row">
+                                      <div class="col-12 col-md-4">
                                            <div class="form-group">
                                                <label class="col-form-label" for="traineeSelect">Select User or Group <span class="text-danger">*</span></label>
                                                <select class="custom-select custom-select-lg mb-3" id="traineeSelect" name="trainee_key" required>
@@ -180,24 +192,22 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                                    <?php endif; ?>
                                                </select>
                                                <small class="form-text text-muted">Select a specific trainee, a group of trainees, or "All Users" to view aggregated data across all accessible users</small>
-                                           </div>
-                                       </div>
-                                       <div class="col-md-4">
+</div>
+                                      <div class="col-12 col-md-4">
                                            <div class="form-group">
                                                <label class="col-form-label" for="dataSource">Data Source</label>
                                                <select class="custom-select custom-select-lg mb-3" id="dataSource" name="data_source">
                                                    <option value="">Select a data source</option>
                                                    <?php
-                                                   if ($tables_result && $tables_result->num_rows > 0) {
-                                                       while ($table = $tables_result->fetch_assoc()) {
+                                                   if (!empty($tables_result)) {
+                                                       foreach ($tables_result as $table) {
                                                            echo '<option value="' . $table['tbid'] . '">' . htmlspecialchars($table['tab_name']) . '</option>';
                                                        }
                                                    }
                                                    ?>
                                                </select>
-                                           </div>
-                                       </div>
-                                       <div class="col-md-4">
+</div>
+                                      <div class="col-12 col-md-4">
                                            <div class="form-group">
                                                <label class="col-form-label" for="chartType">Chart Type</label>
                                                <select class="custom-select custom-select-lg mb-3" id="chartType" name="chart_type">
@@ -207,11 +217,10 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                                    <option value="doughnut">Doughnut Chart</option>
                                                    <option value="radar">Radar Chart</option>
                                                </select>
-                                           </div>
-                                       </div>
+</div>
                                    </div>
-                                   <div class="row">
-                                       <div class="col-md-4">
+                                  <div class="row">
+                                      <div class="col-12 col-md-4">
                                            <div class="form-group">
                                                <label class="col-form-label" for="timeFrame">Time Frame</label>
                                                <select class="custom-select custom-select-lg mb-3" id="timeFrame" name="time_frame">
@@ -231,24 +240,18 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                                <div class="form-group">
                                                    <label class="col-form-label" for="endDate">End Date</label>
                                                    <input type="date" class="form-control" id="endDate" name="end_date">
-                                               </div>
-                                           </div>
+</div>
                                        </div>
-                                       <div class="col-md-8">
+                                      <div class="col-12 col-md-8">
                                            <div class="form-group">
                                                <label class="col-form-label">Field Selection</label>
                                                <div class="alert alert-info">
                                                    <i class="fas fa-info-circle"></i> Select multiple fields for both X and Y axes to create comprehensive visualizations.
-                                               </div>
-                                           </div>
-                                       </div>
-                                   </div>
+</div>
+</div>
                                </form>
-                           </div>
-                           
-                       </div>
-                   </div>
-               </div>
+</div>
+</div>
 
                <!-- Auto-generate all graphs section -->
                <div class="row">
@@ -276,22 +279,18 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                                <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
                                                    <div id="xAxisFieldsList">
                                                        <!-- Checkboxes will be populated here -->
-                                                   </div>
-                                               </div>
+</div>
                                                <small class="form-text text-muted">Select one or more fields for X-axis</small>
-                                           </div>
-                                       </div>
+</div>
                                        <div class="col-md-6">
                                            <div class="form-group">
                                                <label class="col-form-label"><strong>Y-Axis Categories (select multiple)</strong></label>
                                                <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
                                                    <div id="yAxisFieldsList">
                                                        <!-- Checkboxes will be populated here -->
-                                                   </div>
-                                               </div>
+</div>
                                                <small class="form-text text-muted">Select one or more fields for Y-axis</small>
-                                           </div>
-                                       </div>
+</div>
                                    </div>
                                    
                                    <div class="row">
@@ -300,17 +299,14 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                                <strong>Selected Combinations:</strong>
                                                <div id="combinationPreview">
                                                    <em>Select fields above to see combinations preview</em>
-                                               </div>
-                                           </div>
-                                       </div>
-                                   </div>
+</div>
+</div>
                                </div>
                                
                                <div id="fieldSelectionPrompt" class="text-center py-4">
                                    <i class="fas fa-table fa-2x mb-3 text-muted"></i>
                                    <p class="text-muted">Please select a data source first to load available fields</p>
-                               </div>
-                           </div>
+</div>
                            <div class="card-footer">
                                <div class="float-right">
                                    <button type="button" id="generateAllGraphsBtn" class="btn btn-success">Generate Selected Combinations</button>
@@ -320,10 +316,8 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                    <button type="button" id="clearAllXFields" class="btn btn-outline-secondary btn-sm ml-1" style="display:none;">Clear All X</button>
                                    <button type="button" id="selectAllYFields" class="btn btn-outline-secondary btn-sm ml-3" style="display:none;">Select All Y</button>
                                    <button type="button" id="clearAllYFields" class="btn btn-outline-secondary btn-sm ml-1" style="display:none;">Clear All Y</button>
-                               </div>
-                           </div>
-                       </div>
-                   </div>
+</div>
+</div>
                </div>
 
                <!-- Multiple graphs container -->
@@ -343,12 +337,9 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                    </div>
                                    <div id="allGraphsList" class="row">
                                        <!-- Graphs will be populated here -->
-                                   </div>
-                               </div>
-                           </div>
-                       </div>
-                   </div>
-               </div>
+</div>
+</div>
+</div>
 
                
 
@@ -365,10 +356,8 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                </div>
                                <ul class="nav nav-tabs" id="graphTabsNav" role="tablist" style="display:none;"></ul>
                                <div class="tab-content" id="graphTabsContent"></div>
-                           </div>
-                       </div>
-                   </div>
-               </div>
+</div>
+</div>
            </div>
        </section>
    </div>
@@ -725,11 +714,9 @@ if ($trainee_result && $trainee_result->num_rows > 0) {
                                <div class="graph-loading-mini" id="loading-${graphId}">
                                    <div class="spinner-border spinner-border-sm text-primary" role="status">
                                        <span class="sr-only">Loading...</span>
-                                   </div>
-                               </div>
+</div>
                                <canvas id="${graphId}" height="250"></canvas>
-                           </div>
-                       </div>
+</div>
                    </div>
                `);
                

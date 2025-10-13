@@ -19,13 +19,16 @@ $filename = "OXEX_elog_$today.csv";
 
 $which = isset($_GET['which']) ? $_GET['which'] : '';
  // find the required trainee
-$stmt = $mysqli->prepare("SELECT name, who_by, date_added, date_modified, last_used FROM trainee_tbl WHERE trainkey = ?");
-$stmt->bind_param("s", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($name, $who_by, $date_added, $date_modified, $last_used);
-$stmt->fetch();
-$stmt->close();
+$stmt = $supabase_pdo->prepare("SELECT name, who_by, date_added, date_modified, last_used FROM trainee_tbl WHERE trainkey = ?");
+$stmt->execute([$which]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+if ($row) {
+    $name = $row['name'];
+    $who_by = $row['who_by'];
+    $date_added = $row['date_added'];
+    $date_modified = $row['date_modified'];
+    $last_used = $row['last_used'];
+}
    $date_added = $date_added ? strtotime($date_added) : false;
 
 
@@ -49,12 +52,11 @@ $value14 = 14;
 $value15 = 15;
 $value16 = 16;
 
-$tableset = $mysqli->prepare("SELECT tbid, tab_name FROM tabs_tbl  WHERE (tbid != ? && tbid != ? && tbid != ? && tbid != ?)");
-$tableset->bind_param("iiii", $value11, $value14, $value15, $value16);
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($tbid, $tab_name);
-while ($tableset->fetch()){
+$tableset = $supabase_pdo->prepare("SELECT tbid, tab_name FROM tabs_tbl  WHERE (tbid != ? AND tbid != ? AND tbid != ? AND tbid != ?)");
+$tableset->execute([$value11, $value14, $value15, $value16]);
+while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+    $tbid = (int)$row['tbid'];
+    $tab_name = $row['tab_name'];
 	if ($tabctr > 0) {
 		// so, don't do extra space first time only
 		$nextline = $nextline."\n\n";
@@ -63,78 +65,74 @@ while ($tableset->fetch()){
 	$nextline = $nextline."$tab_name\n";
 	// if the trainee has a pass for this table, show the supervisor and date
 	$numpass = 0; # reset
-	$stmt = $mysqli->prepare("SELECT who_by, date_added FROM trainee_report_ok WHERE super_pass = ? AND trainkey = ?");
-	$stmt->bind_param("is", $tbid, $which);
-	$stmt->execute();
-	$stmt->store_result();
-	$stmt->bind_result($who_notes, $date_signed);
-	$numpass = $stmt->num_rows;
-	$stmt->fetch();
-	$stmt->close();
+	$stmt = $supabase_pdo->prepare("SELECT who_by, date_added FROM trainee_report_ok WHERE super_pass = ? AND trainkey = ?");
+	$stmt->execute([$tbid, $which]);
+	$numpass = $stmt->rowCount();
+	$row = $stmt->fetch(PDO::FETCH_ASSOC);
+	if ($row) {
+	    $who_notes = $row['who_by'];
+	    $date_signed = $row['date_added'];
+	}
 	$date_signed = $date_signed ? strtotime($date_signed) : false;
 	if ($numpass > 0) {
 		// who signed it off?
-	  $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-	  $stmt->bind_param("s", $who_notes);
-	  $stmt->execute();
-	  $stmt->store_result();
-	  $stmt->bind_result($supername);
-	  $stmt->fetch();
-	  $stmt->close();
+	  $stmt = $supabase_pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+	  $stmt->execute([$who_notes]);
+	  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+	  if ($row) {
+	      $supername = $row['realname'];
+	  }
 	  $date_display = $date_signed ? date("D jS M Y", $date_signed) : 'N/A';
 	  $nextline = $nextline."Signed off: , ".$supername.",".$date_display."\n";
 	}
 
 	$tabctr++; # increment counter to now add space before titles
 
-	// loop through fields for the chosen table and get field name 
+  // loop through fields for the chosen table and get field name 
   // omit data type 'multiple'
-  $tabset = $mysqli->prepare("SELECT tab_fields.stid, select_types.str FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC");
-  $tabset->bind_param("ii", $tbid, $value0);
-  $tabset->execute();
-  $tabset->store_result();
-  $tabset->bind_result($stid, $str);
-  while ($tabset->fetch()){
+  $tabset = $supabase_pdo->prepare("SELECT tab_fields.stid, select_types.str FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC");
+  $tabset->execute([$tbid, $value0]);
+  while ($row = $tabset->fetch(PDO::FETCH_ASSOC)){
+    $stid = (int)$row['stid'];
+    $str = $row['str'];
     // output the field names
     //echo "<th>$str</th>";
     $nextline = $nextline."$str,";
     }
-  $tabset->close();
   $nextline = $nextline."\n"; # end of line
 
 	// now do one row per set of data for this person/table
 	// No longer look at dates 
 	// AND date_added >= ? AND date_added <= ?
 	// , $valueyearstart, $valueyearend
-	$dataset = $mysqli->prepare("SELECT date_added, logkey FROM trainee_log WHERE trainkey = ? AND tbid = ?  GROUP BY logkey ORDER BY date_added DESC ");
-	  $dataset->bind_param("si", $which, $tbid); 
-	  $dataset->execute();
-	  $dataset->store_result();
-	  $dataset->bind_result($date_added, $tablelogkey);
-	  while ($dataset->fetch()){
+	$dataset = $supabase_pdo->prepare("SELECT date_added, logkey FROM trainee_log WHERE trainkey = ? AND tbid = ?  GROUP BY logkey ORDER BY date_added DESC ");
+	  $dataset->execute([$which, $tbid]); 
+	  while ($row = $dataset->fetch(PDO::FETCH_ASSOC)){
+	    $date_added = $row['date_added'];
+	    $tablelogkey = $row['logkey'];
 	    $exlogdate = strtotime($date_added);
 	    $exlogdate = date("d-m-Y", $exlogdate);
 	    // loop through chosen fields
 	    
 	    $ctr = 0; # a counter to know the first column
 	    // loop through same fields as the <th> cells
-	    $resultset = $mysqli->prepare("SELECT tab_fields.stid, select_types.single FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC");
-	    $resultset->bind_param("ii", $tbid, $value0);
-	    $resultset->execute();
-	    $resultset->store_result();
-	    $resultset->bind_result($stid, $single);
-	    while ($resultset->fetch()){
+	    $resultset = $supabase_pdo->prepare("SELECT tab_fields.stid, select_types.single FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC");
+	    $resultset->execute([$tbid, $value0]);
+	    while ($row = $resultset->fetch(PDO::FETCH_ASSOC)){
+	      $stid = (int)$row['stid'];
+	      $single = (int)$row['single'];
 	      $exselect_val = '';
 	      $expid = '';
 	      // get data for each in turn
 	      // TAKEN TBID out of the search!!??
-	      $stmt = $mysqli->prepare("SELECT tlogid, pid, select_val FROM trainee_log WHERE trainkey = ?  AND stid = ? AND logkey = ?");
-	      $stmt->bind_param("sis", $which,  $stid, $tablelogkey);
-	      $stmt->execute();
-	      $stmt->store_result();
-	      $stmt->bind_result($extlogid, $expid, $exselect_val);
-	      $stmt->fetch();
-	      $stmt->close();
+	      $stmt = $supabase_pdo->prepare("SELECT tlogid, pid, select_val FROM trainee_log WHERE trainkey = ?  AND stid = ? AND logkey = ?");
+	      $stmt->execute([$which, $stid, $tablelogkey]);
+	      $row = $stmt->fetch(PDO::FETCH_ASSOC);
+	      if ($row) {
+	          $extlogid = (int)$row['tlogid'];
+	          $expid = (int)$row['pid'];
+	          $exselect_val = $row['select_val'];
+	      }
 	      // format data according to data type
 	      // 0=single select, 2 = text, 3 = date, 4=numeric (0.1) 5=numeric(int)
 	      if ($single == 2 || $single == 4 || $single == 5 || $single == 6) {
@@ -155,13 +153,12 @@ while ($tableset->fetch()){
 	      }
 	      if ($single == 0) {
 	        // fetch the select menu value for $pid
-	        $stmt = $mysqli->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
-	        $stmt->bind_param("i", $expid);
-	        $stmt->execute();
-	        $stmt->store_result();
-	        $stmt->bind_result($exselect_val);
-	        $stmt->fetch();
-	        $stmt->close();
+	        $stmt = $supabase_pdo->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
+	        $stmt->execute([$expid]);
+	        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+	        if ($row) {
+	            $exselect_val = $row['select_val'];
+	        }
 	        //echo "<td>$exselect_val</td>\n";
 	        $nextline = $nextline."$exselect_val,";
 	      }
@@ -177,15 +174,11 @@ while ($tableset->fetch()){
 	      if ($single == 1) {
           // $exselect_val is multiple values, one per record
           $exarr = array();
-          $fieldset = $mysqli->prepare("SELECT pid FROM trainee_log WHERE stid = ? AND logkey = ?");
-          $fieldset->bind_param("is", $stid, $tablelogkey);
-          $fieldset->execute();
-          $fieldset->store_result();
-          $fieldset->bind_result($expid);
-          while ($fieldset->fetch()){
-            array_push($exarr, $expid); # add to array for checking in select
+          $fieldset = $supabase_pdo->prepare("SELECT pid FROM trainee_log WHERE stid = ? AND logkey = ?");
+          $fieldset->execute([$stid, $tablelogkey]);
+          while ($row = $fieldset->fetch(PDO::FETCH_ASSOC)){
+            array_push($exarr, (int)$row['pid']); # add to array for checking in select
           }
-          $fieldset->close();
           // now make array unique as this will create for each seperate record
           $exarruq = (array_unique($exarr));
           // now loop through array of pids to get values
@@ -193,13 +186,12 @@ while ($tableset->fetch()){
           $mult_val = 0;
           foreach($exarruq as $x) {
             // fetch the select menu value for $pid
-            $stmt = $mysqli->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
-            $stmt->bind_param("i", $x);
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($mult_val);
-            $stmt->fetch();
-            $stmt->close();
+            $stmt = $supabase_pdo->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
+            $stmt->execute([$x]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $mult_val = $row['select_val'];
+            }
             $exselect_val = $exselect_val." ".$mult_val;
           }
           $nextline = $nextline."".$exselect_val.",";
@@ -208,14 +200,11 @@ while ($tableset->fetch()){
         }
 	      $ctr++; # increment counter
 	    }
-	    $resultset->close();
 	    $nextline = $nextline."\n"; # end of line
 	      
 	  }
-	  $dataset->close();
 }
 $nextline = $nextline."";
-$tableset->close();
 
 // some tables are special cases where we display logbook lines
 // according to the Clinical specialism ($stid == 2 || $stid == 75)
@@ -240,50 +229,48 @@ $tableset->close();
 
 // perform same routine but not limited to table tbid
 foreach ($CSarr as $CSvalue) {
-  $stmt = $mysqli->prepare("SELECT tbid, tab_name FROM tabs_tbl WHERE tbid = ?");
-  $stmt->bind_param("i", $CSvalue);
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($tbid, $tab_name);
-  $stmt->fetch();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("SELECT tbid, tab_name FROM tabs_tbl WHERE tbid = ?");
+  $stmt->execute([$CSvalue]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($row) {
+      $tbid = (int)$row['tbid'];
+      $tab_name = $row['tab_name'];
+  }
   
   $nextline = $nextline."$tab_name\n"; # do Table Title
 
   $numpass = 0; # reset
-  $stmt = $mysqli->prepare("SELECT who_by, date_added FROM trainee_report_ok WHERE super_pass = ? AND trainkey = ?");
-  $stmt->bind_param("is", $tbid, $which);
-  $stmt->execute();
-  $stmt->store_result();
-  $stmt->bind_result($who_notes, $date_signed);
-  $numpass = $stmt->num_rows;
-  $stmt->fetch();
-  $stmt->close();
+  $stmt = $supabase_pdo->prepare("SELECT who_by, date_added FROM trainee_report_ok WHERE super_pass = ? AND trainkey = ?");
+  $stmt->execute([$tbid, $which]);
+  $numpass = $stmt->rowCount();
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($row) {
+      $who_notes = $row['who_by'];
+      $date_signed = $row['date_added'];
+  }
   $date_signed = $date_signed ? strtotime($date_signed) : false;
   if ($numpass > 0) {
     // who signed it off?
-    $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-    $stmt->bind_param("s", $who_notes);
-    $stmt->execute();
-    $stmt->store_result();
-    $stmt->bind_result($supername);
-    $stmt->fetch();
-    $stmt->close();
+    $stmt = $supabase_pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+    $stmt->execute([$who_notes]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row) {
+        $supername = $row['realname'];
+    }
     $date_display = $date_signed ? date("D jS M Y", $date_signed) : 'N/A';
     $nextline = $nextline."Signed off: , ".$supername.",".$date_display."\n";
   }
       
       // loop through fields for the generic table ($tbid == 1) and get field name 
-      $tabset = $mysqli->prepare("SELECT tab_fields.stid, select_types.str, select_types.single FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC");
-      $tabset->bind_param("ii", $value1, $value0);
-      $tabset->execute();
-      $tabset->store_result();
-      $tabset->bind_result($stid, $str, $dispsingle);
-      while ($tabset->fetch()){
+      $tabset = $supabase_pdo->prepare("SELECT tab_fields.stid, select_types.str, select_types.single FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC");
+      $tabset->execute([$value1, $value0]);
+      while ($row = $tabset->fetch(PDO::FETCH_ASSOC)){
+        $stid = (int)$row['stid'];
+        $str = $row['str'];
+        $dispsingle = (int)$row['single'];
         // output the field names
         $nextline = $nextline."$str,";
         }
-      $tabset->close();
       $nextline = $nextline."\n"; # end of line
 
         // define 'set' as a date
@@ -314,34 +301,33 @@ foreach ($CSarr as $CSvalue) {
       $stidchk2 = 75; # or check for this stid...
       $pidchk2 = 653; # ... with this pid
     }
-      $dataset = $mysqli->prepare("SELECT date_added, logkey FROM trainee_log WHERE trainkey = ? AND (stid = ? AND pid = ?) GROUP BY logkey ORDER BY date_added DESC ");
-      $dataset->bind_param("sii", $which, $stidchk1, $pidchk1); 
-      $dataset->execute();
-      $dataset->store_result();
-      $dataset->bind_result($date_added, $tablelogkey);
-      while ($dataset->fetch()){
+      $dataset = $supabase_pdo->prepare("SELECT date_added, logkey FROM trainee_log WHERE trainkey = ? AND (stid = ? AND pid = ?) GROUP BY logkey ORDER BY date_added DESC ");
+      $dataset->execute([$which, $stidchk1, $pidchk1]); 
+      while ($row = $dataset->fetch(PDO::FETCH_ASSOC)){
+        $date_added = $row['date_added'];
+        $tablelogkey = $row['logkey'];
         $exlogdate = strtotime($date_added);
         $exlogdate = date("d-m-Y", $exlogdate);
         // loop through chosen fields
 
           $ctr = 0; # a counter to know the first column
           // loop through same fields as the <th> cells
-          $resultset = $mysqli->prepare("SELECT tab_fields.stid, select_types.single FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC");
-          $resultset->bind_param("ii", $value1, $value0);
-          $resultset->execute();
-          $resultset->store_result();
-          $resultset->bind_result($stid, $single);
-          while ($resultset->fetch()){
+          $resultset = $supabase_pdo->prepare("SELECT tab_fields.stid, select_types.single FROM tab_fields, select_types WHERE tab_fields.tbid = ? AND tab_fields.sort_order != ? AND tab_fields.stid = select_types.stid ORDER BY tab_fields.sort_order ASC");
+          $resultset->execute([$value1, $value0]);
+          while ($row = $resultset->fetch(PDO::FETCH_ASSOC)){
+            $stid = (int)$row['stid'];
+            $single = (int)$row['single'];
             $exselect_val = '';
             $expid = '';
             // get data for each in turn
-            $stmt = $mysqli->prepare("SELECT tlogid, pid, select_val FROM trainee_log WHERE trainkey = ? AND stid = ? AND logkey = ?");
-            $stmt->bind_param("sis", $which,  $stid, $tablelogkey);
-            $stmt->execute();
-            $stmt->store_result();
-            $stmt->bind_result($extlogid, $expid, $exselect_val);
-            $stmt->fetch();
-            $stmt->close();
+            $stmt = $supabase_pdo->prepare("SELECT tlogid, pid, select_val FROM trainee_log WHERE trainkey = ? AND stid = ? AND logkey = ?");
+            $stmt->execute([$which, $stid, $tablelogkey]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $extlogid = (int)$row['tlogid'];
+                $expid = (int)$row['pid'];
+                $exselect_val = $row['select_val'];
+            }
             // format data according to data type
             // 0=single select, 2 = text, 3 = date, 4=numeric (0.1) 5=numeric(int)
             
@@ -366,13 +352,12 @@ foreach ($CSarr as $CSvalue) {
             }
             if ($single == 0) {
               // fetch the select menu value for $pid
-              $stmt = $mysqli->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
-              $stmt->bind_param("i", $expid);
-              $stmt->execute();
-              $stmt->store_result();
-              $stmt->bind_result($exselect_val);
-              $stmt->fetch();
-              $stmt->close();
+              $stmt = $supabase_pdo->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
+              $stmt->execute([$expid]);
+              $row = $stmt->fetch(PDO::FETCH_ASSOC);
+              if ($row) {
+                  $exselect_val = $row['select_val'];
+              }
               $nextline = $nextline."$exselect_val,";
             }
             if ($single == 3) {
@@ -388,15 +373,11 @@ foreach ($CSarr as $CSvalue) {
             if ($single == 1) {
               // $exselect_val is multiple values, one per record
               $exarr = array();
-              $fieldset = $mysqli->prepare("SELECT pid FROM trainee_log WHERE stid = ? AND logkey = ?");
-              $fieldset->bind_param("is", $stid, $tablelogkey);
-              $fieldset->execute();
-              $fieldset->store_result();
-              $fieldset->bind_result($expid);
-              while ($fieldset->fetch()){
-                array_push($exarr, $expid); # add to array for checking in select
+              $fieldset = $supabase_pdo->prepare("SELECT pid FROM trainee_log WHERE stid = ? AND logkey = ?");
+              $fieldset->execute([$stid, $tablelogkey]);
+              while ($row = $fieldset->fetch(PDO::FETCH_ASSOC)){
+                array_push($exarr, (int)$row['pid']); # add to array for checking in select
               }
-              $fieldset->close();
               // now make array unique as this will create for each seperate record
               $exarruq = (array_unique($exarr));
               // now loop through array of pids to get values
@@ -404,13 +385,12 @@ foreach ($CSarr as $CSvalue) {
               $mult_val = 0;
               foreach($exarruq as $x) {
                 // fetch the select menu value for $pid
-                $stmt = $mysqli->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
-                $stmt->bind_param("i", $x);
-                $stmt->execute();
-                $stmt->store_result();
-                $stmt->bind_result($mult_val);
-                $stmt->fetch();
-                $stmt->close();
+                $stmt = $supabase_pdo->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
+                $stmt->execute([$x]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row) {
+                    $mult_val = $row['select_val'];
+                }
                 $exselect_val = $exselect_val." ".$mult_val;
               }
               $nextline = $nextline."".$exselect_val.",";
@@ -420,11 +400,9 @@ foreach ($CSarr as $CSvalue) {
             $ctr++; # increment counter
 
           }
-          $resultset->close();
           $nextline = $nextline."\n"; # end of line
 
       }
-      $dataset->close();
 } # checking CSvalue
 
 } # loop through selected tbid values

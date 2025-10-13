@@ -3,11 +3,14 @@ include '../OXEXfolder/config.php';
 include '../OXEXfolder/u_functions.php';
 sec_session_start();
 include 'incl/sess.php';
+include 'incl/admin_vars.php';
 $pagetitle = 'Dropdown List Values';
+
+setAdminVars(0); // Dashboard section
 $subtitle = "Admin";
 $listurl = "reports.php"; # where the delete script is found
 $listname = "List value";
-if(login_check($mysqli) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -29,10 +32,11 @@ $which = isset($_GET['which']) ? $_GET['which'] : 0;
   $which = (int)$which;
 if ($delicon == "delicon" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete image ref
-  $stmt = $mysqli->prepare("UPDATE select_gen SET image = ? WHERE pid = ?"); 
-  $stmt->bind_param("si", $valueblank, $which);
-  $stmt->execute();
-  $stmt->close();
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("UPDATE select_gen SET image = ? WHERE pid = ?"); 
+    $stmt->execute([$valueblank, $which]);
+  }
 }
 
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  
@@ -44,23 +48,28 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
   // get single/multiple from select_types
 
   // Update record
-  $stmt = $mysqli->prepare("UPDATE select_gen SET select_type = ?, select_val = ? WHERE pid = ?"); 
-    $stmt->bind_param("ssi", $select_type, $select_val, $which);
-    $stmt->execute();
-    $anyerror = $mysqli->errno." ".$mysqli->error;
-    $stmt->close();
+  $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdo) {
+    $stmt = $pdo->prepare("UPDATE select_gen SET select_type = ?, select_val = ? WHERE pid = ?"); 
+    $stmt->execute([$select_type, $select_val, $which]);
+    $anyerror = $stmt->errorInfo();
+  }
 
 }
 ?>
 <?php
   // find the required record
-$stmt = $mysqli->prepare("SELECT stid, select_type, select_val FROM select_gen WHERE pid = ?");
-$stmt->bind_param("i", $which);
-$stmt->execute();
-$stmt->store_result();
-$stmt->bind_result($thisstid, $select_type, $select_val);
-$stmt->fetch();
-$stmt->close();
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $stmt = $pdo->prepare("SELECT stid, select_type, select_val FROM select_gen WHERE pid = ?");
+  $stmt->execute([$which]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  if ($row) {
+    $thisstid = $row['stid'];
+    $select_type = $row['select_type'];
+    $select_val = $row['select_val'];
+  }
+}
 
 ?>
 <body>
@@ -75,7 +84,7 @@ $stmt->close();
          <!-- Page content-->
          <div class="content-wrapper">
             <div class="content-header">
-               <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
+           <div class="content-title"><?php echo $pagetitle ?><small><?php echo $subtitle ?> <a href="<?php echo $listurl ?>">(Back to <?php echo $listname ?>)</a></small></div>
             </div>
 
             <div class="row">
@@ -99,11 +108,14 @@ $stmt->close();
                                             <select class="custom-select custom-select-lg mb-3" id="select_type" name="select_type" required>
                                               <option <?php if ($select_type == '') echo "selected='selected'" ?> value="">Select...</option>
                                               <?php
-$tableset = $mysqli->prepare("SELECT str, single, stid FROM select_types ORDER BY str ");
-$tableset->execute();
-$tableset->store_result();
-$tableset->bind_result($str, $single, $stid);
-while ($tableset->fetch()){
+$pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+if ($pdo) {
+  $tableset = $pdo->prepare("SELECT str, single, stid FROM select_types ORDER BY str ");
+  $tableset->execute();
+  while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+    $str = $row['str'];
+    $single = $row['single'];
+    $stid = $row['stid'];
    if ($single == 1) {
       $listtype = 'Multiple Selection';
    }
@@ -127,30 +139,26 @@ while ($tableset->fetch()){
       echo "selected='selected'";
    }
    echo ">$str ($listtype)</option>";
-}
-$numrows = $tableset->num_rows;
-$tableset->close();                                         
+  }
+}                                         
                                           
                                            ?>
                                        </select>
-                                    </div>
-                                 </div>
-                              </div>
-                           
-                            </div>
+</div>
+</div>
                             
+                            </div><!-- /.row -->
+                            </div><!-- /.card-body -->
                             <div class="card-footer">
                                <input type="hidden" name="done" value="done">
                                <input type="hidden" name="which" value="<?PHP echo $which ?>">
                                <div class="float-right"><button class="btn btn-info" type="submit">Amend</button></div>
-                            </div>
-                         </div><!-- END card-->
+</div><!-- END card-footer -->
+                        </div><!-- END card -->
                     </form>
-                  
-                </div>
-            </div>
+                <!-- keep column open for subsequent cards -->
 
-            <!-- Move the Values card here -->
+            <!-- Values card -->
             <div class="card border-info mb-4">
                 <div class="card-header bg-info">
                     <div class="card-title">Values for this list</div>
@@ -158,21 +166,21 @@ $tableset->close();
                 <div class="card-body">
                     <?php
                     // find all values for this list
-                    $tableset = $mysqli->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ORDER BY select_val");
-                    $tableset->bind_param("i", $which);
-                    $tableset->execute();
-                    $tableset->store_result();
-                    $tableset->bind_result($pid, $select_val);
-                    while ($tableset->fetch()){
+                    $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+                    if ($pdo) {
+                      $tableset = $pdo->prepare("SELECT pid, select_val FROM select_gen WHERE stid = ? ORDER BY select_val");
+                      $tableset->execute([$which]);
+                      while ($row = $tableset->fetch(PDO::FETCH_ASSOC)) {
+                        $pid = $row['pid'];
+                        $select_val = $row['select_val'];
                         echo "<a href=\"listdetail.php?which=$pid\" class=\"btn btn-primary mb-1 mr-1 d-inline-block\">$select_val</a>";
+                      }
                     }
-                    $tableset->close();
                     ?>
                     <div id="err"></div>
                 </div>
-                <div class="card-footer">
-                </div>
-            </div>
+                <div class="card-footer"></div>
+            </div><!-- END Values card -->
 
             <!-- Delete card -->
             <div class="card border-danger">
@@ -186,8 +194,10 @@ $tableset->close();
                         </a>
                     </div>
                 </div>
-            </div>
-         </div>
+            </div><!-- END Delete card -->
+
+            </div><!-- /.col-12 -->
+        </div><!-- /.row -->
       </section>
    </div>
    <?php include 'incl/adminjs.php' ?>

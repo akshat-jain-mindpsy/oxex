@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Check login and permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     $response['message'] = 'Unauthorized access';
     echo json_encode($response);
     exit;
@@ -53,11 +53,10 @@ if (empty($field_name)) {
 
 try {
     // Update field name in the 'select_types' table instead of 'structure'
-    $stmt = $mysqli->prepare("UPDATE select_types SET str = ? WHERE stid = ?");
-    $stmt->bind_param("si", $field_name, $field_id);
-    $result = $stmt->execute();
+    $stmt = $supabase_pdo->prepare("UPDATE select_types SET str = ? WHERE stid = ?");
+    $result = $stmt->execute([$field_name, $field_id]);
     
-    if ($result) {
+    if ($result && $stmt->rowCount() > 0) {
         $response = [
             'status' => 'success',
             'message' => 'Field name updated successfully',
@@ -65,7 +64,7 @@ try {
             'field_name' => $field_name
         ];
     } else {
-        $response['message'] = 'Failed to update field: ' . $mysqli->error;
+        $response['message'] = 'Failed to update field or field not found';
     }
 } catch (Exception $e) {
     $response['message'] = 'Database error: ' . $e->getMessage();

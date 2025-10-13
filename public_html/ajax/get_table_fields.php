@@ -10,6 +10,9 @@ try {
     include '../OXEXfolder/p_functions.php';
     sec_session_start();
     
+    // Detect DB backend
+    $usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
     // Get trainkey from session
     $trainkey = isset($_SESSION['trainkey']) ? $_SESSION['trainkey'] : null;
     
@@ -17,20 +20,17 @@ try {
     if (!$trainkey && isset($_GET['trainee_key'])) {
         $potential_trainkey = $_GET['trainee_key'];
         // Validate that this trainkey exists in the database
-        $validate_stmt = $mysqli->prepare("SELECT trainkey FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
-        if ($validate_stmt) {
-            $validate_stmt->bind_param("s", $potential_trainkey);
-            $validate_stmt->execute();
-            $validate_stmt->store_result();
-            if ($validate_stmt->num_rows > 0) {
+        if ($usingSupabase) {
+            $stmt = $supabase_pdo->prepare('select trainkey from trainee_tbl where trainkey = ? limit 1');
+            $stmt->execute([$potential_trainkey]);
+            if ($stmt->fetch(PDO::FETCH_NUM)) {
                 $trainkey = $potential_trainkey;
             }
-            $validate_stmt->close();
         }
     }
     
     // Check user login - allow if we have a valid trainkey even if login_check fails
-    if (!$trainkey || (!login_check($mysqli) && !isset($_GET['trainee_key']))) {
+    if (!$trainkey || (!login_check($pdo) && !isset($_GET['trainee_key']))) {
         echo json_encode(['status' => 'error', 'message' => 'Unauthorized access']);
         exit;
     }
@@ -38,13 +38,11 @@ try {
     // Get trainee information
     $name = '';
     if (!empty($trainkey)) {
-        $trainee_stmt = $mysqli->prepare("SELECT name FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
-        if ($trainee_stmt) {
-            $trainee_stmt->bind_param("s", $trainkey);
-            $trainee_stmt->execute();
-            $trainee_stmt->bind_result($name);
-            $trainee_stmt->fetch();
-            $trainee_stmt->close();
+        if ($usingSupabase) {
+            $trainee_stmt = $supabase_pdo->prepare('select name from trainee_tbl where trainkey = ? limit 1');
+            $trainee_stmt->execute([$trainkey]);
+            $row = $trainee_stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) { $name = $row['name']; }
         }
     }
 
@@ -67,88 +65,47 @@ try {
     }
 
     // Verify that the current user can access this table
-    $table_permission_stmt = $mysqli->prepare("SELECT 1 FROM trainee_tab_link 
-                                           WHERE trainkey = ? AND tbid = ? 
-                                           LIMIT 1");
-    if ($table_permission_stmt) {
-        $table_permission_stmt->bind_param("si", $trainkey, $table_id);
-        $table_permission_stmt->execute();
-        $table_permission_stmt->store_result();
-        
-        if ($table_permission_stmt->num_rows == 0) {
-            echo json_encode(['status' => 'error', 'message' => 'You do not have access to this table']);
-            exit;
-        }
-        $table_permission_stmt->close();
+    $has_access = false;
+    if ($usingSupabase) {
+        $table_permission_stmt = $supabase_pdo->prepare('select 1 from trainee_tab_link where trainkey = ? and tbid = ? limit 1');
+        $table_permission_stmt->execute([$trainkey, $table_id]);
+        $has_access = (bool)$table_permission_stmt->fetch(PDO::FETCH_NUM);
+    }
+    if (!$has_access) {
+        echo json_encode(['status' => 'error', 'message' => 'You do not have access to this table']);
+        exit;
     }
 
     // Get fields for the specified table
     $fields = [];
     
     // Try tab_fields + select_types join
-    $fields_query = "SELECT st.stid, st.str 
-                   FROM tab_fields tf 
-                   JOIN select_types st ON tf.stid = st.stid 
-                   WHERE tf.tbid = ? 
-                   ORDER BY tf.sort_order ASC";
-    $fields_stmt = $mysqli->prepare($fields_query);
-    
-    if ($fields_stmt) {
-        $fields_stmt->bind_param("i", $table_id);
-        $fields_stmt->execute();
-        $fields_result = $fields_stmt->get_result();
-        
-        while ($field = $fields_result->fetch_assoc()) {
-            $fields[] = [
-                'stid' => $field['stid'],
-                'str' => $field['str']
-            ];
+    if ($usingSupabase) {
+        $fields_stmt = $supabase_pdo->prepare('select st.stid, st.str from tab_fields tf join select_types st on tf.stid = st.stid where tf.tbid = ? order by tf.sort_order asc');
+        $fields_stmt->execute([$table_id]);
+        while ($field = $fields_stmt->fetch(PDO::FETCH_ASSOC)) {
+            $fields[] = [ 'stid' => $field['stid'], 'str' => $field['str'] ];
         }
-        $fields_stmt->close();
     }
     
     // If no fields found, try getting all select_types that might be related
     if (empty($fields)) {
-        $all_fields_query = "SELECT stid, str FROM select_types WHERE str IS NOT NULL AND str != '' ORDER BY str ASC LIMIT 20";
-        $all_fields_stmt = $mysqli->prepare($all_fields_query);
-        
-        if ($all_fields_stmt) {
-            $all_fields_stmt->execute();
-            $all_fields_result = $all_fields_stmt->get_result();
-            
-            while ($field = $all_fields_result->fetch_assoc()) {
-                $fields[] = [
-                    'stid' => $field['stid'],
-                    'str' => $field['str']
-                ];
+        if ($usingSupabase) {
+            $all_fields_stmt = $supabase_pdo->query("select stid, str from select_types where str is not null and str != '' order by str asc limit 20");
+            while ($field = $all_fields_stmt->fetch(PDO::FETCH_ASSOC)) {
+                $fields[] = [ 'stid' => $field['stid'], 'str' => $field['str'] ];
             }
-            $all_fields_stmt->close();
         }
     }
     
     // If still no fields, try getting fields from trainee_log for this table
     if (empty($fields)) {
-        $log_fields_query = "SELECT DISTINCT tl.stid, st.str 
-                           FROM trainee_log tl 
-                           LEFT JOIN select_types st ON tl.stid = st.stid 
-                           WHERE tl.tbid = ? AND tl.trainkey = ?
-                           ORDER BY st.str ASC";
-        $log_fields_stmt = $mysqli->prepare($log_fields_query);
-        
-        if ($log_fields_stmt) {
-            $log_fields_stmt->bind_param("is", $table_id, $trainkey);
-            $log_fields_stmt->execute();
-            $log_fields_result = $log_fields_stmt->get_result();
-            
-            while ($field = $log_fields_result->fetch_assoc()) {
-                if (!empty($field['str'])) {
-                    $fields[] = [
-                        'stid' => $field['stid'],
-                        'str' => $field['str']
-                    ];
-                }
+        if ($usingSupabase) {
+            $log_fields_stmt = $supabase_pdo->prepare('select distinct tl.stid, st.str from trainee_log tl left join select_types st on tl.stid = st.stid where tl.tbid = ? and tl.trainkey = ? order by st.str asc');
+            $log_fields_stmt->execute([$table_id, $trainkey]);
+            while ($field = $log_fields_stmt->fetch(PDO::FETCH_ASSOC)) {
+                if (!empty($field['str'])) { $fields[] = [ 'stid' => $field['stid'], 'str' => $field['str'] ]; }
             }
-            $log_fields_stmt->close();
         }
     }
     
@@ -168,7 +125,5 @@ try {
     echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
 }
 
-if (isset($mysqli)) {
-    $mysqli->close();
-}
+// No explicit close needed with PDO
 ?> 

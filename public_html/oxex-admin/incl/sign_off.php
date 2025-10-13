@@ -1,13 +1,10 @@
 <div id="passfail" class="row">
    <?php
    // who is this supervisor?
-   $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->bind_param("s", $usrkey);
-   $stmt->execute();
-   $stmt->store_result();
-   $stmt->bind_result($whoami);
-   $stmt->fetch();
-   $stmt->close();
+   $stmt = $supabase_pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+   $stmt->execute([$usrkey]);
+   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   $whoami = $row ? $row['realname'] : '';
    ?>
    <div class="col-xl-7 mt-5">
       <form method="post" action="<?php echo $_SERVER['PHP_SELF']; ?>" >
@@ -25,14 +22,13 @@
                              <option selected="selected" value="0">Select...</option>
                              <?php
                              // list competency passes
-                             $compset = $mysqli->prepare("SELECT tbid, tab_name FROM tabs_tbl ");
+                             $compset = $supabase_pdo->prepare("SELECT tbid, tab_name FROM tabs_tbl ");
                               $compset->execute();
-                              $compset->store_result();
-                              $compset->bind_result($tbid, $tab_name);
-                              while ($compset->fetch()){
+                              while ($row = $compset->fetch(PDO::FETCH_ASSOC)){
+                                 $tbid = $row['tbid'];
+                                 $tab_name = $row['tab_name'];
                                  echo "<option value=\"$tbid\">$tab_name Competency Passed</option>";
                               }
-                              $compset->close();
                               
                              ?>
                            </select>
@@ -65,30 +61,28 @@
             <div class="card-body">
                <?php
                // list supervisor sign-offs
-               $tableset = $mysqli->prepare("SELECT trid, who_by, super_pass, super_txt, date_added, date_modified, tbid FROM trainee_report_ok WHERE trainkey = ? ");
-               $tableset->bind_param("s", $which);
-               $tableset->execute();
-               $tableset->store_result();
-               $tableset->bind_result($trid, $who_notes, $super_pass, $super_txt, $date_added, $date_modified, $tbid);
-               while ($tableset->fetch()){
+               $tableset = $supabase_pdo->prepare("SELECT trid, who_by, super_pass, super_txt, date_added, date_modified, tbid FROM trainee_report_ok WHERE trainkey = ? ");
+               $tableset->execute([$which]);
+               while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
+                  $trid = $row['trid'];
+                  $who_notes = $row['who_by'];
+                  $super_pass = $row['super_pass'];
+                  $super_txt = $row['super_txt'];
+                  $date_added = $row['date_added'];
+                  $date_modified = $row['date_modified'];
+                  $tbid = $row['tbid'];
                   $date_added = strtotime($date_added);
                   $date_modified = strtotime($date_modified);
                   // who?
-                  $stmt = $mysqli->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-                  $stmt->bind_param("s", $who_notes);
-                  $stmt->execute();
-                  $stmt->store_result();
-                  $stmt->bind_result($supername);
-                  $stmt->fetch();
-                  $stmt->close();
+                  $stmt = $supabase_pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+                  $stmt->execute([$who_notes]);
+                  $row2 = $stmt->fetch(PDO::FETCH_ASSOC);
+                  $supername = $row2 ? $row2['realname'] : '';
                   // which competency
-                  $stmt = $mysqli->prepare("SELECT tab_name FROM tabs_tbl WHERE tbid = ?");
-                  $stmt->bind_param("s", $super_pass);
-                  $stmt->execute();
-                  $stmt->store_result();
-                  $stmt->bind_result($tab_name);
-                  $stmt->fetch();
-                  $stmt->close();
+                  $stmt = $supabase_pdo->prepare("SELECT tab_name FROM tabs_tbl WHERE tbid = ?");
+                  $stmt->execute([$super_pass]);
+                  $row3 = $stmt->fetch(PDO::FETCH_ASSOC);
+                  $tab_name = $row3 ? $row3['tab_name'] : '';
                   echo "<p><em>Created on ".date("D jS M Y", $date_added). " and last modified on ".date("D jS M Y", $date_modified)." by $supername</em></p>";
                   
                      echo "<p><strong>$tab_name Competency Passed</strong></p>";
@@ -99,8 +93,7 @@
                   }
                   echo "<hr>";
                }
-               $numnotes = $tableset->num_rows;
-               $tableset->close();
+               $numnotes = $tableset->rowCount();
                if ($numnotes == 0) {
                   echo "<p>No notes currently</p>";
                }

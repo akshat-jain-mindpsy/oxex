@@ -9,7 +9,7 @@ try {
     include '../incl/stats_logger.php';
     
     // Check permissions - only admins can see debug info
-    if (!login_check($mysqli) || !($admintype == 'AT' || $admintype == 'DV')) {
+    if (!login_check($pdo) || !($admintype == 'AT' || $admintype == 'DV')) {
         echo json_encode([
             'status' => 'error', 
             'message' => 'Unauthorized access'

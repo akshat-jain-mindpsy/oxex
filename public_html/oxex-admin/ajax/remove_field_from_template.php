@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Check user permissions
-if (!login_check($mysqli) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
+if (!login_check($pdo) || !in_array($admintype, ['AT', 'AO', 'AE', 'SO', 'SE', 'DV'])) {
     http_response_code(403); // Forbidden
     die(json_encode(['status' => 'error', 'message' => 'Unauthorized access']));
 }
@@ -35,11 +35,10 @@ if ($template_id <= 0 || $table_id <= 0 || $field_id <= 0) {
 
 // Remove the field from the template
 try {
-    $remove_field = $mysqli->prepare("DELETE FROM csv_template_columns WHERE template_id = ? AND table_id = ? AND field_id = ?");
-    $remove_field->bind_param("iii", $template_id, $table_id, $field_id);
-    $remove_field->execute();
+    $remove_field = $supabase_pdo->prepare("DELETE FROM csv_template_columns WHERE template_id = ? AND table_id = ? AND field_id = ?");
+    $remove_field->execute([$template_id, $table_id, $field_id]);
     
-    if ($remove_field->affected_rows === 0) {
+    if ($remove_field->rowCount() === 0) {
         die(json_encode(['status' => 'error', 'message' => 'Field not found in template or already removed']));
     }
     
@@ -51,6 +50,4 @@ try {
 } catch (Exception $e) {
     error_log("Error removing field from template: " . $e->getMessage());
     echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
-}
-
-$mysqli->close(); 
+} 
