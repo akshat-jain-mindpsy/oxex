@@ -513,7 +513,7 @@ if ($row) {
                           $textcolor = $trow['textcolor'];
                           // how many this year for this trainee
                           $numtasks = 0;
-                          $vids = $supabase_pdo->prepare("SELECT tsid FROM timesheet WHERE trainkey = ? AND dtid = ? AND taskdate >= ? AND taskdate <= ?");
+                          $vids = $supabase_pdo->prepare("SELECT /*+ USE_INDEX(timesheet, idx_timesheet_trainkey_dtid_taskdate) */ tsid FROM timesheet WHERE trainkey = ? AND dtid = ? AND taskdate >= ? AND taskdate <= ?");
                           $vids->execute([$trainkey, $dtid, $valueyearstart, $valueyearend]);
                           $numtasks = $vids->rowCount();
                           $i = $i + $numtasks;

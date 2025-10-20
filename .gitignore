@@ -46,3 +46,15 @@ MANUAL_DEPLOYMENT.md
 docker_imf_build.sh
 
 todo.md
+
+*.sh
+*.sql
+*.json
+*.txt
+*.md
+*.csv
+*.xls
+*.xlsx
+*.pdf
+*.doc
+*.docx

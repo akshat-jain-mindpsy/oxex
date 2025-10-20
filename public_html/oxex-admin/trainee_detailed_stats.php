@@ -430,6 +430,131 @@ $babcp_url = 'trainee_detailed_stats.php?' . ($base_query_str ? $base_query_str 
       }
       @keyframes spin { to { transform: rotate(360deg); } }
 
+      /* BABCP Table Improvements */
+      .table th.sortable {
+         cursor: pointer;
+         user-select: none;
+         position: relative;
+         transition: background-color 0.2s ease;
+         text-align: center;
+         vertical-align: middle;
+         white-space: normal;
+         word-wrap: break-word;
+         line-height: 1.2;
+      }
+      .table th.sortable:hover {
+         background-color: rgba(255, 255, 255, 0.1);
+      }
+      .table th.sortable .sort-icon {
+         opacity: 0.5;
+         margin-left: 5px;
+         font-size: 0.8em;
+         vertical-align: middle;
+         display: inline;
+      }
+      .table th.sortable.active .sort-icon {
+         opacity: 1;
+         color: #007bff;
+      }
+      .table th.sortable.asc .sort-icon::before {
+         content: "▲";
+      }
+      .table th.sortable.desc .sort-icon::before {
+         content: "▼";
+      }
+      
+      /* Header text and icon alignment - removed flexbox to fix table layout */
+      
+      /* Table responsive improvements */
+      .table-responsive {
+         border-radius: 0.375rem;
+         box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+         width: 100%;
+         overflow-x: auto;
+      }
+      
+      /* Full width table improvements */
+      .table {
+         width: 100% !important;
+         table-layout: auto;
+         margin-bottom: 0;
+      }
+      
+      .table th,
+      .table td {
+         padding: 0.75rem 0.5rem;
+         vertical-align: middle;
+         text-align: center;
+      }
+      
+      .table th {
+         white-space: normal;
+         word-wrap: break-word;
+         line-height: 1.2;
+      }
+      
+      .table td {
+         white-space: nowrap;
+      }
+      
+      .table th:first-child,
+      .table td:first-child {
+         text-align: left;
+         padding-left: 1rem;
+      }
+      
+      .table th:last-child,
+      .table td:last-child {
+         padding-right: 1rem;
+      }
+      
+      /* Better column width distribution for main BABCP table */
+      #babcpTable th:nth-child(1) { width: 18%; } /* Trainee Name */
+      #babcpTable th:nth-child(2) { width: 8%; }  /* Total Cases */
+      #babcpTable th:nth-child(3) { width: 12%; } /* BABCP Training */
+      #babcpTable th:nth-child(4) { width: 8%; }  /* Supervised */
+      #babcpTable th:nth-child(5) { width: 8%; }  /* CBT Cases */
+      #babcpTable th:nth-child(6) { width: 12%; } /* BABCP Supervised */
+      #babcpTable th:nth-child(7) { width: 12%; } /* Closed CBT BABCP */
+      #babcpTable th:nth-child(8) { width: 8%; }  /* 5+ Sessions */
+      #babcpTable th:nth-child(9) { width: 8%; }  /* 5+ Hours */
+      #babcpTable th:nth-child(10) { width: 8%; } /* Clinical Issues */
+      #babcpTable th:nth-child(11) { width: 8%; } /* BABCP Compliance */
+      
+      /* Column width distribution for BABCP Grouping table */
+      #babcpGroupingTable th:nth-child(1) { width: 25%; } /* Contact Type */
+      #babcpGroupingTable th:nth-child(2) { width: 35%; } /* Modality */
+      #babcpGroupingTable th:nth-child(3) { width: 15%; } /* Client Count */
+      #babcpGroupingTable th:nth-child(4) { width: 15%; } /* Trainee Count */
+      #babcpGroupingTable th:nth-child(5) { width: 10%; } /* Percentage */
+      
+      /* Badge improvements */
+      .badge {
+         font-size: 0.75em;
+         padding: 0.375rem 0.5rem;
+      }
+      
+      /* Search input styling */
+      .input-group-text {
+         background-color: #f8f9fa;
+         border-color: #ced4da;
+      }
+      
+      /* Pagination improvements */
+      .pagination .page-link {
+         color: #007bff;
+         border-color: #dee2e6;
+      }
+      .pagination .page-link:hover {
+         color: #0056b3;
+         background-color: #e9ecef;
+         border-color: #dee2e6;
+      }
+      .pagination .page-item.active .page-link {
+         background-color: #007bff;
+         border-color: #007bff;
+      }
+
    </style>
 </head>
 
@@ -899,7 +1024,7 @@ if ($view === 'competency') {
 // OPTIMIZED: Use index hints for complex case analysis including stid and logkey_tbid
 if ($view === 'babcp') {
     $babcp_case_analysis_query = "
-    SELECT
+    SELECT /*+ USE_INDEX(t, idx_trainee_trainkey) USE_INDEX(tl, idx_trainee_log_trainkey) USE_INDEX(st, idx_select_types_stid) */
         t.trainkey,
         t.name as trainee_name,
         COUNT(DISTINCT tl.logkey) as total_cases,
@@ -1307,14 +1432,24 @@ if ($view === 'babcp') {
       <section class="section-container">
          <!-- Page content-->
          <div class="content-wrapper">
-            <div class="content-header">
-               <div class="content-title">
-                  <?php echo $pagetitle ?>
-                  <small><?php echo $subtitle ?></small>
+            <!-- Page Header -->
+            <div class="row mb-4">
+               <div class="col-12">
+                  <div class="jumbotron bg-primary text-white p-4 rounded">
+                     <div class="container-fluid">
+                        <div class="row align-items-center">
+                           <div class="col-md-8">
+                              <h1 class="display-4 mb-2"><?php echo $pagetitle ?></h1>
+                              <p class="lead mb-0"><?php echo $subtitle ?></p>
+                           </div>
+                           <div class="col-md-4 text-md-end">
+                              <a href="<?php echo $listurl ?>" class="btn btn-light btn-lg">Back to Trainee Stats</a>
+                           </div>
+                        </div>
+                     </div>
+                  </div>
                </div>
-               <div class="content-subtitle">
-                  <a href="<?php echo $listurl ?>" class="btn btn-sm btn-secondary">Back to Trainee Stats</a>
-</div>
+            </div>
 
             <!-- Lightweight View Navigation -->
             <ul class="nav nav-pills mb-3">
@@ -1519,7 +1654,8 @@ if ($view === 'babcp') {
                      </div>
                      <div class="card-body">
                         <canvas id="babcpGrowthChart" width="400" height="200"></canvas>
-</div>
+                     </div>
+                  </div>
                </div>
                <div class="col-md-6">
                   <div class="card">
@@ -1529,8 +1665,10 @@ if ($view === 'babcp') {
                      </div>
                      <div class="card-body">
                         <canvas id="clinicalIssuesChart" width="400" height="200"></canvas>
-</div>
-</div>
+                     </div>
+                  </div>
+               </div>
+            </div>
             <?php endif; ?>
 
             <?php if ($view === 'babcp'): ?>
@@ -1544,8 +1682,10 @@ if ($view === 'babcp') {
                      </div>
                      <div class="card-body">
                         <canvas id="supervisionHoursChart" width="400" height="200"></canvas>
-</div>
-</div>
+                     </div>
+                  </div>
+               </div>
+            </div>
             <?php endif; ?>
 
 
@@ -1621,22 +1761,26 @@ if ($view === 'babcp') {
                               <div class="text-center">
                                  <div class="metric-value text-primary" data-babcp-metric="trainees_with_babcp_training"><?php echo $babcp_summary_stats['trainees_with_babcp_training'] ?></div>
                                  <div class="metric-label">Trainees with BABCP Training Cases</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-success" data-babcp-metric="trainees_with_3plus_supervised"><?php echo $babcp_summary_stats['trainees_with_3plus_supervised'] ?></div>
                                  <div class="metric-label">Trainees with 3+ Supervised Cases</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-info" data-babcp-metric="trainees_with_cbt_cases"><?php echo $babcp_summary_stats['trainees_with_cbt_cases'] ?></div>
                                  <div class="metric-label">Trainees with CBT Cases</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-warning" data-babcp-metric="trainees_with_5plus_sessions"><?php echo $babcp_summary_stats['trainees_with_5plus_sessions'] ?></div>
                                  <div class="metric-label">Trainees with 5+ Session Cases</div>
-</div>
+                              </div>
+                           </div>
                         </div>
                         
                         <!-- Cases with 5+ Hours Row -->
@@ -1645,22 +1789,26 @@ if ($view === 'babcp') {
                               <div class="text-center">
                                  <div class="metric-value text-secondary"><?php echo $babcp_summary_stats['total_cases_with_5plus_hours'] ?></div>
                                  <div class="metric-label">Cases with 5+ Hours</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-secondary"><?php echo $babcp_summary_stats['trainees_with_5plus_hours'] ?></div>
                                  <div class="metric-label">Trainees with 5+ Hour Cases</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_trainees'] ?></div>
                                  <div class="metric-label">Total Trainees</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-warning"><?php echo $babcp_summary_stats['trainees_with_3plus_supervised'] ?></div>
                                  <div class="metric-label">Trainees with 3+ Supervised Cases</div>
-</div>
+                              </div>
+                           </div>
                         </div>
                         
                         <!-- Total Supervision Hours -->
@@ -1670,56 +1818,70 @@ if ($view === 'babcp') {
                                  <div class="metric-value text-primary"><?php echo $babcp_summary_stats['total_supervision_hours'] ?></div>
                                  <div class="metric-label">Total Supervision Hours</div>
                                  <small class="text-muted">(BABCP Supervised + Closed CBT BABCP)</small>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-success"><?php echo $babcp_summary_stats['trainees_with_babcp_supervised'] ?></div>
                                  <div class="metric-label">Trainees with BABCP Supervision</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-dark"><?php echo $babcp_summary_stats['trainees_with_closed_cbt_babcp'] ?></div>
                                  <div class="metric-label">Trainees with Closed CBT BABCP</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_trainees'] ?></div>
                                  <div class="metric-label">Total Trainees</div>
-</div>
+                              </div>
+                           </div>
                         </div>
                         
-                        <!-- Case Counts -->
+                        <!-- Case Counts Row 1 -->
                         <div class="row mb-4">
-                           <div class="col-md-3">
+                           <div class="col-md-4">
                               <div class="text-center">
                                  <div class="metric-value text-primary"><?php echo $babcp_summary_stats['total_babcp_training_cases'] ?></div>
                                  <div class="metric-label">Total BABCP Training Cases</div>
-</div>
-                           <div class="col-md-3">
+                              </div>
+                           </div>
+                           <div class="col-md-4">
                               <div class="text-center">
                                  <div class="metric-value text-success"><?php echo $babcp_summary_stats['total_supervised_cases'] ?></div>
                                  <div class="metric-label">Total Supervised Cases</div>
-</div>
-                           <div class="col-md-3">
+                              </div>
+                           </div>
+                           <div class="col-md-4">
                               <div class="text-center">
                                  <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_cbt_cases'] ?></div>
                                  <div class="metric-label">Total CBT Cases</div>
-</div>
-                           <div class="col-md-3">
+                              </div>
+                           </div>
+                        </div>
+                        
+                        <!-- Case Counts Row 2 -->
+                        <div class="row mb-4">
+                           <div class="col-md-4">
                               <div class="text-center">
                                  <div class="metric-value text-purple"><?php echo $babcp_summary_stats['total_babcp_supervised_cases'] ?></div>
                                  <div class="metric-label">BABCP Supervised Cases</div>
-</div>
-                           <div class="col-md-3">
+                              </div>
+                           </div>
+                           <div class="col-md-4">
                               <div class="text-center">
                                  <div class="metric-value text-dark"><?php echo $babcp_summary_stats['total_closed_cbt_babcp_cases'] ?></div>
                                  <div class="metric-label">Closed CBT BABCP Cases</div>
-</div>
-                           <div class="col-md-3">
+                              </div>
+                           </div>
+                           <div class="col-md-4">
                               <div class="text-center">
                                  <div class="metric-value text-warning"><?php echo $babcp_summary_stats['total_cases_with_5plus_sessions'] ?></div>
                                  <div class="metric-label">Cases with 5+ Sessions</div>
-</div>
+                              </div>
+                           </div>
                         </div>
 
                         <!-- Session Duration Statistics -->
@@ -1728,22 +1890,26 @@ if ($view === 'babcp') {
                               <div class="text-center">
                                  <div class="metric-value text-primary"><?php echo $babcp_summary_stats['total_cases_with_5plus_sessions'] ?></div>
                                  <div class="metric-label">Cases with 5+ Sessions</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-success"><?php echo $babcp_summary_stats['trainees_with_5plus_sessions'] ?></div>
                                  <div class="metric-label">Trainees with 5+ Session Cases</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_trainees'] ?></div>
                                  <div class="metric-label">Total Trainees</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-warning"><?php echo $babcp_summary_stats['trainees_with_3plus_supervised'] ?></div>
                                  <div class="metric-label">Trainees with 3+ Supervised Cases</div>
-</div>
+                              </div>
+                           </div>
                         </div>
 
                         <!-- Clinical Issues Statistics -->
@@ -1752,61 +1918,88 @@ if ($view === 'babcp') {
                               <div class="text-center">
                                  <div class="metric-value text-danger"><?php echo $babcp_summary_stats['total_anxiety_cases'] ?></div>
                                  <div class="metric-label">Anxiety Cases</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-warning"><?php echo $babcp_summary_stats['total_depression_cases'] ?></div>
                                  <div class="metric-label">Depression Cases</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-info"><?php echo $babcp_summary_stats['total_trauma_cases'] ?></div>
                                  <div class="metric-label">Trauma Cases</div>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-3">
                               <div class="text-center">
                                  <div class="metric-value text-secondary"><?php echo $babcp_summary_stats['total_ocd_cases'] ?></div>
                                  <div class="metric-label">OCD Cases</div>
-</div>
+                              </div>
+                           </div>
                         </div>
 
-                        <!-- Detailed Trainee Analysis -->
-                        <div class="table-responsive">
-                        <!-- Sorting controls for BABCP table -->
-                        <div class="row mb-2">
-                           <div class="col-md-3">
-                              <label for="babcpSortBy" class="mb-1">Sort by</label>
-                              <select id="babcpSortBy" class="form-control form-control-sm">
-                                 <option value="trainee_name">Trainee Name</option>
-                                 <option value="total_cases">Total Cases</option>
-                                 <option value="babcp_training_cases">BABCP Training Cases</option>
-                                 <option value="supervised_cases">Supervised Cases</option>
-                                 <option value="cbt_cases">CBT Cases</option>
-                                 <option value="babcp_supervised_cases">BABCP Supervised</option>
-                                 <option value="closed_cbt_babcp_cases">Closed CBT BABCP</option>
-                                 <option value="cases_with_5plus_sessions">Cases with 5+ Sessions</option>
-                                 <option value="cases_with_5plus_hours">Cases with 5+ Hours</option>
+                        <!-- Table Controls -->
+                        <div class="row mb-3">
+                           <div class="col-md-6">
+                              <label for="babcpPageSize" class="form-label">Show entries</label>
+                              <select id="babcpPageSize" class="form-select form-select-sm">
+                                 <option value="10">10</option>
+                                 <option value="25" selected>25</option>
+                                 <option value="50">50</option>
+                                 <option value="100">100</option>
                               </select>
                            </div>
-                           <div class="col-md-2">
-                              <label for="babcpSortDir" class="mb-1">Direction</label>
-                              <select id="babcpSortDir" class="form-control form-control-sm">
-                                 <option value="asc">Ascending</option>
-                                 <option value="desc" selected>Descending</option>
-                              </select>
-</div>
-                           <table class="table table-striped" id="babcpTable">
-                              <thead>
+                           <div class="col-md-6 d-flex align-items-end">
+                              <div class="input-group">
+                                 <span class="input-group-text"><i class="fas fa-search"></i></span>
+                                 <input type="text" class="form-control form-control-sm" id="babcpSearch" placeholder="Search trainees...">
+                              </div>
+                           </div>
+                        </div>
+
+                        <!-- Detailed Trainee Analysis Table -->
+                        <div class="table-responsive" style="width: 100%; overflow-x: auto;">
+                           <table class="table table-striped table-hover" id="babcpTable" style="width: 100%; table-layout: fixed;">
+                              <thead class="table-dark">
                                  <tr>
-                                    <th class="sortable" data-sort="trainee_name">Trainee Name <span class="sort-arrow"></span></th>
-                                    <th class="sortable" data-sort="total_cases">Total Cases <span class="sort-arrow"></span></th>
-                                    <th class="sortable" data-sort="babcp_training_cases">BABCP Training Cases <span class="sort-arrow"></span></th>
-                                    <th class="sortable" data-sort="supervised_cases">Supervised Cases <span class="sort-arrow"></span></th>
-                                    <th class="sortable" data-sort="cbt_cases">CBT Cases <span class="sort-arrow"></span></th>
-                                    <th class="sortable" data-sort="babcp_supervised_cases">BABCP Supervised <span class="sort-arrow"></span></th>
-                                    <th class="sortable" data-sort="closed_cbt_babcp_cases">Closed CBT BABCP <span class="sort-arrow"></span></th>
-                                    <th class="sortable" data-sort="cases_with_5plus_sessions">Cases with 5+ Sessions <span class="sort-arrow"></span></th>
-                                    <th class="sortable" data-sort="cases_with_5plus_hours">Cases with 5+ Hours <span class="sort-arrow"></span></th>
+                                    <th class="sortable" data-sort="trainee_name">
+                                       Trainee Name 
+                                       <i class="fas fa-sort sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-sort="total_cases">
+                                       Total Cases 
+                                       <i class="fas fa-sort sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-sort="babcp_training_cases">
+                                       BABCP Training 
+                                       <i class="fas fa-sort sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-sort="supervised_cases">
+                                       Supervised 
+                                       <i class="fas fa-sort sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-sort="cbt_cases">
+                                       CBT Cases 
+                                       <i class="fas fa-sort sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-sort="babcp_supervised_cases">
+                                       BABCP Supervised 
+                                       <i class="fas fa-sort sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-sort="closed_cbt_babcp_cases">
+                                       Closed CBT BABCP 
+                                       <i class="fas fa-sort sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-sort="cases_with_5plus_sessions">
+                                       5+ Sessions 
+                                       <i class="fas fa-sort sort-icon"></i>
+                                    </th>
+                                    <th class="sortable" data-sort="cases_with_5plus_hours">
+                                       5+ Hours 
+                                       <i class="fas fa-sort sort-icon"></i>
+                                    </th>
                                     <th>Clinical Issues</th>
                                     <th>BABCP Compliance</th>
                                  </tr>
@@ -1821,26 +2014,17 @@ if ($view === 'babcp') {
                         <div class="row mt-3">
                            <div class="col-md-6">
                               <div class="d-flex align-items-center">
-                                 <label for="babcpPageSize" class="mr-2 mb-0">Show:</label>
-                                 <select id="babcpPageSize" class="form-control form-control-sm" style="width: auto;">
-                                    <option value="10">10</option>
-                                    <option value="25" selected>25</option>
-                                    <option value="50">50</option>
-                                    <option value="100">100</option>
-                                 </select>
-                                 <span class="ml-2 mb-0">entries</span>
-</div>
+                                 <span id="babcpPaginationInfo" class="text-muted">Showing 1 to 25 of 0 entries</span>
+                              </div>
+                           </div>
                            <div class="col-md-6">
-                              <div class="d-flex justify-content-end align-items-center">
-                                 <span id="babcpPaginationInfo" class="mr-3 mb-0">Showing 1 to 25 of 0 entries</span>
-                                 <nav>
-                                    <ul class="pagination pagination-sm mb-0" id="babcpPagination">
-                                       <!-- Pagination buttons will be generated by JavaScript -->
-                                    </ul>
-                                 </nav>
-</div>
-</div>
-</div>
+                              <nav aria-label="BABCP table pagination">
+                                 <ul class="pagination pagination-sm justify-content-end mb-0" id="babcpPagination">
+                                    <!-- Pagination buttons will be generated by JavaScript -->
+                                 </ul>
+                              </nav>
+                           </div>
+                        </div>
             </div>
             <?php endif; ?>
 
@@ -1854,9 +2038,9 @@ if ($view === 'babcp') {
                         <small class="text-muted">Client counts grouped by Primary Contact Type (Individual/Group) and Primary Modality (CBT, ACT, etc.)</small>
                      </div>
                      <div class="card-body">
-                        <div class="table-responsive">
-                           <table class="table table-striped table-hover" id="babcpGroupingTable">
-                              <thead class="thead-dark">
+                        <div class="table-responsive" style="width: 100%; overflow-x: auto;">
+                           <table class="table table-striped table-hover" id="babcpGroupingTable" style="width: 100%; table-layout: fixed;">
+                              <thead class="table-dark">
                                  <tr>
                                     <th>Contact Type</th>
                                     <th>Modality</th>
@@ -1884,6 +2068,7 @@ if ($view === 'babcp') {
             </div>
             <?php endif; ?>
 
+         </div>
          </div>
       </section>
    </div>

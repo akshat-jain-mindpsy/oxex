@@ -323,7 +323,7 @@ $numlinks = $vids->rowCount();
                         $exselect_val = '';
                         // get data for each in turn
                         // TAKEN TBID out of the search!!??
-                        $stmt = $supabase_pdo->prepare('select pid, select_val from trainee_log where trainkey = ? and stid = ? and logkey = ?');
+                        $stmt = $supabase_pdo->prepare('SELECT /*+ USE_INDEX(trainee_log, idx_trainee_log_trainkey_stid_logkey) */ pid, select_val FROM trainee_log WHERE trainkey = ? AND stid = ? AND logkey = ?');
                         $stmt->execute([$trainkey, $stid, $tablelogkey]);
                         $rowx = $stmt->fetch(PDO::FETCH_ASSOC);
                         $expid = $rowx['pid'] ?? null;

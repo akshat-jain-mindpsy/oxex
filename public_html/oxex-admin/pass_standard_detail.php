@@ -212,121 +212,134 @@ if ($usingSupabase) {
                     <form id="standardForm" novalidate>
                                 <input type="hidden" name="psid" value="<?php echo $psid; ?>">
 
-                                <div class="form-group">
-                            <label for="standard_name">Standard Name*</label>
-                            <input type="text" class="form-control" id="standard_name" name="standard_name" value="<?php echo htmlspecialchars($standard['standard_name']); ?>" required>
-                                </div>
-
-                                <div class="row">
-                                    <div class="col-md-6 form-group">
-                                <label for="tbid">Applies to Table*</label>
-                                <select class="form-control" id="tbid" name="tbid" required>
-                                            <option value="">-- Select a Table --</option>
-                                            <?php foreach($tables_result as $row): ?>
-                                                <option value="<?php echo $row['tbid']; ?>" <?php echo ($standard['tbid'] == $row['tbid']) ? 'selected' : ''; ?>>
-                                                    <?php echo htmlspecialchars($row['tab_name']); ?>
+                                <fieldset class="mb-3">
+                                    <legend class="h6 mb-3">Standard Details</legend>
+                                    <div class="form-group">
+                                        <label for="standard_name">Standard Name*</label>
+                                        <input type="text" class="form-control" id="standard_name" name="standard_name" value="<?php echo htmlspecialchars($standard['standard_name']); ?>" required>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6 form-group">
+                                            <label for="tbid">Applies to Table*</label>
+                                            <select class="form-control" id="tbid" name="tbid" required>
+                                                <option value="">-- Select a Table --</option>
+                                                <?php foreach($tables_result as $row): ?>
+                                                    <option value="<?php echo $row['tbid']; ?>" <?php echo ($standard['tbid'] == $row['tbid']) ? 'selected' : ''; ?>>
+                                                        <?php echo htmlspecialchars($row['tab_name']); ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-6 form-group">
+                                            <label for="requirement_type">Default Requirement Type (optional)</label>
+                                            <select class="form-control" id="requirement_type" name="requirement_type">
+                                                <option value="TOTAL_HOURS" <?php echo ($standard['requirement_type'] == 'TOTAL_HOURS') ? 'selected' : ''; ?>>Total Hours</option>
+                                                <option value="UNIQUE_VALUES" <?php echo ($standard['requirement_type'] == 'UNIQUE_VALUES') ? 'selected' : ''; ?>>Unique Values</option>
+                                                <option value="TOTAL_COUNT" <?php echo ($standard['requirement_type'] == 'TOTAL_COUNT') ? 'selected' : ''; ?>>Total Count</option>
+                                                <option value="UNIQUE_VALUES_IN_RANGE" <?php echo ($standard['requirement_type'] == 'UNIQUE_VALUES_IN_RANGE') ? 'selected' : ''; ?>>Unique Values in Range</option>
+                                                <option value="PER_CASE_MINIMUM" <?php echo ($standard['requirement_type'] == 'PER_CASE_MINIMUM') ? 'selected' : ''; ?>>Per-Case Minimum</option>
+                                            </select>
+                                            <small class="form-text text-muted">Each subcategory rule has its own requirement type. Set a default only if not using subcategory rules.</small>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="parent_standard_id">Parent Standard (for nested rules)</label>
+                                        <select class="form-control" id="parent_standard_id" name="parent_standard_id">
+                                            <option value="">-- None (this is a main rule) --</option>
+                                            <?php foreach($all_parents as $parent): ?>
+                                                <option class="parent-option" style="display:none;" value="<?php echo $parent['psid']; ?>" data-tbid="<?php echo $parent['tbid']; ?>" <?php echo ($standard['parent_standard_id'] == $parent['psid']) ? 'selected' : ''; ?>>
+                                                    <?php echo htmlspecialchars($parent['standard_name']); ?>
                                                 </option>
                                             <?php endforeach; ?>
                                         </select>
+                                        <small class="form-text text-muted">A rule can only be nested under another rule from the same table.</small>
                                     </div>
-                                    <div class="col-md-6 form-group">
-                                <label for="requirement_type">Requirement Type*</label>
-                                <select class="form-control" id="requirement_type" name="requirement_type" required>
-                                            <option value="TOTAL_HOURS" <?php echo ($standard['requirement_type'] == 'TOTAL_HOURS') ? 'selected' : ''; ?>>Total Hours</option>
-                                            <option value="UNIQUE_VALUES" <?php echo ($standard['requirement_type'] == 'UNIQUE_VALUES') ? 'selected' : ''; ?>>Unique Values</option>
-                                            <option value="TOTAL_COUNT" <?php echo ($standard['requirement_type'] == 'TOTAL_COUNT') ? 'selected' : ''; ?>>Total Count</option>
-                                            <option value="UNIQUE_VALUES_IN_RANGE" <?php echo ($standard['requirement_type'] == 'UNIQUE_VALUES_IN_RANGE') ? 'selected' : ''; ?>>Unique Values in Range</option>
-                                            <option value="PER_CASE_MINIMUM" <?php echo ($standard['requirement_type'] == 'PER_CASE_MINIMUM') ? 'selected' : ''; ?>>Per-Case Minimum</option>
-                                        </select>
-</div>
+                                </fieldset>
 
-                                <div class="form-group">
-                            <label for="parent_standard_id">Parent Standard (for nested rules)</label>
-                            <select class="form-control" id="parent_standard_id" name="parent_standard_id">
-                                        <option value="">-- None (this is a main rule) --</option>
-                                        <?php foreach($all_parents as $parent): ?>
-                                            <option class="parent-option" style="display:none;" value="<?php echo $parent['psid']; ?>" data-tbid="<?php echo $parent['tbid']; ?>" <?php echo ($standard['parent_standard_id'] == $parent['psid']) ? 'selected' : ''; ?>>
-                                                <?php echo htmlspecialchars($parent['standard_name']); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <small class="form-text text-muted">A rule can only be nested under another rule from the same table.</small>
-                                </div>
-
-                        <div id="fieldDependentSection" class="card card-body mb-3">
+                                <fieldset class="mb-3" id="fieldDependentSection">
+                                    <legend class="h6 mb-3">Category Logic</legend>
                                     <div class="form-group">
                                         <label>How should the category/categories be checked?</label>
                                         <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="field_logic_mode" id="logicSingle" value="single" <?php echo (is_null($standard['stid']) && !empty($selected_or_fields)) ? '' : 'checked'; ?>>
-                                    <label class="form-check-label" for="logicSingle">On a Single Category</label>
+                                            <input class="form-check-input" type="radio" name="field_logic_mode" id="logicSingle" value="single" <?php echo (is_null($standard['stid']) && !empty($selected_or_fields)) ? '' : 'checked'; ?>>
+                                            <label class="form-check-label" for="logicSingle">On a Single Category</label>
                                         </div>
                                         <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="field_logic_mode" id="logicMultiple" value="multiple" <?php echo (is_null($standard['stid']) && !empty($selected_or_fields)) ? 'checked' : ''; ?>>
-                                    <label class="form-check-label" for="logicMultiple">On Multiple Categories (OR condition)</label>
-</div>
-                                
+                                            <input class="form-check-input" type="radio" name="field_logic_mode" id="logicMultiple" value="multiple" <?php echo (is_null($standard['stid']) && !empty($selected_or_fields)) ? 'checked' : ''; ?>>
+                                            <label class="form-check-label" for="logicMultiple">On Multiple Categories (OR condition)</label>
+                                        </div>
+                                    </div>
+
                                     <div class="form-group" id="singleFieldContainer">
-                                <label for="stid">Category to Check</label>
-                                <select class="form-control" id="stid" name="stid">
+                                        <label for="stid">Category to Check</label>
+                                        <select class="form-control" id="stid" name="stid">
                                             <option value="">-- Select a Table First --</option>
                                         </select>
                                         <small class="form-text text-muted">Required for 'Unique Values' and 'Total Count'. Ignored for 'Total Hours'.</small>
                                     </div>
 
-                            <div class="form-group" id="subfieldContainer" style="display:none;">
-                                <label>Subcategory Rules (Optional)</label>
-                                <div class="subfield-rules-table">
-                                                                    <div class="subfield-rules-header">
-                                    <div class="rule-col">Subcategory Value</div>
-                                    <div class="rule-col">Rule Type</div>
-                                    <div class="rule-col">Rule Value</div>
-                                    <div class="rule-col-actions">Actions</div>
-                                </div>
-                                    <div id="subfieldRulesContainer">
-                                        <!-- Rules will be added here dynamically -->
-</div>
-                                <button type="button" id="addSubfieldRuleBtn" class="btn btn-success btn-sm mt-2">
-                                    <i class="fa fa-plus"></i> Add Rule
-                                </button>
-                                <small class="form-text text-muted">Create specific rules for individual subcategory values. Each rule can have different requirement types and values. These rules will be applied to the selected subcategory values.</small>
-                            </div>
-
-                            <div class="form-group" id="multipleFieldContainer" style="display:none;">
-                                <label for="stids">Categories to Check (OR condition)</label>
-                                <select class="form-control" id="stids" name="stids[]" multiple>
-                                             <!-- Options loaded by JS -->
+                                    <div class="form-group" id="multipleFieldContainer" style="display:none;">
+                                        <label for="stids">Categories to Check (OR condition)</label>
+                                        <select class="form-control" id="stids" name="stids[]" multiple>
+                                            <!-- Options loaded by JS -->
                                         </select>
                                         <small class="form-text text-muted">The rule will pass if the condition is met in ANY of the selected categories.</small>
                                     </div>
 
-                            <div class="form-group" id="mainFieldValueContainer">
-                                <label for="field_value">Category Value Filter (Optional)</label>
-                                <input type="text" class="form-control" id="field_value" name="field_value" value="<?php echo htmlspecialchars($standard['field_value'] ?? ''); ?>">
-                                <small class="form-text text-muted">Filter the main category before applying subcategory rules. For ranges, use a hyphen (e.g., 18-64). Leave empty to check all category values.</small>
-</div>
-
-                                <div class="row">
-                                    <div class="col-md-6 form-group">
-                                        <label for="required_value">Required Value*</label>
-                                        <input type="number" class="form-control" id="required_value" name="required_value" value="<?php echo (int)$standard['required_value']; ?>" required min="0">
-                                        <small class="form-text text-muted" id="requiredValueHelp">Number of cases/items required</small>
+                                    <div class="form-group" id="mainFieldValueContainer">
+                                        <label for="field_value">Category Value Filter (Optional)</label>
+                                        <input type="text" class="form-control" id="field_value" name="field_value" value="<?php echo htmlspecialchars($standard['field_value'] ?? ''); ?>">
+                                        <small class="form-text text-muted">Filter the main category before applying subcategory rules. For ranges, use a hyphen (e.g., 18-64). Leave empty to check all category values.</small>
                                     </div>
-                                    <div class="col-md-6 form-group" id="minimumThresholdContainer" style="display:none;">
-                                        <label for="minimum_threshold">Minimum Threshold per Case*</label>
-                                        <input type="number" class="form-control" id="minimum_threshold" name="minimum_threshold" value="<?php echo (int)($standard['minimum_threshold'] ?? 0); ?>" min="0" step="0.1">
-                                        <small class="form-text text-muted">Minimum value each case must meet (e.g., 5 hours)</small>
-</div>
-                                
-                                <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="is_active" name="is_active" value="1" <?php echo ($standard['is_active']) ? 'checked' : ''; ?>>
-                            <label class="form-check-label" for="is_active">
-                                        Standard is Active
-                                    </label>
-                                </div>
+                                </fieldset>
 
-                                <hr>
-                                <button type="submit" class="btn btn-primary">Save Standard</button>
-                                <a href="<?php echo $listurl; ?>" class="btn btn-secondary">Cancel</a>
+                                <fieldset class="mb-3" id="subfieldContainer" style="display:none;">
+                                    <legend class="h6 mb-3">Subcategory Rules (Optional)</legend>
+                                    <div class="subfield-rules-table">
+                                        <div class="subfield-rules-header">
+                                            <div class="rule-col">Subcategory Value</div>
+                                            <div class="rule-col">Requirement Type</div>
+                                            <div class="rule-col">Rule Value</div>
+                                            <div class="rule-col-actions">Actions</div>
+                                        </div>
+                                        <div id="subfieldRulesContainer">
+                                            <!-- Rules will be added here dynamically -->
+                                        </div>
+                                    </div>
+                                    <button type="button" id="addSubfieldRuleBtn" class="btn btn-success btn-sm mt-2">
+                                        <i class="fa fa-plus"></i> Add Rule
+                                    </button>
+                                    <small class="form-text text-muted">Create specific rules for individual subcategory values. Each rule can have different requirement types and values. These rules will be applied to the selected subcategory values.</small>
+                                </fieldset>
+
+                                <fieldset class="mb-3">
+                                    <legend class="h6 mb-3">Requirements</legend>
+                                    <div class="row">
+                                        <div class="col-md-6 form-group">
+                                            <label for="required_value">Required Value*</label>
+                                            <input type="number" class="form-control" id="required_value" name="required_value" value="<?php echo (int)$standard['required_value']; ?>" required min="0">
+                                            <small class="form-text text-muted" id="requiredValueHelp">Number of cases/items required</small>
+                                        </div>
+                                        <div class="col-md-6 form-group" id="minimumThresholdContainer" style="display:none;">
+                                            <label for="minimum_threshold">Minimum Threshold per Case*</label>
+                                            <input type="number" class="form-control" id="minimum_threshold" name="minimum_threshold" value="<?php echo (int)($standard['minimum_threshold'] ?? 0); ?>" min="0" step="0.1" required>
+                                            <small class="form-text text-muted">Minimum value each case must meet (e.g., 5 hours)</small>
+                                        </div>
+                                    </div>
+                                </fieldset>
+
+                                <fieldset class="mb-3">
+                                    <legend class="h6 mb-3">Status</legend>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="is_active" name="is_active" value="1" <?php echo ($standard['is_active']) ? 'checked' : ''; ?>>
+                                        <label class="form-check-label" for="is_active">Standard is Active</label>
+                                    </div>
+                                </fieldset>
+
+                                <div class="d-flex align-items-center">
+                                    <button type="submit" class="btn btn-primary mr-2">Save Standard</button>
+                                    <a href="<?php echo $listurl; ?>" class="btn btn-secondary">Cancel</a>
+                                </div>
                             </form>
                         </div>
                     </div>
@@ -613,7 +626,7 @@ $(document).ready(function() {
         $newSelect.on('change', function() {
             console.log('   Select2 change event triggered');
             // Simple approach: just rebuild all options
-            rebuildAllSubfieldOptions();
+            window.rebuildAllSubfieldOptions();
         });
         
         // Add change event for requirement type to show/hide minimum threshold
@@ -621,9 +634,9 @@ $(document).ready(function() {
             var $row = $(this).closest('.subfield-rule-row');
             var $minThreshold = $row.find('input[name*="[minimum_threshold]"]');
             if ($(this).val() === 'PER_CASE_MINIMUM') {
-                $minThreshold.show().prop('required', true);
+                $minThreshold.show().prop('required', true).prop('disabled', false);
             } else {
-                $minThreshold.hide().prop('required', false);
+                $minThreshold.hide().prop('required', false).prop('disabled', true);
             }
         });
         
@@ -681,7 +694,7 @@ $(document).ready(function() {
         $newSelect.on('change', function() {
             console.log('   Select2 change event triggered');
             // Simple approach: just rebuild all options
-            rebuildAllSubfieldOptions();
+            window.rebuildAllSubfieldOptions();
         });
         
         // Add change event for requirement type to show/hide minimum threshold
@@ -689,9 +702,9 @@ $(document).ready(function() {
             var $row = $(this).closest('.subfield-rule-row');
             var $minThreshold = $row.find('input[name*="[minimum_threshold]"]');
             if ($(this).val() === 'PER_CASE_MINIMUM') {
-                $minThreshold.show().prop('required', true);
+                $minThreshold.show().prop('required', true).prop('disabled', false);
             } else {
-                $minThreshold.hide().prop('required', false);
+                $minThreshold.hide().prop('required', false).prop('disabled', true);
             }
         });
         
@@ -704,7 +717,10 @@ $(document).ready(function() {
         // Handle minimum threshold for existing data
         if (ruleData.requirement_type === 'PER_CASE_MINIMUM') {
             var $minThreshold = $newSelect.closest('.subfield-rule-row').find('input[name*="[minimum_threshold]"]');
-            $minThreshold.show().prop('required', true).val(ruleData.minimum_threshold || '');
+            $minThreshold.show().prop('required', true).prop('disabled', false).val(ruleData.minimum_threshold || '');
+        } else {
+            var $minThreshold = $newSelect.closest('.subfield-rule-row').find('input[name*="[minimum_threshold]"]');
+            $minThreshold.hide().prop('required', false).prop('disabled', true);
         }
         
         console.log('✅ addSubfieldRuleWithData() completed');
@@ -719,7 +735,7 @@ $(document).ready(function() {
         }
         
         console.log('   Available subfields:', window.availableSubfields);
-        var usedValues = getUsedSubfieldValues();
+        var usedValues = window.getUsedSubfieldValues();
         console.log('   Used values:', usedValues);
         
         var availableOptions = window.availableSubfields.filter(function(subfield) {
@@ -738,7 +754,8 @@ $(document).ready(function() {
         return result;
     }
 
-    function getUsedSubfieldValues() {
+    // Move getUsedSubfieldValues to global scope
+    window.getUsedSubfieldValues = function() {
         console.log('🔍 getUsedSubfieldValues() called');
         var usedValues = [];
         
@@ -766,16 +783,17 @@ $(document).ready(function() {
         }
         
         return usedValues;
-    }
+    };
 
 
     
-    function rebuildAllSubfieldOptions() {
+    // Move rebuildAllSubfieldOptions to global scope
+    window.rebuildAllSubfieldOptions = function() {
         console.log('🔄 rebuildAllSubfieldOptions() called');
         console.log('📊 Current rule rows:', $('.subfield-rule-row').length);
         
         try {
-            var usedValues = getUsedSubfieldValues();
+            var usedValues = window.getUsedSubfieldValues();
             console.log('🚫 Used values:', usedValues);
             console.log('📋 Available subfields:', window.availableSubfields);
             
@@ -820,9 +838,10 @@ $(document).ready(function() {
             console.error('❌ Error in rebuildAllSubfieldOptions():', e);
             console.error('Stack trace:', e.stack);
         }
-    }
+    };
 
-    function removeSubfieldRule(ruleIndex) {
+    // Move removeSubfieldRule to global scope so it can be called from onclick
+    window.removeSubfieldRule = function(ruleIndex) {
         console.log('🗑️ removeSubfieldRule() called with index:', ruleIndex);
         
         var $ruleToRemove = $('.subfield-rule-row[data-rule="' + ruleIndex + '"]');
@@ -833,7 +852,7 @@ $(document).ready(function() {
         
         // Reindex remaining rules
         console.log('   Reindexing remaining rules');
-        $('.subfieldRulesContainer').find('.subfield-rule-row').each(function(index) {
+        $('#subfieldRulesContainer').find('.subfield-rule-row').each(function(index) {
             $(this).attr('data-rule', index);
             $(this).find('select, input').each(function() {
                 var name = $(this).attr('name');
@@ -848,10 +867,10 @@ $(document).ready(function() {
         
         // Update available options after removing a rule
         console.log('   Calling rebuildAllSubfieldOptions()');
-        rebuildAllSubfieldOptions();
+        window.rebuildAllSubfieldOptions();
         
         console.log('✅ removeSubfieldRule() completed');
-    }
+    };
     
     function toggleFieldDependent(type) {
         var helpText = "If set, only entries matching this value will be counted. For OR conditions, separate values with a pipe (|).";
@@ -869,12 +888,12 @@ $(document).ready(function() {
         // Handle per-case minimum requirements
         if (type === 'PER_CASE_MINIMUM') {
             $('#minimumThresholdContainer').show();
-            $('#minimum_threshold').prop('required', true);
+            $('#minimum_threshold').prop('required', true).prop('disabled', false);
             requiredValueHelp = "Number of cases that must each meet the minimum threshold";
             helpText = "Each case must meet the minimum threshold value. Use field value to filter which cases to check.";
         } else {
             $('#minimumThresholdContainer').hide();
-            $('#minimum_threshold').prop('required', false);
+            $('#minimum_threshold').prop('required', false).prop('disabled', true);
         }
         
         $('#fieldValueHelp').text(helpText);
@@ -980,6 +999,36 @@ $(document).ready(function() {
 
         // Basic validation
         console.log('🔍 Running form validation');
+        
+        // Custom validation for subfield rules
+        var hasSubfieldRules = $('.subfield-rule-row').length > 0;
+        if (hasSubfieldRules) {
+            var validSubfieldRules = true;
+            $('.subfield-rule-row').each(function() {
+                var $row = $(this);
+                var subfieldValue = $row.find('.subfield-select').val();
+                var requirementType = $row.find('select[name*="[requirement_type]"]').val();
+                var specificValue = $row.find('input[name*="[specific_value]"]').val();
+                var minThreshold = $row.find('input[name*="[minimum_threshold]"]').val();
+                
+                if (!subfieldValue || !requirementType || !specificValue) {
+                    validSubfieldRules = false;
+                    return false;
+                }
+                
+                if (requirementType === 'PER_CASE_MINIMUM' && (!minThreshold || parseFloat(minThreshold) <= 0)) {
+                    validSubfieldRules = false;
+                    return false;
+                }
+            });
+            
+            if (!validSubfieldRules) {
+                console.log('❌ Subfield rules validation failed');
+                alert('Please complete all subfield rules properly.');
+                return;
+            }
+        }
+        
         if (this.checkValidity() === false) {
             console.log('❌ Form validation failed');
             $(this).addClass('was-validated');
@@ -995,6 +1044,12 @@ $(document).ready(function() {
             console.log('   Disabling single field input (multiple mode)');
             $('#stid').prop('disabled', true);
         }
+        
+        // Disable hidden required fields to prevent validation errors
+        $('#minimum_threshold').prop('disabled', $('#minimumThresholdContainer').is(':hidden'));
+        $('.subfield-rule-row input[name*="[minimum_threshold]"]').each(function() {
+            $(this).prop('disabled', $(this).is(':hidden'));
+        });
         
         // Handle minimum threshold validation
         if ($('#requirement_type').val() === 'PER_CASE_MINIMUM') {

@@ -618,7 +618,7 @@ $stmt->closeCursor();
 // - trainee_log: (trainkey, tbid)
 // OPTIMIZED: Use index hints and optimize JOIN order
 $competency_stats_query = "
-    SELECT /*+ USE_INDEX(tabs, idx_tabs_isvis_sort) USE_INDEX(ttl, idx_trainee_tab_link_tbid) USE_INDEX(tl, idx_trainee_log_trainkey_tbid) */
+    SELECT /*+ USE_INDEX(tabs, idx_tabs_isvis_sort) USE_INDEX(ttl, idx_trainee_tab_link_tbid) USE_INDEX(tl, idx_trainee_log_trainkey_tbid) USE_INDEX(t, idx_trainee_trainkey) */
         tabs.tab_name,
         tabs.sort_order,
         COUNT(DISTINCT tl.trainkey) as trainees_with_data,
@@ -726,25 +726,39 @@ if ($courses === null) {
       <section class="section-container">
          <!-- Page content-->
          <div class="content-wrapper">
-            <div class="content-header">
-               <div class="content-title">
-                  <?php echo $pagetitle ?>
-                  <small><?php echo $subtitle ?></small>
+            <!-- Page Header -->
+            <div class="row mb-4">
+               <div class="col-12">
+                  <div class="jumbotron bg-primary text-white p-4 rounded">
+                     <div class="container-fluid">
+                        <div class="row align-items-center">
+                           <div class="col-md-8">
+                              <h1 class="display-4 mb-2"><?php echo $pagetitle ?></h1>
+                              <p class="lead mb-0"><?php echo $subtitle ?></p>
+                           </div>
+                           <div class="col-md-4 text-md-end">
+                              <a href="<?php echo $listurl ?>" class="btn btn-light btn-lg me-2">Back to Dashboard</a>
+                              <a href="trainee_detailed_stats.php" class="btn btn-outline-light btn-lg">Detailed Analytics</a>
+                           </div>
+                        </div>
+                     </div>
+                  </div>
                </div>
-               <div class="content-subtitle">
-                  <a href="<?php echo $listurl ?>" class="btn btn-sm btn-secondary">Back to Dashboard</a>
-                  <a href="trainee_detailed_stats.php" class="btn btn-sm btn-primary ml-2">Detailed Analytics</a>
-</div>
+            </div>
 
             <!-- Filters -->
             <div class="row mb-4">
                <div class="col-12">
                   <div class="card">
+                     <div class="card-header">
+                        <h5 class="card-title mb-0">Filter Options</h5>
+                        <small class="text-muted">Customize the data view with advanced filtering options</small>
+                     </div>
                      <div class="card-body">
-                        <form method="GET" class="row">
+                        <form method="GET" class="row g-3">
                            <div class="col-md-2">
-                              <label for="start_year">Start Year</label>
-                              <select name="start_year" id="start_year" class="form-control">
+                              <label for="start_year" class="form-label">Start Year</label>
+                              <select name="start_year" id="start_year" class="form-select">
                                  <?php for ($year = $thisyear - 5; $year <= $thisyear; $year++): ?>
                                     <option value="<?php echo $year ?>" <?php echo $year == $start_year ? 'selected' : '' ?>>
                                        <?php echo $year ?>
@@ -753,8 +767,8 @@ if ($courses === null) {
                               </select>
                            </div>
                            <div class="col-md-2">
-                              <label for="end_year">End Year</label>
-                              <select name="end_year" id="end_year" class="form-control">
+                              <label for="end_year" class="form-label">End Year</label>
+                              <select name="end_year" id="end_year" class="form-select">
                                  <?php for ($year = $thisyear - 5; $year <= $thisyear; $year++): ?>
                                     <option value="<?php echo $year ?>" <?php echo $year == $end_year ? 'selected' : '' ?>>
                                        <?php echo $year ?>
@@ -763,8 +777,8 @@ if ($courses === null) {
                               </select>
                            </div>
                            <div class="col-md-2">
-                              <label for="course">Course</label>
-                              <select name="course" id="course" class="form-control">
+                              <label for="course" class="form-label">Course</label>
+                              <select name="course" id="course" class="form-select">
                                  <option value="0" <?php echo $selected_course == 0 ? 'selected' : '' ?>>All Courses</option>
                                  <?php foreach ($courses as $course): ?>
                                     <option value="<?php echo $course['uid'] ?>" <?php echo $selected_course == $course['uid'] ? 'selected' : '' ?>>
@@ -774,8 +788,8 @@ if ($courses === null) {
                               </select>
                            </div>
                            <div class="col-md-2">
-                              <label for="cohort_year">Cohort Year</label>
-                              <select name="cohort_year" id="cohort_year" class="form-control">
+                              <label for="cohort_year" class="form-label">Cohort Year</label>
+                              <select name="cohort_year" id="cohort_year" class="form-select">
                                  <option value="0" <?php echo $selected_cohort_year == 0 ? 'selected' : '' ?>>All Years</option>
                                  <?php for ($year = $thisyear - 5; $year <= $thisyear + 2; $year++): ?>
                                     <option value="<?php echo $year ?>" <?php echo $selected_cohort_year == $year ? 'selected' : '' ?>>
@@ -785,29 +799,29 @@ if ($courses === null) {
                               </select>
                            </div>
                            <div class="col-md-2">
-                              <label for="babcp_filter">BABCP Filter</label>
-                              <select name="babcp_filter" id="babcp_filter" class="form-control">
+                              <label for="babcp_filter" class="form-label">BABCP Filter</label>
+                              <select name="babcp_filter" id="babcp_filter" class="form-select">
                                  <option value="0" <?php echo $babcp_filter == 0 ? 'selected' : '' ?>>All Data</option>
                                  <option value="1" <?php echo $babcp_filter == 1 ? 'selected' : '' ?>>BABCP Related Only</option>
                               </select>
                            </div>
                            <div class="col-md-2">
-                              <label for="babcp_training">Training Cases</label>
-                              <select name="babcp_training" id="babcp_training" class="form-control">
+                              <label for="babcp_training" class="form-label">Training Cases</label>
+                              <select name="babcp_training" id="babcp_training" class="form-select">
                                  <option value="0" <?php echo $babcp_training == 0 ? 'selected' : '' ?>>All Cases</option>
                                  <option value="1" <?php echo $babcp_training == 1 ? 'selected' : '' ?>>Training Cases Only</option>
                               </select>
                            </div>
                            <div class="col-md-2">
-                              <label for="supervised_case">Supervision</label>
-                              <select name="supervised_case" id="supervised_case" class="form-control">
+                              <label for="supervised_case" class="form-label">Supervision</label>
+                              <select name="supervised_case" id="supervised_case" class="form-select">
                                  <option value="0" <?php echo $supervised_case == 0 ? 'selected' : '' ?>>All Cases</option>
                                  <option value="1" <?php echo $supervised_case == 1 ? 'selected' : '' ?>>Supervised Cases Only</option>
                               </select>
                            </div>
                            <div class="col-md-2">
-                              <label for="primary_modality">Primary Modality</label>
-                              <select name="primary_modality" id="primary_modality" class="form-control">
+                              <label for="primary_modality" class="form-label">Primary Modality</label>
+                              <select name="primary_modality" id="primary_modality" class="form-select">
                                  <option value="" <?php echo empty($primary_modality) ? 'selected' : '' ?>>All Modalities</option>
                                  <option value="CBT" <?php echo $primary_modality == 'CBT' ? 'selected' : '' ?>>CBT</option>
                                  <option value="DBT" <?php echo $primary_modality == 'DBT' ? 'selected' : '' ?>>DBT</option>
@@ -817,8 +831,8 @@ if ($courses === null) {
                               </select>
                            </div>
                            <div class="col-md-2">
-                              <label for="min_sessions">Min Sessions</label>
-                              <select name="min_sessions" id="min_sessions" class="form-control">
+                              <label for="min_sessions" class="form-label">Min Sessions</label>
+                              <select name="min_sessions" id="min_sessions" class="form-select">
                                  <option value="0" <?php echo $min_sessions == 0 ? 'selected' : '' ?>>Any Sessions</option>
                                  <option value="5" <?php echo $min_sessions == 5 ? 'selected' : '' ?>>5+ Sessions</option>
                                  <option value="10" <?php echo $min_sessions == 10 ? 'selected' : '' ?>>10+ Sessions</option>
@@ -827,16 +841,18 @@ if ($courses === null) {
                               </select>
                            </div>
                            <div class="col-md-2">
-                              <label>&nbsp;</label>
-                              <button type="submit" class="btn btn-primary btn-block">Apply Filters</button>
+                              <label class="form-label">&nbsp;</label>
+                              <button type="submit" class="btn btn-primary d-block w-100">Apply Filters</button>
                            </div>
                            <div class="col-md-2">
-                              <label>&nbsp;</label>
-                              <a href="trainee_stats.php" class="btn btn-secondary btn-block">Clear Filters</a>
+                              <label class="form-label">&nbsp;</label>
+                              <a href="trainee_stats.php" class="btn btn-secondary d-block w-100">Clear Filters</a>
                            </div>
                         </form>
-</div>
-</div>
+                     </div>
+                  </div>
+               </div>
+            </div>
 
             <!-- Key Metrics -->
             <div class="row mb-4">
@@ -845,29 +861,34 @@ if ($courses === null) {
                      <div class="card-body text-center">
                         <div class="metric-value" data-metric="total_trainees"><?php echo number_format($total_trainees) ?></div>
                         <div class="metric-label">Total Trainees</div>
-</div>
+                     </div>
+                  </div>
                </div>
                <div class="col-md-3">
                   <div class="card stats-card bg-success text-white" data-loading="overview">
                      <div class="card-body text-center">
                         <div class="metric-value" data-metric="active_trainees"><?php echo number_format($active_trainees) ?></div>
                         <div class="metric-label">Active (30 days)</div>
-</div>
+                     </div>
+                  </div>
                </div>
                <div class="col-md-3">
                   <div class="card stats-card bg-info text-white" data-loading="overview">
                      <div class="card-body text-center">
                         <div class="metric-value" data-metric="activity_rate"><?php echo $total_trainees > 0 ? round(($active_trainees / $total_trainees) * 100, 1) : 0 ?>%</div>
                         <div class="metric-label">Activity Rate</div>
-</div>
+                     </div>
+                  </div>
                </div>
                <div class="col-md-3">
                   <div class="card stats-card bg-warning text-white" data-loading="overview">
                      <div class="card-body text-center">
                         <div class="metric-value" data-metric="competency_count"><?php echo count($competency_data) ?></div>
                         <div class="metric-label">Competency Areas</div>
-</div>
-</div>
+                     </div>
+                  </div>
+               </div>
+            </div>
 
             <!-- Charts Row -->
             <div class="row mb-4">
@@ -886,7 +907,8 @@ if ($courses === null) {
                            <p class="mt-2">Loading enrollment data...</p>
                         </div>
                         <canvas id="enrollmentChart" width="400" height="200" style="display: none;"></canvas>
-</div>
+                     </div>
+                  </div>
                </div>
                
                <!-- Competency Completion -->
@@ -904,8 +926,10 @@ if ($courses === null) {
                            <p class="mt-2">Loading competency data...</p>
                         </div>
                         <canvas id="competencyChart" width="400" height="200" style="display: none;"></canvas>
-</div>
-</div>
+                     </div>
+                  </div>
+               </div>
+            </div>
 
             <!-- Individual Trainee Timeline -->
             <div class="row mb-4">
@@ -916,9 +940,9 @@ if ($courses === null) {
                            <h5 class="card-title mb-0">Individual Trainee Timeline</h5>
                            <small class="text-muted">Monthly trajectory for a selected trainee</small>
                         </div>
-                        <div class="d-flex align-items-center">
-                           <label for="timelineTraineeSelect" class="mr-2 mb-0">Select Trainee</label>
-                           <select id="timelineTraineeSelect" class="form-control form-control-sm" style="min-width: 240px;">
+                        <div class="d-flex align-items-center gap-2">
+                           <label for="timelineTraineeSelect" class="form-label mb-0">Select Trainee</label>
+                           <select id="timelineTraineeSelect" class="form-select form-select-sm" style="min-width: 240px;">
                               <option value="">-- Choose Trainee --</option>
                               <?php
                               // Build trainee list to match detailed stats: active filters and date range, require at least one log entry
@@ -946,8 +970,9 @@ if ($courses === null) {
                               }
                               ?>
                            </select>
-                           <button id="downloadTimelineCsv" class="btn btn-sm btn-outline-primary ml-2" type="button" disabled>Download CSV</button>
-</div>
+                           <button id="downloadTimelineCsv" class="btn btn-sm btn-outline-primary" type="button" disabled>Download CSV</button>
+                        </div>
+                     </div>
                      <div class="card-body">
                         <div class="chart-container">
                            <div class="loading-overlay" id="timelineLoading"><div class="spinner"></div></div>
@@ -968,8 +993,10 @@ if ($courses === null) {
                                  <tr><td colspan="5" class="text-muted text-center">Select a trainee to view timeline</td></tr>
                               </tbody>
                            </table>
-</div>
-</div>
+                        </div>
+                     </div>
+                  </div>
+               </div>
             </div>
 
             <!-- Performance Monitoring Panel (only visible to admins) -->
@@ -988,17 +1015,18 @@ if ($courses === null) {
                               <h6>Query Performance</h6>
                               <div id="performanceMetrics">
                                  <p>Loading performance data...</p>
-</div>
+                              </div>
+                           </div>
                            <div class="col-md-6">
                               <h6>Cache Status</h6>
                               <div id="cacheStatus">
                                  <p>Loading cache information...</p>
-</div>
+                              </div>
                         </div>
                         <div class="row mt-3">
                            <div class="col-md-6">
                               <h6>Applied Filters</h6>
-                              <pre><?php echo json_encode($filters, JSON_PRETTY_PRINT); ?></pre>
+                              <pre class="bg-light p-2 rounded"><code><?php echo json_encode($filters, JSON_PRETTY_PRINT); ?></code></pre>
                            </div>
                            <div class="col-md-6">
                               <h6>Database Optimization Tips</h6>
@@ -1008,8 +1036,9 @@ if ($courses === null) {
                                  <li>Consider query result caching for large datasets</li>
                                  <li>Use EXPLAIN ANALYZE for query optimization</li>
                               </ul>
-</div>
-</div>
+                           </div>
+                        </div>
+                     </div>
 </div>
             <?php endif; ?>
 
@@ -1023,7 +1052,8 @@ if ($courses === null) {
                      </div>
                      <div class="card-body">
                         <canvas id="activityChart" width="400" height="200"></canvas>
-</div>
+                     </div>
+                  </div>
                </div>
                
                <!-- Supervisor Distribution -->
@@ -1034,8 +1064,10 @@ if ($courses === null) {
                      </div>
                      <div class="card-body">
                         <canvas id="supervisorChart" width="400" height="200"></canvas>
-</div>
-</div>
+                     </div>
+                  </div>
+               </div>
+            </div>
 
             <!-- Detailed Competency Table -->
             <div class="row">
@@ -1046,8 +1078,8 @@ if ($courses === null) {
                      </div>
                      <div class="card-body">
                         <div class="table-responsive">
-                           <table class="table table-striped">
-                              <thead>
+                           <table class="table table-striped table-hover">
+                              <thead class="table-dark">
                                  <tr>
                                     <th>Competency Area</th>
                                     <th>Trainees with Data</th>
@@ -1063,22 +1095,27 @@ if ($courses === null) {
                                        <td><?php echo number_format($comp['trainees_with_data']) ?></td>
                                        <td><?php echo number_format($comp['total_entries']) ?></td>
                                        <td>
-                                          <div class="progress">
+                                          <div class="progress" style="height: 20px;">
                                              <div class="progress-bar" role="progressbar" 
                                                   style="width: <?php echo $comp['completion_rate'] ?>%"
                                                   aria-valuenow="<?php echo $comp['completion_rate'] ?>" 
                                                   aria-valuemin="0" aria-valuemax="100">
                                                 <?php echo $comp['completion_rate'] ?>%
-</div>
+                                             </div>
+                                          </div>
                                        </td>
                                        <td><?php echo $comp['trainees_with_data'] > 0 ? round($comp['total_entries'] / $comp['trainees_with_data'], 1) : 0 ?></td>
                                     </tr>
                                  <?php endforeach; ?>
                               </tbody>
                            </table>
-</div>
-</div>
-</div>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+
+         </div>
       </section>
    </div>
    

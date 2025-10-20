@@ -345,7 +345,7 @@ while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
    $tutorname = $stmt->fetchColumn();
    $stmt->closeCursor();
    // how many attendance days this year
-   $vids = $pdo->prepare("SELECT tsid FROM timesheet WHERE trainkey = ? AND taskdate >= ? AND taskdate <= ?");
+   $vids = $pdo->prepare("SELECT /*+ USE_INDEX(timesheet, idx_timesheet_trainkey_taskdate) */ tsid FROM timesheet WHERE trainkey = ? AND taskdate >= ? AND taskdate <= ?");
    $vids->execute([$trainkey, $valueyearstart, $valueyearend]);
    $numtasks = $vids->rowCount();
    $vids->closeCursor();
@@ -838,6 +838,64 @@ $tableset->closeCursor();
            ['insert', ['link', 'picture', 'video']],
            ['view', ['codeview', 'help']],
          ]
+      });
+
+      // Form validation enhancement
+      $('form').on('submit', function(e) {
+         var isValid = true;
+         var errorMessages = [];
+
+         // Check required fields
+         $('input[required], select[required]').each(function() {
+            if (!$(this).val()) {
+               $(this).addClass('is-invalid');
+               isValid = false;
+            } else {
+               $(this).removeClass('is-invalid');
+            }
+         });
+
+         // Check email format
+         var email = $('#email').val();
+         var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+         if (email && !emailRegex.test(email)) {
+            errorMessages.push('Please enter a valid email address');
+            $('#email').addClass('is-invalid');
+            isValid = false;
+         }
+
+         if (!isValid) {
+            e.preventDefault();
+            var alertHtml = '<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
+               '<strong>Please fix the following errors:</strong><ul class="mb-0 mt-2">';
+            errorMessages.forEach(function(msg) {
+               alertHtml += '<li>' + msg + '</li>';
+            });
+            alertHtml += '</ul><button type="button" class="close" data-dismiss="alert"><span>&times;</span></button></div>';
+            
+            // Remove existing alerts
+            $('.alert-danger').remove();
+            // Add new alert at top of form
+            $('.card-body').prepend(alertHtml);
+            
+            // Scroll to top of form
+            $('html, body').animate({
+               scrollTop: $('#newform').offset().top - 100
+            }, 500);
+         }
+      });
+
+      // Remove validation classes on input
+      $('input, select').on('input change', function() {
+         $(this).removeClass('is-invalid');
+      });
+
+      // Smooth scroll to form when clicking "Add New" button
+      $('a[href="#newform"]').on('click', function(e) {
+         e.preventDefault();
+         $('html, body').animate({
+            scrollTop: $('#newform').offset().top - 100
+         }, 500);
       });
    });
    </script>

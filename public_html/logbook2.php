@@ -67,7 +67,7 @@ if ($table == 'table'){# if from table
 
 
 // has this trainee entered data for this $logkey already?
-$vids = $pdo->prepare("SELECT tlogid FROM trainee_log WHERE trainkey = ? AND tbid = ? AND logkey = ?");
+$vids = $pdo->prepare("SELECT /*+ USE_INDEX(trainee_log, idx_trainee_log_trainkey_tbid_logkey) */ tlogid FROM trainee_log WHERE trainkey = ? AND tbid = ? AND logkey = ?");
 $vids->execute([$trainkey, $tbid, $logkey]);
 $modifylog = $vids->rowCount();
 $vids->closeCursor();

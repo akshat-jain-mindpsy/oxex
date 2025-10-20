@@ -813,7 +813,7 @@ function validateAndConvertTime($timeValue) {
                           $single = (int)$fr['single'];
                           $exselect_val = '';
                           if ($single == 2 || $single == 4 || $single == 5 || $single == 6) {
-                            $stmt = $supabase_pdo->prepare('select pid, select_val from trainee_log where trainkey = ? and stid = ? and logkey = ? limit 1');
+                            $stmt = $supabase_pdo->prepare('SELECT /*+ USE_INDEX(trainee_log, idx_trainee_log_trainkey_stid_logkey) */ pid, select_val FROM trainee_log WHERE trainkey = ? AND stid = ? AND logkey = ? LIMIT 1');
                             $stmt->execute([$trainkey, $stid, $tablelogkey]);
                             $rowx = $stmt->fetch(PDO::FETCH_ASSOC);
                             $exselect_val = $rowx['select_val'] ?? '';
@@ -825,7 +825,7 @@ function validateAndConvertTime($timeValue) {
                             }
                           }
                           if ($single == 0) {
-                            $stmt = $supabase_pdo->prepare('select pid, select_val from trainee_log where trainkey = ? and stid = ? and logkey = ? limit 1');
+                            $stmt = $supabase_pdo->prepare('SELECT /*+ USE_INDEX(trainee_log, idx_trainee_log_trainkey_stid_logkey) */ pid, select_val FROM trainee_log WHERE trainkey = ? AND stid = ? AND logkey = ? LIMIT 1');
                             $stmt->execute([$trainkey, $stid, $tablelogkey]);
                             $rowx = $stmt->fetch(PDO::FETCH_ASSOC);
                             $expid = $rowx['pid'] ?? null;
@@ -948,7 +948,7 @@ function validateAndConvertTime($timeValue) {
                   $single = $field['single'];
                   $displayed_field_ids[] = $stid;
                   $isreqd = ($stid == 59 || $stid == 2) ? 'required' : '';
-                  $stmt = $supabase_pdo->prepare('select pid, select_val from trainee_log where trainkey = ? and tbid = ? and stid = ? and logkey = ? limit 1');
+                  $stmt = $supabase_pdo->prepare('SELECT /*+ USE_INDEX(trainee_log, idx_trainee_log_trainkey_tbid_stid_logkey) */ pid, select_val FROM trainee_log WHERE trainkey = ? AND tbid = ? AND stid = ? AND logkey = ? LIMIT 1');
                   $stmt->execute([$trainkey, $tbid, $stid, $logkey]);
                   $rowx = $stmt->fetch(PDO::FETCH_ASSOC);
                   $expid = $rowx['pid'] ?? null;
@@ -1058,7 +1058,7 @@ function validateAndConvertTime($timeValue) {
               $str = $field['str'];
               $single = $field['single'];
               $isreqd = ($stid == 59 || $stid == 2) ? 'required' : '';
-              $stmt = $supabase_pdo->prepare('select pid, select_val from trainee_log where trainkey = ? and tbid = ? and stid = ? and logkey = ? limit 1');
+              $stmt = $supabase_pdo->prepare('SELECT /*+ USE_INDEX(trainee_log, idx_trainee_log_trainkey_tbid_stid_logkey) */ pid, select_val FROM trainee_log WHERE trainkey = ? AND tbid = ? AND stid = ? AND logkey = ? LIMIT 1');
               $stmt->execute([$trainkey, $tbid, $stid, $logkey]);
               $rowx = $stmt->fetch(PDO::FETCH_ASSOC);
               $expid = $rowx['pid'] ?? null;
