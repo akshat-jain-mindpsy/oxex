@@ -137,12 +137,28 @@ $delalert = '';
 if ($del == "del" && $which > 0) {
     $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
     if ($pdo) {
-        $stmt = $pdo->prepare("DELETE FROM pass_standards WHERE psid = ?");
-        $stmt->execute([$which]);
-        if ($stmt->rowCount() > 0) {
-            $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'Record deleted successfully.'];
-        } else {
-            $_SESSION['flash_message'] = ['type' => 'danger', 'message' => 'Failed to delete record.'];
+        try {
+            $pdo->beginTransaction();
+            // Remove dependent OR-category links first (if any)
+            $stmtChild = $pdo->prepare("DELETE FROM pass_standard_fields WHERE standard_id::int = ?");
+            $stmtChild->execute([$which]);
+
+            // Delete the standard itself
+            $stmt = $pdo->prepare("DELETE FROM pass_standards WHERE psid = ?");
+            $stmt->execute([$which]);
+
+            if ($stmt->rowCount() > 0) {
+                $pdo->commit();
+                $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'Record deleted successfully.'];
+            } else {
+                $pdo->rollBack();
+                $_SESSION['flash_message'] = ['type' => 'danger', 'message' => 'Failed to delete record.'];
+            }
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $_SESSION['flash_message'] = ['type' => 'danger', 'message' => 'Delete failed: ' . htmlspecialchars($e->getMessage())];
         }
     }
     header("Location: pass_standards.php"); // Redirect to clear GET params and show message
@@ -253,15 +269,20 @@ if ($del == "del" && $which > 0) {
                                                         if (is_array($subfield_rules) && !empty($subfield_rules)) {
                                                             $subfield_names = [];
                                                             foreach ($subfield_rules as $rule) {
-                                                                if (!empty($rule['subfield_value'])) {
-                                                                    // Get subfield name from select_gen table
-                                                                    $subfield_query = "SELECT select_val FROM select_gen WHERE pid = ?";
-                                                                    $subfield_stmt = $pdo->prepare($subfield_query);
+                                                                if (isset($rule['any_of']) && is_array($rule['any_of'])) {
+                                                                    foreach ($rule['any_of'] as $alt) {
+                                                                        if (!empty($alt['subfield_value'])) {
+                                                                            $subfield_stmt = $pdo->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
+                                                                            $subfield_stmt->execute([$alt['subfield_value']]);
+                                                                            $subfield_row = $subfield_stmt->fetch(PDO::FETCH_ASSOC);
+                                                                            if ($subfield_row) { $subfield_names[] = htmlspecialchars($subfield_row['select_val']); }
+                                                                        }
+                                                                    }
+                                                                } elseif (!empty($rule['subfield_value'])) {
+                                                                    $subfield_stmt = $pdo->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
                                                                     $subfield_stmt->execute([$rule['subfield_value']]);
                                                                     $subfield_row = $subfield_stmt->fetch(PDO::FETCH_ASSOC);
-                                                                    if ($subfield_row) {
-                                                                        $subfield_names[] = htmlspecialchars($subfield_row['select_val']);
-                                                                    }
+                                                                    if ($subfield_row) { $subfield_names[] = htmlspecialchars($subfield_row['select_val']); }
                                                                 }
                                                             }
                                                             if (!empty($subfield_names)) {

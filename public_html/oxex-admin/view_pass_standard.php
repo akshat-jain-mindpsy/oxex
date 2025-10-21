@@ -78,11 +78,34 @@ function generateStandardExplanation($row) {
             if (is_array($subfield_rules) && !empty($subfield_rules)) {
                 $explanation .= "<br><br><strong>Within the main requirement, there are specific subfield rules:</strong>";
                 foreach ($subfield_rules as $index => $rule) {
-                    if (!empty($rule['subfield_value']) && !empty($rule['requirement_type']) && !empty($rule['specific_value'])) {
-                        $rule_num = $index + 1;
+                    $rule_num = $index + 1;
+                    if (isset($rule['any_of']) && is_array($rule['any_of'])) {
+                        $pieces = [];
+                        foreach ($rule['any_of'] as $alt) {
+                            if (empty($alt['subfield_value']) || empty($alt['requirement_type']) || empty($alt['specific_value'])) continue;
+                            $rule_type = str_replace('_', ' ', strtolower($alt['requirement_type']));
+                            // Resolve subfield name
+                            global $supabase_pdo;
+                            $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+                            $subfield_name = "Unknown Subfield";
+                            if ($pdo) {
+                                $subfield_stmt = $pdo->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
+                                $subfield_stmt->execute([(int)$alt['subfield_value']]);
+                                $subfield_row = $subfield_stmt->fetch(PDO::FETCH_ASSOC);
+                                if ($subfield_row) { $subfield_name = $subfield_row['select_val']; }
+                            }
+                            $piece = "<em>" . htmlspecialchars($subfield_name) . "</em>: <strong>" . htmlspecialchars($alt['specific_value']) . "</strong> " . $rule_type;
+                            if ($alt['requirement_type'] == 'PER_CASE_MINIMUM' && !empty($alt['minimum_threshold'])) {
+                                $piece .= " (min per case: <strong>" . htmlspecialchars($alt['minimum_threshold']) . "</strong>)";
+                            }
+                            $pieces[] = $piece;
+                        }
+                        if (!empty($pieces)) {
+                            $explanation .= "<br><strong>Rule {$rule_num} (any of):</strong> " . implode(' <strong>OR</strong> ', $pieces);
+                        }
+                    } elseif (!empty($rule['subfield_value']) && !empty($rule['requirement_type']) && !empty($rule['specific_value'])) {
                         $rule_type = str_replace('_', ' ', strtolower($rule['requirement_type']));
-                        
-                        // Get subfield name from database (PDO)
+                        // Resolve subfield name
                         global $supabase_pdo;
                         $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
                         $subfield_query = "SELECT select_val FROM select_gen WHERE pid = ?";
@@ -95,9 +118,7 @@ function generateStandardExplanation($row) {
                                 $subfield_name = $subfield_row['select_val'];
                             }
                         }
-                        
                         $explanation .= "<br><strong>Rule {$rule_num}:</strong> For subfield <strong>{$subfield_name}</strong>, require <strong>{$rule['specific_value']}</strong> " . $rule_type;
-                        
                         if ($rule['requirement_type'] == 'PER_CASE_MINIMUM' && !empty($rule['minimum_threshold'])) {
                             $explanation .= " where each case must meet a minimum of <strong>{$rule['minimum_threshold']}</strong>";
                         }
@@ -179,48 +200,49 @@ if (!$standard) {
 $table_name = $standard['tab_name'] ?? 'Unknown';
 $field_name = $standard['field_name'] ?? 'Unknown';
 
-// Parse subfield rules - handle multiple SUBFIELD_RULES entries
+// Parse subfield rules - handle both old format and new any_of format
 $subfield_rules = [];
+$subfield_rule_groups = []; // For displaying OR groups
 $main_field_value = '';
 if (!empty($standard['field_value']) && strpos($standard['field_value'], 'SUBFIELD_RULES:') !== false) {
-    // Split by | to get individual rule sets
-    $rule_sets = explode('|', $standard['field_value']);
-    $main_field_value = trim($rule_sets[0]);
+    $json_part = str_replace('SUBFIELD_RULES:', '', $standard['field_value']);
+    $json_part = trim($json_part);
     
-    // Process each rule set
-    foreach ($rule_sets as $rule_set) {
-        if (strpos($rule_set, 'SUBFIELD_RULES:') !== false) {
-            $json_part = str_replace('SUBFIELD_RULES:', '', $rule_set);
-            $json_part = trim($json_part);
-            
-            try {
-                $rules = json_decode($json_part, true);
-                if (json_last_error() === JSON_ERROR_NONE && is_array($rules)) {
-                    // Merge rules from this set
-                    foreach ($rules as $rule) {
-                        if (isset($rule['subfield_value']) && isset($rule['requirement_type']) && isset($rule['specific_value'])) {
-                            $subfield_rules[] = $rule;
+    try {
+        $rules = json_decode($json_part, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($rules)) {
+            foreach ($rules as $rule_index => $rule) {
+                // Handle new any_of format (OR conditions)
+                if (isset($rule['any_of']) && is_array($rule['any_of'])) {
+                    $group = [
+                        'type' => 'any_of',
+                        'rules' => []
+                    ];
+                    foreach ($rule['any_of'] as $alt_rule) {
+                        if (isset($alt_rule['subfield_value']) && isset($alt_rule['requirement_type']) && isset($alt_rule['specific_value'])) {
+                            $subfield_rules[] = $alt_rule;
+                            $group['rules'][] = $alt_rule;
                         }
                     }
-                } else {
-                    error_log("JSON decode error in rule set: " . json_last_error_msg() . " for: " . $json_part);
+                    if (!empty($group['rules'])) {
+                        $subfield_rule_groups[] = $group;
+                    }
                 }
-            } catch (Exception $e) {
-                error_log("Exception parsing rule set: " . $e->getMessage() . " for: " . $json_part);
+                // Handle old single rule format
+                elseif (isset($rule['subfield_value']) && isset($rule['requirement_type']) && isset($rule['specific_value'])) {
+                    $subfield_rules[] = $rule;
+                    $subfield_rule_groups[] = [
+                        'type' => 'single',
+                        'rules' => [$rule]
+                    ];
+                }
             }
+        } else {
+            error_log("JSON decode error: " . json_last_error_msg() . " for: " . $json_part);
         }
+    } catch (Exception $e) {
+        error_log("Exception parsing subfield rules: " . $e->getMessage() . " for: " . $json_part);
     }
-    
-    // Remove duplicates based on subfield_value
-    $unique_rules = [];
-    $seen_values = [];
-    foreach ($subfield_rules as $rule) {
-        if (!in_array($rule['subfield_value'], $seen_values)) {
-            $unique_rules[] = $rule;
-            $seen_values[] = $rule['subfield_value'];
-        }
-    }
-    $subfield_rules = $unique_rules;
 }
 
 // Debug output removed for cleaner code
@@ -375,7 +397,8 @@ if (!empty($standard['who_by'])) {
                                         <span class="badge <?php echo $standard['is_active'] ? 'badge-success' : 'badge-secondary'; ?>">
                                             <?php echo $standard['is_active'] ? 'Active' : 'Inactive'; ?>
                                         </span>
-</div>
+                                    </div>
+                                </div>
                                 <div class="info-item">
                                     <div class="info-label">Applies to Table</div>
                                     <div class="info-value"><?php echo htmlspecialchars($table_name); ?></div>
@@ -409,35 +432,66 @@ if (!empty($standard['who_by'])) {
                                 <div class="info-item">
                                     <div class="info-label">Date Modified</div>
                                     <div class="info-value"><?php echo $standard['date_modified'] ? date('Y-m-d H:i:s', $standard['date_modified']) : 'N/A'; ?></div>
-</div>
+                                </div>
+                            </div>
 
 
                             <!-- Subfield Rules -->
                             <div class="subfield-rules-section">
                                 <h5>Subfield Rules</h5>
-                                <?php if (!empty($subfield_rules)): ?>
+                                <?php if (!empty($subfield_rule_groups)): ?>
                                     <div class="subfield-rules-table">
                                         <div class="subfield-rules-header">
                                             <div>Subfield Value</div>
                                             <div>Rule Type</div>
                                             <div>Rule Value</div>
-                                            <div>Actions</div>
+                                            <div>Group</div>
                                         </div>
-                                        <?php foreach ($subfield_rules as $index => $rule): ?>
-                                        <div class="subfield-rule-row">
-                                            <div>
-                                                <strong><?php echo htmlspecialchars($subfield_names[$rule['subfield_value']] ?? 'Unknown'); ?></strong>
-                                                <br>
-                                                <small class="text-muted">ID: <?php echo $rule['subfield_value']; ?></small>
-                                            </div>
-                                            <div><?php echo str_replace('_', ' ', $rule['requirement_type']); ?></div>
-                                            <div><?php echo htmlspecialchars($rule['specific_value']); ?></div>
-                                            <div>
-                                                <span class="badge badge-info">Rule <?php echo $index + 1; ?></span>
-</div>
+                                        <?php foreach ($subfield_rule_groups as $group_index => $group): ?>
+                                            <?php if ($group['type'] === 'any_of'): ?>
+                                                <!-- OR Group -->
+                                                <?php foreach ($group['rules'] as $rule_index => $rule): ?>
+                                                <div class="subfield-rule-row" style="background-color: #f8f9fa;">
+                                                    <div>
+                                                        <strong><?php echo htmlspecialchars($subfield_names[$rule['subfield_value']] ?? 'Unknown'); ?></strong>
+                                                        <br>
+                                                        <small class="text-muted">ID: <?php echo $rule['subfield_value']; ?></small>
+                                                    </div>
+                                                    <div><?php echo str_replace('_', ' ', $rule['requirement_type']); ?></div>
+                                                    <div><?php echo htmlspecialchars($rule['specific_value']); ?></div>
+                                                    <div>
+                                                        <span class="badge badge-warning">OR Group <?php echo $group_index + 1; ?></span>
+                                                        <?php if ($rule_index === 0): ?>
+                                                            <br><small class="text-muted">Base Rule</small>
+                                                        <?php else: ?>
+                                                            <br><small class="text-muted">OR Alternative</small>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                                <?php endforeach; ?>
+                                            <?php else: ?>
+                                                <!-- Single Rule -->
+                                                <?php foreach ($group['rules'] as $rule): ?>
+                                                <div class="subfield-rule-row">
+                                                    <div>
+                                                        <strong><?php echo htmlspecialchars($subfield_names[$rule['subfield_value']] ?? 'Unknown'); ?></strong>
+                                                        <br>
+                                                        <small class="text-muted">ID: <?php echo $rule['subfield_value']; ?></small>
+                                                    </div>
+                                                    <div><?php echo str_replace('_', ' ', $rule['requirement_type']); ?></div>
+                                                    <div><?php echo htmlspecialchars($rule['specific_value']); ?></div>
+                                                    <div>
+                                                        <span class="badge badge-info">Single Rule</span>
+                                                    </div>
+                                                </div>
+                                                <?php endforeach; ?>
+                                            <?php endif; ?>
                                         <?php endforeach; ?>
                                     </div>
-                                    <small class="text-muted">These rules define specific requirements for individual subfield values.</small>
+                                    <small class="text-muted">
+                                        <strong>OR Groups:</strong> Rules in the same group are alternatives (any one can be met).<br>
+                                        <strong>Single Rules:</strong> Individual requirements that must be met.
+                                    </small>
                                 <?php else: ?>
                                     <div class="no-rules">
                                         <i class="fas fa-info-circle fa-2x mb-3"></i>
@@ -445,8 +499,10 @@ if (!empty($standard['who_by'])) {
                                         <p>Click "Edit Standard" to add subfield rules.</p>
                                     </div>
                                 <?php endif; ?>
-</div>
-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
     </div>

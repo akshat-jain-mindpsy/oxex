@@ -242,6 +242,19 @@ if ($usingSupabase) {
                                             <small class="form-text text-muted">Each subcategory rule has its own requirement type. Set a default only if not using subcategory rules.</small>
                                         </div>
                                     </div>
+                                    
+                                    <div class="row">
+                                        <div class="col-md-6 form-group">
+                                            <label for="required_value">Required Value*</label>
+                                            <input type="number" class="form-control" id="required_value" name="required_value" value="<?php echo (int)$standard['required_value']; ?>" required min="0">
+                                            <small class="form-text text-muted" id="requiredValueHelp">Number of cases/items required</small>
+                                        </div>
+                                        <div class="col-md-6 form-group" id="minimumThresholdContainer" style="display:none;">
+                                            <label for="minimum_threshold">Minimum Threshold per Case*</label>
+                                            <input type="number" class="form-control" id="minimum_threshold" name="minimum_threshold" value="<?php echo (int)($standard['minimum_threshold'] ?? 0); ?>" min="0" step="0.1" required>
+                                            <small class="form-text text-muted">Minimum value each case must meet (e.g., 5 hours)</small>
+                                        </div>
+                                    </div>
                                     <div class="form-group">
                                         <label for="parent_standard_id">Parent Standard (for nested rules)</label>
                                         <select class="form-control" id="parent_standard_id" name="parent_standard_id">
@@ -312,21 +325,6 @@ if ($usingSupabase) {
                                     <small class="form-text text-muted">Create specific rules for individual subcategory values. Each rule can have different requirement types and values. These rules will be applied to the selected subcategory values.</small>
                                 </fieldset>
 
-                                <fieldset class="mb-3">
-                                    <legend class="h6 mb-3">Requirements</legend>
-                                    <div class="row">
-                                        <div class="col-md-6 form-group">
-                                            <label for="required_value">Required Value*</label>
-                                            <input type="number" class="form-control" id="required_value" name="required_value" value="<?php echo (int)$standard['required_value']; ?>" required min="0">
-                                            <small class="form-text text-muted" id="requiredValueHelp">Number of cases/items required</small>
-                                        </div>
-                                        <div class="col-md-6 form-group" id="minimumThresholdContainer" style="display:none;">
-                                            <label for="minimum_threshold">Minimum Threshold per Case*</label>
-                                            <input type="number" class="form-control" id="minimum_threshold" name="minimum_threshold" value="<?php echo (int)($standard['minimum_threshold'] ?? 0); ?>" min="0" step="0.1" required>
-                                            <small class="form-text text-muted">Minimum value each case must meet (e.g., 5 hours)</small>
-                                        </div>
-                                    </div>
-                                </fieldset>
 
                                 <fieldset class="mb-3">
                                     <legend class="h6 mb-3">Status</legend>
@@ -387,31 +385,14 @@ $(document).ready(function() {
                     try {
                         var rules = JSON.parse(jsonPart);
                         if (Array.isArray(rules)) {
-                            // Merge rules from this set
-                            for (var j = 0; j < rules.length; j++) {
-                                var rule = rules[j];
-                                if (rule.subfield_value && rule.requirement_type && rule.specific_value) {
-                                    existingSubfieldRules.push(rule);
-                                }
-                            }
+                            // Preserve structure including any_of groups
+                            rules.forEach(function(rule){ existingSubfieldRules.push(rule); });
                         }
                     } catch (parseError) {
                         console.error('❌ Error parsing rule set ' + (i + 1) + ':', parseError);
                     }
                 }
             }
-            
-            // Remove duplicates based on subfield_value
-            var uniqueRules = [];
-            var seenValues = [];
-            for (var k = 0; k < existingSubfieldRules.length; k++) {
-                var rule = existingSubfieldRules[k];
-                if (seenValues.indexOf(rule.subfield_value) === -1) {
-                    uniqueRules.push(rule);
-                    seenValues.push(rule.subfield_value);
-                }
-            }
-            existingSubfieldRules = uniqueRules;
             
             console.log('📋 Loaded existing subfield rules:', existingSubfieldRules);
         } else {
@@ -586,7 +567,7 @@ $(document).ready(function() {
                         ${getAvailableSubfieldOptions()}
                     </select>
                     <small class="form-text text-muted">Choose one subcategory value for this rule</small>
-                            </div>
+                </div>
                 <div class="rule-col">
                     <select class="form-control" name="subfield_rules[${ruleIndex}][requirement_type]" required>
                         <option value="">-- Select Rule Type --</option>
@@ -601,10 +582,14 @@ $(document).ready(function() {
                     <input type="text" class="form-control" name="subfield_rules[${ruleIndex}][specific_value]" placeholder="e.g., 100 or 18-64" required>
                     <input type="number" class="form-control mt-1" name="subfield_rules[${ruleIndex}][minimum_threshold]" placeholder="Min per case (e.g., 5)" min="0" step="0.1" style="display:none;">
                     <small class="form-text text-muted">The value this rule must meet</small>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm add-or-alt" data-rule="${ruleIndex}">Add OR alternative</button>
+                        <div class="or-alts" data-rule="${ruleIndex}"></div>
+                    </div>
                 </div>
                 <div class="rule-col-actions">
                     <button type="button" class="remove-rule-btn" onclick="removeSubfieldRule(${ruleIndex})">×</button>
-</div>
+                </div>
                 `;
         
         console.log('   Appending new row to container');
@@ -669,6 +654,10 @@ $(document).ready(function() {
                     <input type="text" class="form-control" name="subfield_rules[${ruleIndex}][specific_value]" placeholder="e.g., 100 or 18-64" required>
                     <input type="number" class="form-control mt-1" name="subfield_rules[${ruleIndex}][minimum_threshold]" placeholder="Min per case (e.g., 5)" min="0" step="0.1" style="display:none;">
                     <small class="form-text text-muted">The value this rule must meet</small>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm add-or-alt" data-rule="${ruleIndex}">Add OR alternative</button>
+                        <div class="or-alts" data-rule="${ruleIndex}"></div>
+                    </div>
                 </div>
                 <div class="rule-col-actions">
                     <button type="button" class="remove-rule-btn" onclick="removeSubfieldRule(${ruleIndex})">×</button>
@@ -710,9 +699,25 @@ $(document).ready(function() {
         
         // Populate the form fields with existing data
         console.log('   Populating form fields with existing data');
-        $newSelect.val(ruleData.subfield_value).trigger('change');
-        $newSelect.closest('.subfield-rule-row').find('select[name*="[requirement_type]"]').val(ruleData.requirement_type);
-        $newSelect.closest('.subfield-rule-row').find('input[name*="[specific_value]"]').val(ruleData.specific_value);
+        if (ruleData.any_of && Array.isArray(ruleData.any_of)) {
+            // Use first as base, others as OR alts
+            var base = ruleData.any_of[0];
+            $newSelect.val(base.subfield_value).trigger('change');
+            $newSelect.closest('.subfield-rule-row').find('select[name*="[requirement_type]"]').val(base.requirement_type);
+            $newSelect.closest('.subfield-rule-row').find('input[name*="[specific_value]"]').val(base.specific_value);
+            if (base.requirement_type === 'PER_CASE_MINIMUM' && base.minimum_threshold) {
+                var $minThreshold = $newSelect.closest('.subfield-rule-row').find('input[name*="[minimum_threshold]"]');
+                $minThreshold.show().prop('required', true).prop('disabled', false).val(base.minimum_threshold);
+            }
+            // Add OR alts
+            for (var i = 1; i < ruleData.any_of.length; i++) {
+                window.addOrAlternative(ruleIndex, ruleData.any_of[i]);
+            }
+        } else {
+            $newSelect.val(ruleData.subfield_value).trigger('change');
+            $newSelect.closest('.subfield-rule-row').find('select[name*="[requirement_type]"]').val(ruleData.requirement_type);
+            $newSelect.closest('.subfield-rule-row').find('input[name*="[specific_value]"]').val(ruleData.specific_value);
+        }
         
         // Handle minimum threshold for existing data
         if (ruleData.requirement_type === 'PER_CASE_MINIMUM') {
@@ -839,6 +844,64 @@ $(document).ready(function() {
             console.error('Stack trace:', e.stack);
         }
     };
+
+    // Add OR alternative row for a given rule
+    window.addOrAlternative = function(ruleIndex, data) {
+        var $container = $(".or-alts[data-rule='" + ruleIndex + "']");
+        // Reserve index 0 for the base rule we inject at submit-time
+        var altIdx = $container.find('.or-alt').length + 1;
+        var html = `
+            <div class="mt-2 d-flex align-items-center or-alt" data-alt="${altIdx}">
+                <span class="mx-1">OR</span>
+                <select class="form-control subfield-select ml-2" style="max-width: 200px;" name="subfield_rules[${ruleIndex}][any_of][${altIdx}][subfield_value]">
+                    <option value="">-- Subcategory --</option>
+                    ${getAvailableSubfieldOptions()}
+                </select>
+                <select class="form-control ml-2" style="max-width: 180px;" name="subfield_rules[${ruleIndex}][any_of][${altIdx}][requirement_type]">
+                    <option value="TOTAL_COUNT">Total Count</option>
+                    <option value="UNIQUE_VALUES">Unique Values</option>
+                    <option value="UNIQUE_VALUES_IN_RANGE">Unique Values in Range</option>
+                    <option value="PER_CASE_MINIMUM">Per-Case Minimum</option>
+                </select>
+                <input type="text" class="form-control ml-2" style="max-width: 140px;" name="subfield_rules[${ruleIndex}][any_of][${altIdx}][specific_value]" placeholder="Value">
+                <input type="number" class="form-control ml-2" style="max-width: 140px; display:none;" name="subfield_rules[${ruleIndex}][any_of][${altIdx}][minimum_threshold]" placeholder="Min/case" step="0.1">
+                <button type="button" class="btn btn-link text-danger ml-2 remove-or-alt">remove</button>
+            </div>
+        `;
+        $container.append(html);
+        var $row = $container.children().last();
+        var $sel = $row.find('select.subfield-select');
+        $sel.select2({ placeholder: '-- Subcategory --', width: '200px', allowClear: true });
+        if (data) {
+            $sel.val(data.subfield_value).trigger('change');
+            $row.find('select[name*="[requirement_type]"]').val(data.requirement_type);
+            $row.find('input[name*="[specific_value]"]').val(data.specific_value);
+            if (data.requirement_type === 'PER_CASE_MINIMUM') {
+                var $mt = $row.find('input[name*="[minimum_threshold]"]');
+                $mt.show().prop('required', true).prop('disabled', false).val(data.minimum_threshold || '');
+            }
+        }
+        // toggle min threshold on change
+        $row.find('select[name*="[requirement_type]"]').on('change', function() {
+            var $mt = $row.find('input[name*="[minimum_threshold]"]');
+            if ($(this).val() === 'PER_CASE_MINIMUM') {
+                $mt.show().prop('required', true).prop('disabled', false);
+            } else {
+                $mt.hide().prop('required', false).prop('disabled', true).val('');
+            }
+        });
+    };
+
+    // Event: add OR alternative
+    $(document).on('click', '.add-or-alt', function() {
+        var ruleIndex = $(this).data('rule');
+        window.addOrAlternative(ruleIndex);
+    });
+
+    // Event: remove OR alternative
+    $(document).on('click', '.remove-or-alt', function() {
+        $(this).closest('.or-alt').remove();
+    });
 
     // Move removeSubfieldRule to global scope so it can be called from onclick
     window.removeSubfieldRule = function(ruleIndex) {
@@ -1000,25 +1063,52 @@ $(document).ready(function() {
         // Basic validation
         console.log('🔍 Running form validation');
         
+        
         // Custom validation for subfield rules
         var hasSubfieldRules = $('.subfield-rule-row').length > 0;
+        console.log(`🔍 Checking subfield rules: ${hasSubfieldRules ? 'Yes' : 'No'} (${$('.subfield-rule-row').length} rules)`);
+        
         if (hasSubfieldRules) {
             var validSubfieldRules = true;
-            $('.subfield-rule-row').each(function() {
+            $('.subfield-rule-row').each(function(index) {
                 var $row = $(this);
                 var subfieldValue = $row.find('.subfield-select').val();
                 var requirementType = $row.find('select[name*="[requirement_type]"]').val();
                 var specificValue = $row.find('input[name*="[specific_value]"]').val();
                 var minThreshold = $row.find('input[name*="[minimum_threshold]"]').val();
+                var orCount = $row.find('.or-alts .or-alt').length;
                 
-                if (!subfieldValue || !requirementType || !specificValue) {
+                console.log(`   Rule ${index + 1}: subfield=${subfieldValue}, type=${requirementType}, value=${specificValue}, threshold=${minThreshold}`);
+                
+                if ((!subfieldValue || !requirementType || !specificValue) && orCount === 0) {
+                    console.log(`   ❌ Rule ${index + 1} missing required fields`);
                     validSubfieldRules = false;
                     return false;
                 }
                 
                 if (requirementType === 'PER_CASE_MINIMUM' && (!minThreshold || parseFloat(minThreshold) <= 0)) {
+                    console.log(`   ❌ Rule ${index + 1} missing valid minimum threshold`);
                     validSubfieldRules = false;
                     return false;
+                }
+
+                // Validate OR alternatives if present
+                if (orCount > 0) {
+                    var orValid = true;
+                    $row.find('.or-alts .or-alt').each(function() {
+                        var $alt = $(this);
+                        var altSub = $alt.find('select[name*="[subfield_value]"]').val();
+                        var altType = $alt.find('select[name*="[requirement_type]"]').val();
+                        var altVal  = $alt.find('input[name*="[specific_value]"]').val();
+                        var altMin  = $alt.find('input[name*="[minimum_threshold]"]').val();
+                        if (!altSub || !altType || !altVal) { orValid = false; return false; }
+                        if (altType === 'PER_CASE_MINIMUM' && (!altMin || parseFloat(altMin) <= 0)) { orValid = false; return false; }
+                    });
+                    if (!orValid) {
+                        console.log(`   ❌ Rule ${index + 1} has invalid OR alternative`);
+                        validSubfieldRules = false;
+                        return false;
+                    }
                 }
             });
             
@@ -1026,11 +1116,39 @@ $(document).ready(function() {
                 console.log('❌ Subfield rules validation failed');
                 alert('Please complete all subfield rules properly.');
                 return;
+            } else {
+                console.log('✅ Subfield rules validation passed');
             }
         }
         
         if (this.checkValidity() === false) {
             console.log('❌ Form validation failed');
+            
+            // Log which fields are invalid
+            var invalidFields = [];
+            $(this).find('input:invalid, select:invalid, textarea:invalid').each(function() {
+                var fieldName = $(this).attr('name') || $(this).attr('id') || 'unknown';
+                var fieldValue = $(this).val();
+                var fieldType = $(this).attr('type') || $(this).prop('tagName').toLowerCase();
+                var isRequired = $(this).prop('required');
+                var isDisabled = $(this).prop('disabled');
+                var isVisible = $(this).is(':visible');
+                
+                console.log(`   Invalid field: ${fieldName} (${fieldType})`);
+                console.log(`     Value: "${fieldValue}"`);
+                console.log(`     Required: ${isRequired}, Disabled: ${isDisabled}, Visible: ${isVisible}`);
+                
+                invalidFields.push({
+                    name: fieldName,
+                    type: fieldType,
+                    value: fieldValue,
+                    required: isRequired,
+                    disabled: isDisabled,
+                    visible: isVisible
+                });
+            });
+            
+            console.log('   All invalid fields:', invalidFields);
             $(this).addClass('was-validated');
             return;
         }
@@ -1045,10 +1163,65 @@ $(document).ready(function() {
             $('#stid').prop('disabled', true);
         }
         
+        // AND/OR transform: consolidate base + OR alts into any_of[] with continuous indices
+        $('.subfield-rule-row').each(function(index) {
+            var $row = $(this);
+            var $orContainer = $row.find('.or-alts');
+            if (!($orContainer.length && $orContainer.children('.or-alt').length > 0)) return;
+
+            var anyOfItems = [];
+            var baseSub = $row.find('select.subfield-select').first().val();
+            var baseType = $row.find('select[name*="[requirement_type]"]').first().val();
+            var baseVal  = $row.find('input[name*="[specific_value]"]').first().val();
+            var baseMin  = $row.find('input[name*="[minimum_threshold]"]').first().val();
+            if (baseSub && baseType && baseVal) {
+                var baseObj = { subfield_value: baseSub, requirement_type: baseType, specific_value: baseVal };
+                if (baseType === 'PER_CASE_MINIMUM' && baseMin) baseObj.minimum_threshold = baseMin;
+                anyOfItems.push(baseObj);
+            }
+            $orContainer.find('.or-alt').each(function() {
+                var $alt = $(this);
+                var altSub = $alt.find('select[name*="[subfield_value]"]').val();
+                var altType = $alt.find('select[name*="[requirement_type]"]').val();
+                var altVal  = $alt.find('input[name*="[specific_value]"]').val();
+                var altMin  = $alt.find('input[name*="[minimum_threshold]"]').val();
+                if (altSub && altType && altVal) {
+                    var altObj = { subfield_value: altSub, requirement_type: altType, specific_value: altVal };
+                    if (altType === 'PER_CASE_MINIMUM' && altMin) altObj.minimum_threshold = altMin;
+                    anyOfItems.push(altObj);
+                }
+            });
+
+            // Remove any pre-existing any_of hidden inputs
+            $row.find('input[name^="subfield_rules['+index+'][any_of]"]').remove();
+            // Disable visible inputs to prevent duplicate serialization
+            $row.find('select, input').prop('disabled', true);
+
+            // Append consolidated any_of hidden inputs with continuous indices
+            var hiddenHtml = '';
+            for (var i = 0; i < anyOfItems.length; i++) {
+                var it = anyOfItems[i];
+                hiddenHtml += `<input type="hidden" name="subfield_rules[${index}][any_of][${i}][subfield_value]" value="${it.subfield_value}">`;
+                hiddenHtml += `<input type="hidden" name="subfield_rules[${index}][any_of][${i}][requirement_type]" value="${it.requirement_type}">`;
+                hiddenHtml += `<input type="hidden" name="subfield_rules[${index}][any_of][${i}][specific_value]" value="${String(it.specific_value).replace(/\"/g,'&quot;')}">`;
+                if (it.requirement_type === 'PER_CASE_MINIMUM' && it.minimum_threshold) {
+                    hiddenHtml += `<input type="hidden" name="subfield_rules[${index}][any_of][${i}][minimum_threshold]" value="${it.minimum_threshold}">`;
+                }
+            }
+            $row.append(hiddenHtml);
+        });
+
         // Disable hidden required fields to prevent validation errors
         $('#minimum_threshold').prop('disabled', $('#minimumThresholdContainer').is(':hidden'));
         $('.subfield-rule-row input[name*="[minimum_threshold]"]').each(function() {
             $(this).prop('disabled', $(this).is(':hidden'));
+        });
+        
+        // Also disable any other hidden required fields
+        $(this).find('input[required], select[required], textarea[required]').each(function() {
+            if ($(this).is(':hidden')) {
+                $(this).prop('disabled', true);
+            }
         });
         
         // Handle minimum threshold validation

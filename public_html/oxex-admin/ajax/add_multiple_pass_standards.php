@@ -51,6 +51,7 @@ try {
     $supabase_pdo->beginTransaction();
 
     $created_count = 0;
+    $created = [];
     $errors = [];
 
     foreach ($standards as $index => $standard) {
@@ -92,7 +93,12 @@ try {
 
         // Insert the standard
         $stmt = $supabase_pdo->prepare(
-            "INSERT INTO pass_standards (standard_name, tbid, stid, requirement_type, required_value, field_value, parent_standard_id, is_active, who_by, date_added) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, EXTRACT(EPOCH FROM NOW()))"
+            "INSERT INTO pass_standards (
+                standard_name, tbid, stid, requirement_type, required_value, field_value,
+                parent_standard_id, is_active, who_by, date_added
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, EXTRACT(EPOCH FROM NOW())
+            ) RETURNING psid"
         );
 
         $stid = !empty($standard['stid']) ? (int)$standard['stid'] : null;
@@ -109,7 +115,47 @@ try {
             $is_active,
             $usrkey
         ])) {
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $newId = $row['psid'] ?? null;
+
+            // Fallback 1: try sequence currval for this table/column (same session)
+            if (empty($newId)) {
+                try {
+                    $seqStmt = $supabase_pdo->query("SELECT currval(pg_get_serial_sequence('pass_standards','psid')) AS psid");
+                    $seqRow = $seqStmt ? $seqStmt->fetch(PDO::FETCH_ASSOC) : null;
+                    if ($seqRow && !empty($seqRow['psid'])) {
+                        $newId = (int)$seqRow['psid'];
+                    }
+                } catch (Exception $e) {
+                    // ignore and try next fallback
+                }
+            }
+
+            // Fallback 2: if RETURNING/currval fails, try to resolve deterministically
+            if (empty($newId)) {
+                try {
+                    $fallback = $supabase_pdo->prepare(
+                        "SELECT psid FROM pass_standards 
+                         WHERE standard_name = ? AND tbid = ? AND who_by = ? AND date_added = (SELECT MAX(date_added) FROM pass_standards WHERE standard_name = ? AND tbid = ? AND who_by = ?)
+                         ORDER BY date_added DESC, psid DESC LIMIT 1"
+                    );
+                    $fallback->execute([$standard['standard_name'], $tbid, $usrkey, $standard['standard_name'], $tbid, $usrkey]);
+                    $fb = $fallback->fetch(PDO::FETCH_ASSOC);
+                    if ($fb && !empty($fb['psid'])) {
+                        $newId = (int)$fb['psid'];
+                    }
+                } catch (Exception $e) {
+                    // ignore; will proceed without id
+                }
+            }
+
             $created_count++;
+            if (!empty($newId)) {
+                $created[] = [
+                    'psid' => $newId,
+                    'standard_name' => $standard['standard_name']
+                ];
+            }
         } else {
             $errors[] = "Failed to create standard '" . $standard['standard_name'] . "'";
         }
@@ -134,7 +180,7 @@ try {
         'message' => "Successfully created {$created_count} pass standard(s)."
     ];
 
-    echo json_encode(['status' => 'success']);
+    echo json_encode(['status' => 'success', 'created_count' => $created_count, 'created' => $created]);
 
 } catch (Exception $e) {
     // Rollback transaction on error

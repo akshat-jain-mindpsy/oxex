@@ -43,12 +43,35 @@ if (!empty($subfield_rules) && is_array($subfield_rules)) {
     // Process subfield rules and store as JSON
     $processed_rules = [];
     foreach ($subfield_rules as $rule) {
-        if (!empty($rule['subfield_values']) && !empty($rule['requirement_type']) && !empty($rule['specific_value'])) {
-            $processed_rules[] = [
+        // Support OR groups via any_of[]
+        if (!empty($rule['any_of']) && is_array($rule['any_of'])) {
+            $group = [];
+            foreach ($rule['any_of'] as $alt) {
+                if (!empty($alt['subfield_value']) && !empty($alt['requirement_type']) && !empty($alt['specific_value'])) {
+                    $alt_rule = [
+                        'subfield_value' => $alt['subfield_value'],
+                        'requirement_type' => $alt['requirement_type'],
+                        'specific_value' => $alt['specific_value']
+                    ];
+                    if (!empty($alt['minimum_threshold'])) {
+                        $alt_rule['minimum_threshold'] = $alt['minimum_threshold'];
+                    }
+                    $group[] = $alt_rule;
+                }
+            }
+            if (!empty($group)) {
+                $processed_rules[] = [ 'any_of' => $group ];
+            }
+        } elseif (!empty($rule['subfield_values']) && !empty($rule['requirement_type']) && !empty($rule['specific_value'])) {
+            $processed_rule = [
                 'subfield_value' => $rule['subfield_values'], // Single value now
                 'requirement_type' => $rule['requirement_type'],
                 'specific_value' => $rule['specific_value']
             ];
+            if (!empty($rule['minimum_threshold'])) {
+                $processed_rule['minimum_threshold'] = $rule['minimum_threshold'];
+            }
+            $processed_rules[] = $processed_rule;
         }
     }
     
@@ -87,7 +110,7 @@ $date_added = time();
 
 $sql = "INSERT INTO pass_standards 
             (standard_name, tbid, stid, requirement_type, required_value, field_value, parent_standard_id, is_active, who_by, date_added) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING psid";
 
 $stmt = $supabase_pdo->prepare($sql);
 if ($stmt->execute([
@@ -102,13 +125,60 @@ if ($stmt->execute([
     $usrkey,
     $date_added
 ])) {
-    if ($stmt->rowCount() > 0) {
+    // Fetch RETURNING psid without relying on rowCount (unreliable for SELECT/RETURNING)
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    $new_id = $result['psid'] ?? null;
+
+    // Fallback 1a: try PDO lastInsertId with known sequence name
+    if (empty($new_id)) {
+        try {
+            $liid = $supabase_pdo->lastInsertId('pass_standards_psid_seq');
+            if (!empty($liid)) {
+                $new_id = (int)$liid;
+            }
+        } catch (Exception $e) {
+            // ignore and try next fallback
+        }
+    }
+
+    // Fallback 1b: try sequence currval for this table/column (same session)
+    if (empty($new_id)) {
+        try {
+            $seqStmt = $supabase_pdo->query("SELECT currval(pg_get_serial_sequence('pass_standards','psid')) AS psid");
+            $seqRow = $seqStmt ? $seqStmt->fetch(PDO::FETCH_ASSOC) : null;
+            if ($seqRow && !empty($seqRow['psid'])) {
+                $new_id = (int)$seqRow['psid'];
+            }
+        } catch (Exception $e) {
+            // ignore and try next fallback
+        }
+    }
+
+    // Fallback 2: in case RETURNING/currval failed, try to resolve deterministically
+    if (empty($new_id)) {
+        try {
+            $fallback = $supabase_pdo->prepare(
+                "SELECT psid FROM pass_standards 
+                 WHERE standard_name = ? AND tbid = ? AND who_by = ? AND date_added = ?
+                 ORDER BY date_added DESC, psid DESC LIMIT 1"
+            );
+            $fallback->execute([$standard_name, $tbid, $usrkey, $date_added]);
+            $fb = $fallback->fetch(PDO::FETCH_ASSOC);
+            if ($fb && !empty($fb['psid'])) {
+                $new_id = (int)$fb['psid'];
+            }
+        } catch (Exception $e) {
+            // ignore, will surface generic message below if still empty
+        }
+    }
+
+    if (!empty($new_id)) {
         $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'New pass standard added successfully.'];
         $response['status'] = 'success';
         $response['message'] = 'New pass standard added successfully.';
-        $response['new_id'] = $supabase_pdo->lastInsertId();
+        $response['new_id'] = $new_id;
     } else {
-        $response['message'] = 'Failed to add the new standard. No rows were affected.';
+        $response['message'] = 'Added, but failed to retrieve new ID. Please refresh the list.';
     }
 } else {
     $response['message'] = 'Database execution failed.';

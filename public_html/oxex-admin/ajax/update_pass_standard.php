@@ -44,12 +44,38 @@ if (!empty($subfield_rules) && is_array($subfield_rules)) {
     // Process subfield rules and store as JSON
     $processed_rules = [];
     foreach ($subfield_rules as $rule) {
-        if (!empty($rule['subfield_values']) && !empty($rule['requirement_type']) && !empty($rule['specific_value'])) {
-            $processed_rules[] = [
+        // Support OR groups via any_of[]
+        if (!empty($rule['any_of']) && is_array($rule['any_of'])) {
+            $group = [];
+            foreach ($rule['any_of'] as $alt) {
+                if (!empty($alt['subfield_value']) && !empty($alt['requirement_type']) && !empty($alt['specific_value'])) {
+                    $alt_rule = [
+                        'subfield_value' => $alt['subfield_value'],
+                        'requirement_type' => $alt['requirement_type'],
+                        'specific_value' => $alt['specific_value']
+                    ];
+                    if (!empty($alt['minimum_threshold'])) {
+                        $alt_rule['minimum_threshold'] = $alt['minimum_threshold'];
+                    }
+                    $group[] = $alt_rule;
+                }
+            }
+            if (!empty($group)) {
+                $processed_rules[] = [ 'any_of' => $group ];
+            }
+        } elseif (!empty($rule['subfield_values']) && !empty($rule['requirement_type']) && !empty($rule['specific_value'])) {
+            $processed_rule = [
                 'subfield_value' => $rule['subfield_values'], // Single value now
                 'requirement_type' => $rule['requirement_type'],
                 'specific_value' => $rule['specific_value']
             ];
+            
+            // Add minimum threshold if provided
+            if (!empty($rule['minimum_threshold'])) {
+                $processed_rule['minimum_threshold'] = $rule['minimum_threshold'];
+            }
+            
+            $processed_rules[] = $processed_rule;
         }
     }
     
@@ -73,10 +99,9 @@ if (!is_null($parent_standard_id)) {
         echo json_encode($response);
         exit;
     }
-    $parent_stmt = $pdo->prepare("SELECT tbid FROM pass_standards WHERE psid = ?");
+    $parent_stmt = $supabase_pdo->prepare("SELECT tbid FROM pass_standards WHERE psid = ?");
     $parent_stmt->execute([$parent_standard_id]);
     $parent_row = $parent_stmt->fetch(PDO::FETCH_ASSOC);
-    $parent_stmt->closeCursor();
     if (!$parent_row) {
         $response['message'] = 'Selected parent standard does not exist.';
         echo json_encode($response);
@@ -105,7 +130,7 @@ $sql = "UPDATE pass_standards SET
             date_modified = ?
         WHERE psid = ?";
 
-$stmt = $pdo->prepare($sql);
+$stmt = $supabase_pdo->prepare($sql);
 if ($stmt) {
     if ($stmt->execute([
         $standard_name, 
@@ -126,10 +151,7 @@ if ($stmt) {
     } else {
         $response['message'] = 'Database execution failed: ' . $stmt->errorInfo()[2];
     }
-    $stmt->closeCursor();
 } else {
-    $response['message'] = 'Database prepare statement failed: ' . $pdo->errorInfo()[2];
+    $response['message'] = 'Database prepare statement failed: ' . $supabase_pdo->errorInfo()[2];
 }
-
-$pdo = null;
 echo json_encode($response); 
