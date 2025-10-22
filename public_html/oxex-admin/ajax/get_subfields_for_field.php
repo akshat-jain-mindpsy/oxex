@@ -24,7 +24,7 @@ $subfields = [];
 
 // Get the actual subfield values from select_gen table
 // This represents the specific options/values for the selected field
-$sql = "SELECT pid, select_val 
+$sql = "SELECT pid, stid, select_val 
         FROM select_gen 
         WHERE stid = ? 
         ORDER BY select_val ASC";
@@ -34,7 +34,7 @@ $stmt->execute([$stid]);
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 foreach ($rows as $row) {
     $subfields[] = [
-        'pid' => $row['pid'],
+        'pid' => $row['pid'],   // Individual option ID for selection (this is what gets stored)
         'str' => $row['select_val'] // Using 'str' for consistency with existing code
     ];
 }

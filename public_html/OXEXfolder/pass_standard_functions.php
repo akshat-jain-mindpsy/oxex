@@ -336,10 +336,19 @@ function _evaluateSubfieldIndividualRule($main_rule, $subfield_rule, $traineeKey
     }
     
     // Add the subfield value condition
-    if (!empty($subfield_rule['subfield_value'])) {
-        $where_clauses[] = "select_val = ?";
-        $types .= 's';
-        $params[] = $subfield_rule['subfield_value'];
+    if (!empty($subfield_rule['subfield_value'] ?? '')) {
+        // Convert PID to STID for matching against trainee logs
+        $pid = $subfield_rule['subfield_value'];
+        $stid_query = "SELECT stid FROM select_gen WHERE pid = ?";
+        $stid_stmt = $pdo->prepare($stid_query);
+        $stid_stmt->execute([$pid]);
+        $stid_row = $stid_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($stid_row) {
+            $where_clauses[] = "stid = ?";
+            $types .= 'i';
+            $params[] = $stid_row['stid'];
+        }
     }
     
     // If this is a child rule, constrain the query to the parent's population of logkeys
@@ -356,7 +365,7 @@ function _evaluateSubfieldIndividualRule($main_rule, $subfield_rule, $traineeKey
     
     // Build the query based on requirement type
     $base_query = "";
-    switch ($subfield_rule['requirement_type']) {
+    switch ($subfield_rule['requirement_type'] ?? 'TOTAL_COUNT') {
         case 'UNIQUE_VALUES':
             $base_query = "SELECT COUNT(DISTINCT logkey) FROM trainee_log";
             break;
@@ -388,9 +397,9 @@ function _evaluateSubfieldIndividualRule($main_rule, $subfield_rule, $traineeKey
     $is_passed = ($current_value >= $required_value);
     
     return [
-        'subfield_value' => $subfield_rule['subfield_value'],
-        'subfield_name' => _getSubfieldName($subfield_rule['subfield_value'], $pdo),
-        'requirement_type' => $subfield_rule['requirement_type'],
+        'subfield_value' => $subfield_rule['subfield_value'] ?? '',
+        'subfield_name' => _getSubfieldName($subfield_rule['subfield_value'] ?? '', $pdo),
+        'requirement_type' => $subfield_rule['requirement_type'] ?? 'TOTAL_COUNT',
         'is_passed' => $is_passed,
         'current_value' => $current_value,
         'required_value' => $required_value
@@ -409,6 +418,7 @@ function _getSubfieldName($subfield_value, $pdo) {
         return 'Unknown';
     }
     
+    // Look up by pid in select_gen table to get the display name
     $query = "SELECT select_val FROM select_gen WHERE pid = ?";
     $stmt = $pdo->prepare($query);
     $stmt->execute([$subfield_value]);
@@ -471,4 +481,3 @@ function _getLogkeysForPassedRule($rule, $traineeKey, $pdo, $parent_population_l
     }
     return $logkeys;
 }
-?> 
