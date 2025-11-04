@@ -3,6 +3,7 @@ include '../../OXEXfolder/config.php';
 include '../../OXEXfolder/u_functions.php';
 sec_session_start();
 include '../incl/sess.php';
+require_once '../../OXEXfolder/PassStandard/autoload.php';
 
 // Only allow authorized admins
 if (login_check($pdo) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) {
@@ -13,9 +14,6 @@ if (login_check($pdo) !== true || ($admintype !== 'AT' && $admintype !== 'DV')) 
 
 header('Content-Type: application/json');
 
-// Log the incoming request for debugging
-error_log("UPDATE_PASS_STANDARD: Request received - " . json_encode($_POST));
-
 $response = ['status' => 'error', 'message' => 'An unknown error occurred.'];
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -24,134 +22,118 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// Get and sanitize data from POST request
-$psid = (int)($_POST['psid'] ?? 0);
-$standard_name = trim($_POST['standard_name'] ?? '');
-$tbid = (int)($_POST['tbid'] ?? 0);
-$requirement_type = trim($_POST['requirement_type'] ?? '');
-$required_value = (int)($_POST['required_value'] ?? 0);
-$is_active = isset($_POST['is_active']) ? 1 : 0;
-// Parent standard (optional)
-$parent_standard_id = isset($_POST['parent_standard_id']) && $_POST['parent_standard_id'] !== '' ? (int)$_POST['parent_standard_id'] : null;
-
-// Handle nullable fields: stid and field_value
-$stid = !empty($_POST['stid']) ? (int)$_POST['stid'] : null;
-$field_value = !empty($_POST['field_value']) ? trim($_POST['field_value']) : null;
-
-// Handle subfield rules - store as JSON in field_value
-$subfield_rules = isset($_POST['subfield_rules']) ? $_POST['subfield_rules'] : [];
-if (!empty($subfield_rules) && is_array($subfield_rules)) {
-    // Process subfield rules and store as JSON
-    $processed_rules = [];
-    foreach ($subfield_rules as $rule) {
-        // Support OR groups via any_of[]
-        if (!empty($rule['any_of']) && is_array($rule['any_of'])) {
-            $group = [];
-            foreach ($rule['any_of'] as $alt) {
-                if (!empty($alt['subfield_value']) && !empty($alt['requirement_type']) && !empty($alt['specific_value'])) {
-                    $alt_rule = [
-                        'subfield_value' => $alt['subfield_value'],
-                        'requirement_type' => $alt['requirement_type'],
-                        'specific_value' => $alt['specific_value']
-                    ];
-                    if (!empty($alt['minimum_threshold'])) {
-                        $alt_rule['minimum_threshold'] = $alt['minimum_threshold'];
-                    }
-                    $group[] = $alt_rule;
-                }
+try {
+    // Use the service layer to build and validate the DTO
+    $service = new PassStandardService();
+    $dto = $service->buildDtoFromRequest($_POST);
+    $service->validate($dto);
+    
+    // Convert DTO to legacy field_value format for storage
+    $field_value = $service->dtoToFieldValue($dto);
+    
+    // Handle simple field_value (non-JSON strings like "18-64")
+    if (empty($field_value) && !empty($_POST['field_value']) && strpos($_POST['field_value'], '{') !== 0 && strpos($_POST['field_value'], 'SUBFIELD_RULES:') !== 0) {
+        $field_value = trim($_POST['field_value']);
+    }
+    
+    // Determine stid (for backward compatibility with existing code)
+    $stid = null;
+    if (!empty($dto->rules)) {
+        // Try to derive stid from the first rule's subfield_value (pid)
+        $firstPid = null;
+        foreach ($dto->rules as $r) { if (!empty($r->subfield_value)) { $firstPid = (int)$r->subfield_value; break; } }
+        if ($firstPid) {
+            $q = $supabase_pdo->prepare('SELECT stid FROM select_gen WHERE pid = ?');
+            if ($q && $q->execute([$firstPid])) {
+                $rowSt = $q->fetch(PDO::FETCH_ASSOC);
+                if ($rowSt && !empty($rowSt['stid'])) { $stid = (int)$rowSt['stid']; }
             }
-            if (!empty($group)) {
-                $processed_rules[] = [ 'any_of' => $group ];
-            }
-        } elseif (!empty($rule['subfield_values']) && !empty($rule['requirement_type']) && !empty($rule['specific_value'])) {
-            $processed_rule = [
-                'subfield_value' => $rule['subfield_values'], // Single value now
-                'requirement_type' => $rule['requirement_type'],
-                'specific_value' => $rule['specific_value']
-            ];
-            
-            // Add minimum threshold if provided
-            if (!empty($rule['minimum_threshold'])) {
-                $processed_rule['minimum_threshold'] = $rule['minimum_threshold'];
-            }
-            
-            $processed_rules[] = $processed_rule;
+        }
+    } elseif (!empty($dto->categoryGroups)) {
+        // Category groups mode - stid is null
+        $stid = null;
+    } elseif (!empty($_POST['stid'])) {
+        $stid = (int)$_POST['stid'];
+    } elseif (!empty($_POST['stids']) && is_array($_POST['stids']) && count($_POST['stids']) > 0) {
+        // Multiple fields (OR condition) - stid is null
+        $stid = null;
+    }
+    
+    // If a parent is provided, ensure parent exists and is in the same table, and not self
+    if (!is_null($dto->parent_standard_id)) {
+        if ($dto->parent_standard_id === $dto->psid) {
+            throw new ValidationException('A standard cannot be its own parent.');
+        }
+        $parent_stmt = $supabase_pdo->prepare("SELECT tbid FROM pass_standards WHERE psid = ?");
+        $parent_stmt->execute([$dto->parent_standard_id]);
+        $parent_row = $parent_stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$parent_row) {
+            throw new ValidationException('Selected parent standard does not exist.');
+        }
+        if ((int)$parent_row['tbid'] !== (int)$dto->tbid) {
+            throw new ValidationException('Parent standard must belong to the same table.');
         }
     }
     
-    if (!empty($processed_rules)) {
-        // Always replace subfield rules - don't append
-        $field_value = 'SUBFIELD_RULES:' . json_encode($processed_rules);
+    $date_modified = time();
+    // The $usrkey variable comes from the included 'incl/sess.php' file
+    
+    $sql = "UPDATE pass_standards SET
+                standard_name = ?,
+                tbid = ?,
+                stid = ?,
+                requirement_type = ?,
+                required_value = ?,
+                minimum_threshold = ?,
+                field_value = ?,
+                parent_standard_id = ?,
+                is_active = ?,
+                who_by = ?,
+                date_modified = ?
+            WHERE psid = ?";
+    
+    $stmt = $supabase_pdo->prepare($sql);
+    if ($stmt) {
+        // Ensure integer fields are properly converted (null instead of empty string)
+        $stid_param = ($stid !== null && $stid !== '') ? (int)$stid : null;
+        $parent_id_param = ($dto->parent_standard_id !== null && $dto->parent_standard_id !== '') ? (int)$dto->parent_standard_id : null;
+        $tbid_param = (int)$dto->tbid; // tbid is required, should always have a value
+        $required_value_param = (int)$dto->required_value; // required_value is required
+        $minimum_threshold_param = ($dto->minimum_threshold !== null && $dto->minimum_threshold !== '') ? (float)$dto->minimum_threshold : null;
+        $psid_param = (int)$dto->psid; // psid is required for updates
+        
+        if ($stmt->execute([
+            $dto->standard_name, 
+            $tbid_param, 
+            $stid_param, 
+            $dto->requirement_type, 
+            $required_value_param,
+            $minimum_threshold_param,
+            $field_value,
+            $parent_id_param,
+            $dto->is_active ? 1 : 0, 
+            $usrkey, 
+            $date_modified,
+            $psid_param
+        ])) {
+            $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'Pass standard updated successfully.'];
+            $response['status'] = 'success';
+            $response['message'] = 'Pass standard updated successfully.';
+        } else {
+            throw new Exception('Database execution failed: ' . $stmt->errorInfo()[2]);
+        }
+    } else {
+        throw new Exception('Database prepare statement failed: ' . $supabase_pdo->errorInfo()[2]);
     }
-}
-
-// Basic validation
-if ($psid === 0 || empty($standard_name) || $tbid === 0 || empty($requirement_type)) {
-    $response['message'] = 'Invalid data provided. Please fill in all required fields.';
+} catch (ValidationException $ex) {
+    $response['message'] = $ex->getMessage();
+    echo json_encode($response);
+    exit;
+} catch (Exception $ex) {
+    error_log('UPDATE_PASS_STANDARD Error: ' . $ex->getMessage());
+    $response['message'] = $ex->getMessage();
     echo json_encode($response);
     exit;
 }
 
-// If a parent is provided, ensure parent exists and is in the same table, and not self
-if (!is_null($parent_standard_id)) {
-    if ($parent_standard_id === $psid) {
-        $response['message'] = 'A standard cannot be its own parent.';
-        echo json_encode($response);
-        exit;
-    }
-    $parent_stmt = $supabase_pdo->prepare("SELECT tbid FROM pass_standards WHERE psid = ?");
-    $parent_stmt->execute([$parent_standard_id]);
-    $parent_row = $parent_stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$parent_row) {
-        $response['message'] = 'Selected parent standard does not exist.';
-        echo json_encode($response);
-        exit;
-    }
-    if ((int)$parent_row['tbid'] !== (int)$tbid) {
-        $response['message'] = 'Parent standard must belong to the same table.';
-        echo json_encode($response);
-        exit;
-    }
-}
-
-$date_modified = time();
-// The $usrkey variable comes from the included 'incl/sess.php' file
-
-$sql = "UPDATE pass_standards SET
-            standard_name = ?,
-            tbid = ?,
-            stid = ?,
-            requirement_type = ?,
-            required_value = ?,
-            field_value = ?,
-            parent_standard_id = ?,
-            is_active = ?,
-            who_by = ?,
-            date_modified = ?
-        WHERE psid = ?";
-
-$stmt = $supabase_pdo->prepare($sql);
-if ($stmt) {
-    if ($stmt->execute([
-        $standard_name, 
-        $tbid, 
-        $stid, 
-        $requirement_type, 
-        $required_value, 
-        $field_value,
-        $parent_standard_id,
-        $is_active, 
-        $usrkey, 
-        $date_modified,
-        $psid
-    ])) {
-        $_SESSION['flash_message'] = ['type' => 'success', 'message' => 'Pass standard updated successfully.'];
-        $response['status'] = 'success';
-        $response['message'] = 'Pass standard updated successfully.';
-    } else {
-        $response['message'] = 'Database execution failed: ' . $stmt->errorInfo()[2];
-    }
-} else {
-    $response['message'] = 'Database prepare statement failed: ' . $supabase_pdo->errorInfo()[2];
-}
 echo json_encode($response); 

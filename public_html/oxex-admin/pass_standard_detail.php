@@ -152,6 +152,35 @@ if ($usingSupabase) {
             min-width: 0;
         }
         
+        .or-alts-wrapper {
+            padding: 10px 15px;
+            border-bottom: 1px solid #f1f3f4;
+            background: #fafbfc;
+        }
+        
+        .or-alts-wrapper .add-or-alt {
+            margin-bottom: 10px;
+        }
+        
+        .or-alts-wrapper .or-alt {
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 1.5fr 80px;
+            gap: 15px;
+            padding: 10px 0;
+            align-items: center;
+        }
+        
+        .or-alts-wrapper .or-alt:first-of-type {
+            padding-top: 0;
+        }
+        
+        @media (max-width: 768px) {
+            .or-alts-wrapper .or-alt {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+        }
+        
         .rule-col-actions {
             text-align: center;
         }
@@ -220,9 +249,9 @@ if ($usingSupabase) {
                                     </div>
                                     <div class="row">
                                         <div class="col-md-6 form-group">
-                                            <label for="tbid">Applies to Table*</label>
+                                            <label for="tbid">Applies to Sheet*</label>
                                             <select class="form-control" id="tbid" name="tbid" required>
-                                                <option value="">-- Select a Table --</option>
+                                                <option value="">-- Select a Sheet --</option>
                                                 <?php foreach($tables_result as $row): ?>
                                                     <option value="<?php echo $row['tbid']; ?>" <?php echo ($standard['tbid'] == $row['tbid']) ? 'selected' : ''; ?>>
                                                         <?php echo htmlspecialchars($row['tab_name']); ?>
@@ -231,15 +260,16 @@ if ($usingSupabase) {
                                             </select>
                                         </div>
                                         <div class="col-md-6 form-group">
-                                            <label for="requirement_type">Default Requirement Type (optional)</label>
+                                            <label for="requirement_type">Requirement Type</label>
                                             <select class="form-control" id="requirement_type" name="requirement_type">
-                                                <option value="TOTAL_HOURS" <?php echo ($standard['requirement_type'] == 'TOTAL_HOURS') ? 'selected' : ''; ?>>Total Hours</option>
+                                                <option value="TOTAL_HOURS" <?php echo ($standard['requirement_type'] == 'TOTAL_HOURS') ? 'selected' : ''; ?>>Total Hours (Single Source)</option>
+                                                <option value="TOTAL_HOURS_COMBINED" <?php echo ($standard['requirement_type'] == 'TOTAL_HOURS_COMBINED') ? 'selected' : ''; ?>>Combined Hours (Multiple Sources)</option>
                                                 <option value="UNIQUE_VALUES" <?php echo ($standard['requirement_type'] == 'UNIQUE_VALUES') ? 'selected' : ''; ?>>Unique Values</option>
                                                 <option value="TOTAL_COUNT" <?php echo ($standard['requirement_type'] == 'TOTAL_COUNT') ? 'selected' : ''; ?>>Total Count</option>
                                                 <option value="UNIQUE_VALUES_IN_RANGE" <?php echo ($standard['requirement_type'] == 'UNIQUE_VALUES_IN_RANGE') ? 'selected' : ''; ?>>Unique Values in Range</option>
                                                 <option value="PER_CASE_MINIMUM" <?php echo ($standard['requirement_type'] == 'PER_CASE_MINIMUM') ? 'selected' : ''; ?>>Per-Case Minimum</option>
                                             </select>
-                                            <small class="form-text text-muted">Each subcategory rule has its own requirement type. Set a default only if not using subcategory rules.</small>
+                                            <small class="form-text text-muted" id="requirementTypeHelp">Select how hours should be calculated</small>
                                         </div>
                                     </div>
                                     
@@ -272,7 +302,7 @@ if ($usingSupabase) {
                                 <fieldset class="mb-3" id="fieldDependentSection">
                                     <legend class="h6 mb-3">Category Logic</legend>
                                     <div class="form-group">
-                                        <label>How should the category/categories be checked?</label>
+                                        <label>How should the categories be checked?</label>
                                         <div class="form-check">
                                             <input class="form-check-input" type="radio" name="field_logic_mode" id="logicSingle" value="single" <?php echo (is_null($standard['stid']) && !empty($selected_or_fields)) ? '' : 'checked'; ?>>
                                             <label class="form-check-label" for="logicSingle">On a Single Category</label>
@@ -280,6 +310,16 @@ if ($usingSupabase) {
                                         <div class="form-check">
                                             <input class="form-check-input" type="radio" name="field_logic_mode" id="logicMultiple" value="multiple" <?php echo (is_null($standard['stid']) && !empty($selected_or_fields)) ? 'checked' : ''; ?>>
                                             <label class="form-check-label" for="logicMultiple">On Multiple Categories (OR condition)</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="field_logic_mode" id="logicCategoryGroups" value="category_groups" <?php echo (isset($standard['field_value']) && strpos($standard['field_value'], 'category_groups') !== false) ? 'checked' : ''; ?>>
+                                            <label class="form-check-label" for="logicCategoryGroups">Multiple Category Groups (AND condition)</label>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-group" id="categoryGroupsInfo" style="display:none;">
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-info-circle"></i> <strong>Multiple Category Groups:</strong> Define separate categories, each with their own requirements. All groups must pass (AND condition).
                                         </div>
                                     </div>
 
@@ -306,8 +346,56 @@ if ($usingSupabase) {
                                     </div>
                                 </fieldset>
 
-                                <fieldset class="mb-3" id="subfieldContainer" style="display:none;">
-                                    <legend class="h6 mb-3">Subcategory Rules (Optional)</legend>
+                                <fieldset class="mb-3" id="combinedHoursSources" style="display:none;">
+                                    <legend class="h6 mb-3">Sources to Combine</legend>
+                                    <div class="alert alert-info">
+                                        <strong>Info:</strong> Define multiple sources that will be summed together. Each source filters by a category and its specific value. You can set a maximum value cap (e.g., 40 hours) for any source - hours exceeding that cap will be limited.
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-borderless" id="hourSourcesTable">
+                                            <thead>
+                                                <tr>
+                                                    <th style="width: 30%;">Category Filter</th>
+                                                    <th style="width: 30%;">Category Value</th>
+                                                    <th style="width: 20%;">Max Value (Optional)</th>
+                                                    <th style="width: 20%;">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="hourSourcesContainer">
+                                                <tr class="hour-source-row">
+                                                    <td>
+                                                        <select class="form-control form-control-sm source-category-select" name="hour_sources[0][category_stid]" required>
+                                                            <option value="">-- Select Category --</option>
+                                                        </select>
+                                                        <small class="text-muted">Required</small>
+                                                    </td>
+                                                    <td>
+                                                        <select class="form-control form-control-sm source-value-select" name="hour_sources[0][category_value]" disabled>
+                                                            <option value="">-- No filter (all values) --</option>
+                                                        </select>
+                                                        <small class="text-muted">Optional - leave blank for all values</small>
+                                                    </td>
+                                                    <td>
+                                                        <input type="number" class="form-control form-control-sm source-max-value" name="hour_sources[0][max_value]" placeholder="e.g., 40" min="0" step="0.1">
+                                                        <small class="text-muted">Cap hours at this value (e.g., 40 max)</small>
+                                                    </td>
+                                                    <td>
+                                                        <button type="button" class="btn btn-sm btn-danger remove-source-btn">Remove</button>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <button type="button" id="addHourSourceBtn" class="btn btn-success btn-sm mt-2">
+                                        <i class="fa fa-plus"></i> Add Source
+                                    </button>
+                                </fieldset>
+
+                                <fieldset class="mb-3" id="singleSubfieldContainer" style="display:none;">
+                                    <legend class="h6 mb-3">Subcategory Rules</legend>
+                                    <div class="alert alert-info">
+                                        <strong>Info:</strong> Define specific requirements for subcategories within the selected category. You can add multiple rules and create OR conditions (alternatives).
+                                    </div>
                                     <div class="subfield-rules-table">
                                         <div class="subfield-rules-header">
                                             <div class="rule-col">Subcategory Value</div>
@@ -316,13 +404,27 @@ if ($usingSupabase) {
                                             <div class="rule-col-actions">Actions</div>
                                         </div>
                                         <div id="subfieldRulesContainer">
-                                            <!-- Rules will be added here dynamically -->
+                                            <!-- Subcategory rules will be added here for single category mode -->
                                         </div>
                                     </div>
-                                    <button type="button" id="addSubfieldRuleBtn" class="btn btn-success btn-sm mt-2">
-                                        <i class="fa fa-plus"></i> Add Rule
+                                    <button type="button" id="addSubfieldRuleBtn" class="btn btn-success btn-sm mt-2" style="display:none;">
+                                        <i class="fa fa-plus"></i> Add Subcategory Rule
                                     </button>
-                                    <small class="form-text text-muted">Create specific rules for individual subcategory values. Each rule can have different requirement types and values. These rules will be applied to the selected subcategory values.</small>
+                                </fieldset>
+
+                                <fieldset class="mb-3" id="subfieldContainer" style="display:none;">
+                                    <legend class="h6 mb-3">Category Groups & Subcategory Rules</legend>
+                                    <div class="alert alert-info">
+                                        <strong>Info:</strong> Define multiple category groups. Each group can have its own category and subcategory rules. All groups must pass (AND condition).
+                                    </div>
+                                    
+                                    <div id="categoryGroupsContainer">
+                                        <!-- Category groups will be added here -->
+                                    </div>
+                                    
+                                    <button type="button" id="addCategoryGroupBtn" class="btn btn-success btn-sm mt-3" style="display:none;">
+                                        <i class="fa fa-plus"></i> Add Another Category Group
+                                    </button>
                                 </fieldset>
 
 
@@ -333,6 +435,7 @@ if ($usingSupabase) {
                                         <label class="form-check-label" for="is_active">Standard is Active</label>
                                     </div>
                                 </fieldset>
+
 
                                 <div class="d-flex align-items-center">
                                     <button type="submit" class="btn btn-primary mr-2">Save Standard</button>
@@ -363,7 +466,7 @@ $(document).ready(function() {
     var selectedOrFields = <?php echo json_encode($selected_or_fields); ?>;
     
     // Parse existing subfield rules if editing - handle multiple SUBFIELD_RULES entries
-    var existingSubfieldRules = [];
+    window.existingSubfieldRules = [];
     <?php if ($is_editing && !empty($standard['field_value']) && strpos($standard['field_value'], 'SUBFIELD_RULES:') !== false): ?>
     try {
         var fieldValueData = <?php echo json_encode($standard['field_value']); ?>;
@@ -371,30 +474,26 @@ $(document).ready(function() {
         console.log('🔍 Contains SUBFIELD_RULES?:', fieldValueData.includes('SUBFIELD_RULES:'));
         
         if (fieldValueData.includes('SUBFIELD_RULES:')) {
-            // Split by | to get individual rule sets
-            var ruleSets = fieldValueData.split('|');
-            console.log('🔍 Rule sets found:', ruleSets.length);
+            // Extract JSON part after SUBFIELD_RULES:
+            var jsonPart = fieldValueData.replace(/^SUBFIELD_RULES:/, '').trim();
+            console.log('🔍 JSON part extracted:', jsonPart);
             
-            // Process each rule set
-            for (var i = 0; i < ruleSets.length; i++) {
-                var ruleSet = ruleSets[i];
-                if (ruleSet.includes('SUBFIELD_RULES:')) {
-                    var jsonPart = ruleSet.replace('SUBFIELD_RULES:', '').trim();
-                    console.log('🔍 Processing rule set ' + (i + 1) + ':', jsonPart);
-                    
-                    try {
-                        var rules = JSON.parse(jsonPart);
-                        if (Array.isArray(rules)) {
-                            // Preserve structure including any_of groups
-                            rules.forEach(function(rule){ existingSubfieldRules.push(rule); });
-                        }
-                    } catch (parseError) {
-                        console.error('❌ Error parsing rule set ' + (i + 1) + ':', parseError);
-                    }
+            try {
+                var rules = JSON.parse(jsonPart);
+                console.log('🔍 Parsed rules:', rules);
+                
+                if (Array.isArray(rules)) {
+                    // Preserve structure including any_of groups
+                    window.existingSubfieldRules = rules;
+                    console.log('📋 Loaded existing subfield rules:', window.existingSubfieldRules);
+                    console.log('📋 Number of rules:', window.existingSubfieldRules.length);
+                } else {
+                    console.warn('⚠️ Rules is not an array:', rules);
                 }
+            } catch (parseError) {
+                console.error('❌ Error parsing JSON:', parseError);
+                console.error('   JSON part was:', jsonPart);
             }
-            
-            console.log('📋 Loaded existing subfield rules:', existingSubfieldRules);
         } else {
             console.log('⚠️ No SUBFIELD_RULES found in field_value');
         }
@@ -402,7 +501,7 @@ $(document).ready(function() {
         console.error('❌ Error parsing existing subfield rules:', e);
         console.error('   Error details:', e.message);
         console.error('   Stack trace:', e.stack);
-        existingSubfieldRules = [];
+        window.existingSubfieldRules = [];
     }
     <?php else: ?>
     console.log('⚠️ Not in editing mode or no field_value or no SUBFIELD_RULES');
@@ -448,6 +547,10 @@ $(document).ready(function() {
 
         $.getJSON('ajax/get_fields_for_table.php', { tbid: tableId }, function(fields) {
             console.log('   Fields received from AJAX:', fields);
+            
+            // Store fields globally for use in hour sources and category filters
+            window.availableFields = fields;
+            
             $stidSelect.html('<option value="">-- Select a Field --</option>');
             $stidsMultiSelect.html(''); // Clear existing
 
@@ -458,6 +561,25 @@ $(document).ready(function() {
                 var multiOption = new Option(field.str, field.stid, false, false);
                 $stidsMultiSelect.append(multiOption);
             });
+            
+            // Update category filters
+            $('#categoryFiltersContainer select').each(function() {
+                var $select = $(this);
+                var currentValue = $select.val();
+                
+                $select.find('option').not(':first').remove();
+                
+                $.each(fields, function(index, field) {
+                    $select.append(new Option(field.str, field.stid, false, false));
+                });
+                
+                if (currentValue) {
+                    $select.val(currentValue);
+                }
+            });
+            
+            // Update hour sources with current fields
+            updateHourSourceCategories();
             
             console.log('   Field options added to stid select. Total options:', $stidSelect.find('option').length);
             console.log('   Available field options:', $stidSelect.find('option').map(function() { return {value: $(this).val(), text: $(this).text()}; }).get());
@@ -473,12 +595,8 @@ $(document).ready(function() {
         console.log('🔄 loadSubfieldsForField() called with fieldId:', fieldId);
         
         var $subfieldContainer = $('#subfieldContainer');
-        var $subfieldRulesContainer = $('#subfieldRulesContainer');
+        var $categoryGroupsContainer = $('#categoryGroupsContainer');
         var $mainFieldValueContainer = $('#mainFieldValueContainer');
-        
-        console.log('   Subfield container:', $subfieldContainer[0]);
-        console.log('   Subfield rules container:', $subfieldRulesContainer[0]);
-        console.log('   Main field value container:', $mainFieldValueContainer[0]);
         
         if (!fieldId) {
             console.log('   No fieldId provided, hiding subfield container');
@@ -488,88 +606,67 @@ $(document).ready(function() {
         }
 
         console.log('   Making AJAX call to get_subfields_for_field.php');
-        console.log('   Current fieldId parameter:', fieldId);
-        console.log('   Current stid select value:', $('#stid').val());
         
         // Get the actual subcategory values from select_gen table
         $.getJSON('ajax/get_subfields_for_field.php', { stid: fieldId }, function(subfields) {
             console.log('   AJAX response received:', subfields);
             
-            if (subfields && subfields.length > 0) {
-                console.log(`   Found ${subfields.length} subcategories, showing subcategory container`);
-                // Store subcategories globally for use in rule creation
-                window.availableSubfields = subfields;
-                console.log('   Stored subcategories in window.availableSubfields');
+            // Store subcategories globally
+            window.availableSubfields = subfields;
+            
+            // Show category groups container
+            $subfieldContainer.show();
+            $mainFieldValueContainer.hide();
+            
+            // Create first category group if none exist
+            if ($categoryGroupsContainer.find('.category-group').length === 0) {
+                console.log('   Creating first category group');
+                addCategoryGroup(0);
+                $('#addCategoryGroupBtn').show();
                 
-                $subfieldContainer.show();
-                $mainFieldValueContainer.hide(); // Hide main field value when using subfield rules
-                
-                console.log('   Clearing existing rules');
-                $subfieldRulesContainer.empty();
-                
-                // If editing and we have existing rules, populate them
-                if (existingSubfieldRules.length > 0) {
-                    console.log('   Populating existing subfield rules:', existingSubfieldRules.length);
-                    existingSubfieldRules.forEach(function(rule, index) {
-                        addSubfieldRuleWithData(rule, index);
-                    });
-                    
-                    // Check if there's additional field_value data beyond subfield rules
-                    var fieldValueData = <?php echo json_encode($standard['field_value'] ?? ''); ?>;
-                    if (fieldValueData && fieldValueData.includes('SUBFIELD_RULES:')) {
-                        var beforeSubfieldRules = fieldValueData.split('SUBFIELD_RULES:')[0].trim();
-                        if (beforeSubfieldRules) {
-                            console.log('   Populating existing field value:', beforeSubfieldRules);
-                            $('#field_value').val(beforeSubfieldRules);
-                        }
-                    }
-        } else {
-                    console.log('   Adding first rule (no existing rules)');
-                    addSubfieldRule();
-                }
-            } else {
-                console.log('   No subcategories found, hiding subcategory container');
-                $subfieldContainer.hide();
-                $mainFieldValueContainer.show(); // Show main field value when no subfields
-                
-                // If editing and we have existing field_value (not subcategory rules), populate it
-                if (existingSubfieldRules.length === 0 && <?php echo json_encode($standard['field_value'] ?? ''); ?>) {
-                    var existingFieldValue = <?php echo json_encode($standard['field_value'] ?? ''); ?>;
-                    if (existingFieldValue && !existingFieldValue.includes('SUBFIELD_RULES:')) {
-                        console.log('   Populating existing category value:', existingFieldValue);
-                        $('#field_value').val(existingFieldValue);
-                    }
-                }
+                // Store subcategories in first group
+                var $firstGroup = $categoryGroupsContainer.find('.category-group:first');
+                $firstGroup.data('subcategories', subfields);
             }
             
             if (callback) {
-                console.log('   Executing callback');
                 callback();
             }
         }).fail(function(xhr, status, error) {
             console.error('   AJAX call failed:', {xhr: xhr, status: status, error: error});
-            // If the AJAX call fails, assume no subfields
             $subfieldContainer.hide();
             $mainFieldValueContainer.show();
         });
     }
 
-    function addSubfieldRule() {
-        console.log('➕ addSubfieldRule() called');
-        var ruleIndex = $('.subfield-rule-row').length;
-        console.log(`   Creating rule ${ruleIndex + 1}`);
+    function addSubfieldRuleToGroup(groupIndex) {
+        console.log('➕ addSubfieldRuleToGroup() called for group:', groupIndex);
+        
+        var $group = $(`.category-group[data-group="${groupIndex}"]`);
+        var $rulesContainer = $group.find('.subfield-rules-group');
+        var ruleIndex = $rulesContainer.find('.subfield-rule-row').length;
+        
+        console.log(`   Creating rule ${ruleIndex + 1} for group ${groupIndex}`);
+        
+        var subfieldOptions = '';
+        var groupSubcategories = $group.data('subcategories');
+        if (groupSubcategories && groupSubcategories.length > 0) {
+            groupSubcategories.forEach(function(subfield) {
+                subfieldOptions += `<option value="${subfield.pid}">${subfield.str}</option>`;
+            });
+        }
         
         var ruleHtml = `
             <div class="subfield-rule-row" data-rule="${ruleIndex}">
                 <div class="rule-col">
-                    <select class="form-control subfield-select" name="subfield_rules[${ruleIndex}][subfield_values]">
+                    <select class="form-control subfield-select" name="category_groups[${groupIndex}][subfield_rules][${ruleIndex}][subfield_values]">
                         <option value="">-- Select One Subcategory Value --</option>
-                        ${getAvailableSubfieldOptions()}
+                        ${subfieldOptions}
                     </select>
                     <small class="form-text text-muted">Choose one subcategory value for this rule</small>
                 </div>
                 <div class="rule-col">
-                    <select class="form-control" name="subfield_rules[${ruleIndex}][requirement_type]" required>
+                    <select class="form-control" name="category_groups[${groupIndex}][subfield_rules][${ruleIndex}][requirement_type]" required>
                         <option value="">-- Select Rule Type --</option>
                         <option value="TOTAL_COUNT">Total Count</option>
                         <option value="UNIQUE_VALUES">Unique Values</option>
@@ -579,24 +676,25 @@ $(document).ready(function() {
                     <small class="form-text text-muted">What to count for this rule</small>
                 </div>
                 <div class="rule-col">
-                    <input type="text" class="form-control" name="subfield_rules[${ruleIndex}][specific_value]" placeholder="e.g., 100 or 18-64" required>
-                    <input type="number" class="form-control mt-1" name="subfield_rules[${ruleIndex}][minimum_threshold]" placeholder="Min per case (e.g., 5)" min="0" step="0.1" style="display:none;">
+                    <input type="text" class="form-control" name="category_groups[${groupIndex}][subfield_rules][${ruleIndex}][specific_value]" placeholder="e.g., 100 or 18-64" required>
+                    <input type="number" class="form-control mt-1" name="category_groups[${groupIndex}][subfield_rules][${ruleIndex}][minimum_threshold]" placeholder="Min per case (e.g., 5)" min="0" step="0.1" style="display:none;">
                     <small class="form-text text-muted">The value this rule must meet</small>
-                    <div class="mt-2">
-                        <button type="button" class="btn btn-outline-secondary btn-sm add-or-alt" data-rule="${ruleIndex}">Add OR alternative</button>
-                        <div class="or-alts" data-rule="${ruleIndex}"></div>
-                    </div>
                 </div>
                 <div class="rule-col-actions">
-                    <button type="button" class="remove-rule-btn" onclick="removeSubfieldRule(${ruleIndex})">×</button>
+                    <button type="button" class="remove-rule-btn" onclick="removeSubfieldRule(${ruleIndex}, ${groupIndex})">×</button>
                 </div>
-                `;
+            </div>
+            <div class="or-alts-wrapper" data-rule="${ruleIndex}" data-group="${groupIndex}">
+                <button type="button" class="btn btn-outline-secondary btn-sm add-or-alt" data-rule="${ruleIndex}" data-group="${groupIndex}">Add OR alternative</button>
+                <div class="or-alts" data-rule="${ruleIndex}" data-group="${groupIndex}"></div>
+            </div>
+            `;
         
-        console.log('   Appending new row to container');
-        $('#subfieldRulesContainer').append(ruleHtml);
+        console.log('   Appending new row to group container');
+        $rulesContainer.append(ruleHtml);
         
         // Initialize Select2 for the new subfield select
-        var $newSelect = $('#subfieldRulesContainer').find('.subfield-rule-row[data-rule="' + ruleIndex + '"] .subfield-select');
+        var $newSelect = $rulesContainer.find('.subfield-rule-row[data-rule="' + ruleIndex + '"] .subfield-select');
         console.log('   New select element:', $newSelect[0]);
         
         console.log('   Initializing Select2');
@@ -625,10 +723,10 @@ $(document).ready(function() {
             }
         });
         
-        console.log('✅ addSubfieldRule() completed');
+        console.log('✅ addSubfieldRuleToGroup() completed');
     }
     
-    function addSubfieldRuleWithData(ruleData, ruleIndex) {
+    function addSubfieldRuleWithData(ruleData, ruleIndex, groupIndex) {
         console.log('➕ addSubfieldRuleWithData() called with data:', ruleData, 'index:', ruleIndex);
         
         var ruleHtml = `
@@ -636,7 +734,7 @@ $(document).ready(function() {
                 <div class="rule-col">
                     <select class="form-control subfield-select" name="subfield_rules[${ruleIndex}][subfield_values]">
                         <option value="">-- Select One Subcategory Value --</option>
-                        ${getAvailableSubfieldOptions()}
+                        ${getAvailableSubfieldOptions(true)}
                     </select>
                     <small class="form-text text-muted">Choose one subcategory value for this rule</small>
                 </div>
@@ -654,14 +752,15 @@ $(document).ready(function() {
                     <input type="text" class="form-control" name="subfield_rules[${ruleIndex}][specific_value]" placeholder="e.g., 100 or 18-64" required>
                     <input type="number" class="form-control mt-1" name="subfield_rules[${ruleIndex}][minimum_threshold]" placeholder="Min per case (e.g., 5)" min="0" step="0.1" style="display:none;">
                     <small class="form-text text-muted">The value this rule must meet</small>
-                    <div class="mt-2">
-                        <button type="button" class="btn btn-outline-secondary btn-sm add-or-alt" data-rule="${ruleIndex}">Add OR alternative</button>
-                        <div class="or-alts" data-rule="${ruleIndex}"></div>
-                    </div>
                 </div>
                 <div class="rule-col-actions">
-                    <button type="button" class="remove-rule-btn" onclick="removeSubfieldRule(${ruleIndex})">×</button>
-</div>
+                    <button type="button" class="remove-rule-btn" onclick="removeSubfieldRule(${ruleIndex}, null)">×</button>
+                </div>
+            </div>
+            <div class="or-alts-wrapper" data-rule="${ruleIndex}">
+                <button type="button" class="btn btn-outline-secondary btn-sm add-or-alt" data-rule="${ruleIndex}">Add OR alternative</button>
+                <div class="or-alts" data-rule="${ruleIndex}"></div>
+            </div>
         `;
         
         console.log('   Appending new row to container');
@@ -670,6 +769,8 @@ $(document).ready(function() {
         // Initialize Select2 for the new subfield select
         var $newSelect = $('#subfieldRulesContainer').find('.subfield-rule-row[data-rule="' + ruleIndex + '"] .subfield-select');
         console.log('   New select element:', $newSelect[0]);
+        console.log('   Options in select before Select2:', $newSelect.find('option').length);
+        console.log('   Option values:', $newSelect.find('option').map(function() { return $(this).val(); }).get());
         
         console.log('   Initializing Select2');
         $newSelect.select2({
@@ -677,6 +778,8 @@ $(document).ready(function() {
             width: '100%',
             allowClear: true
         });
+        
+        console.log('   Options in select after Select2:', $newSelect.find('option').length);
         
         // Add change event to update available options in other rules
         console.log('   Adding change event listener');
@@ -697,65 +800,124 @@ $(document).ready(function() {
             }
         });
         
-        // Populate the form fields with existing data
+        // Populate the form fields with existing data (if provided)
         console.log('   Populating form fields with existing data');
-        if (ruleData.any_of && Array.isArray(ruleData.any_of)) {
-            // Use first as base, others as OR alts
-            var base = ruleData.any_of[0];
-            $newSelect.val(base.subfield_value).trigger('change');
-            $newSelect.closest('.subfield-rule-row').find('select[name*="[requirement_type]"]').val(base.requirement_type);
-            $newSelect.closest('.subfield-rule-row').find('input[name*="[specific_value]"]').val(base.specific_value);
-            if (base.requirement_type === 'PER_CASE_MINIMUM' && base.minimum_threshold) {
-                var $minThreshold = $newSelect.closest('.subfield-rule-row').find('input[name*="[minimum_threshold]"]');
-                $minThreshold.show().prop('required', true).prop('disabled', false).val(base.minimum_threshold);
-            }
-            // Add OR alts
-            for (var i = 1; i < ruleData.any_of.length; i++) {
-                window.addOrAlternative(ruleIndex, ruleData.any_of[i]);
-            }
-        } else {
-            $newSelect.val(ruleData.subfield_value).trigger('change');
-            $newSelect.closest('.subfield-rule-row').find('select[name*="[requirement_type]"]').val(ruleData.requirement_type);
-            $newSelect.closest('.subfield-rule-row').find('input[name*="[specific_value]"]').val(ruleData.specific_value);
+        if (!ruleData) {
+            console.log('   No rule data provided, creating empty rule');
+            return; // Exit early if no data - just created empty form
         }
         
-        // Handle minimum threshold for existing data
-        if (ruleData.requirement_type === 'PER_CASE_MINIMUM') {
-            var $minThreshold = $newSelect.closest('.subfield-rule-row').find('input[name*="[minimum_threshold]"]');
-            $minThreshold.show().prop('required', true).prop('disabled', false).val(ruleData.minimum_threshold || '');
-        } else {
-            var $minThreshold = $newSelect.closest('.subfield-rule-row').find('input[name*="[minimum_threshold]"]');
-            $minThreshold.hide().prop('required', false).prop('disabled', true);
-        }
+        // Wait a moment for Select2 to be fully initialized before setting values
+        setTimeout(function() {
+            if (ruleData.any_of && Array.isArray(ruleData.any_of)) {
+                // Use first as base, others as OR alts
+                var base = ruleData.any_of[0];
+                console.log('   Setting OR group base rule value:', base.subfield_value);
+                
+                // Ensure the option exists before setting
+                if (base.subfield_value) {
+                    var optionExists = $newSelect.find('option[value="' + base.subfield_value + '"]').length > 0;
+                    if (!optionExists && window.availableSubfields) {
+                        // Add the missing option
+                        var missingSub = window.availableSubfields.find(function(s) { return s.pid == base.subfield_value; });
+                        if (missingSub) {
+                            var newOption = new Option(missingSub.str, missingSub.pid, false, false);
+                            $newSelect.append(newOption);
+                        }
+                    }
+                }
+                
+                $newSelect.val(base.subfield_value);
+                // Trigger change for Select2
+                if ($newSelect.data('select2')) {
+                    $newSelect.trigger('change.select2');
+                } else {
+                    $newSelect.trigger('change');
+                }
+                $newSelect.closest('.subfield-rule-row').find('select[name*="[requirement_type]"]').val(base.requirement_type).trigger('change');
+                $newSelect.closest('.subfield-rule-row').find('input[name*="[specific_value]"]').val(base.specific_value);
+                if (base.requirement_type === 'PER_CASE_MINIMUM' && base.minimum_threshold) {
+                    var $minThreshold = $newSelect.closest('.subfield-rule-row').find('input[name*="[minimum_threshold]"]');
+                    $minThreshold.show().prop('required', true).prop('disabled', false).val(base.minimum_threshold);
+                }
+                // Add OR alts
+                for (var i = 1; i < ruleData.any_of.length; i++) {
+                    console.log('   Adding OR alternative', i);
+                    window.addOrAlternative(ruleIndex, ruleData.any_of[i]);
+                }
+            } else if (ruleData.subfield_value) {
+                // Single rule (not OR group) - set the value
+                console.log('   Setting single rule value:', ruleData.subfield_value);
+                
+                // Ensure the option exists before setting
+                if (ruleData.subfield_value) {
+                    var optionExists = $newSelect.find('option[value="' + ruleData.subfield_value + '"]').length > 0;
+                    if (!optionExists && window.availableSubfields) {
+                        // Add the missing option
+                        var missingSub = window.availableSubfields.find(function(s) { return s.pid == ruleData.subfield_value; });
+                        if (missingSub) {
+                            var newOption = new Option(missingSub.str, missingSub.pid, false, false);
+                            $newSelect.append(newOption);
+                        }
+                    }
+                }
+                
+                $newSelect.val(ruleData.subfield_value);
+                // Trigger change for Select2
+                if ($newSelect.data('select2')) {
+                    $newSelect.trigger('change.select2');
+                } else {
+                    $newSelect.trigger('change');
+                }
+                $newSelect.closest('.subfield-rule-row').find('select[name*="[requirement_type]"]').val(ruleData.requirement_type).trigger('change');
+                $newSelect.closest('.subfield-rule-row').find('input[name*="[specific_value]"]').val(ruleData.specific_value);
+                
+                // Handle minimum threshold for existing data
+                if (ruleData.requirement_type === 'PER_CASE_MINIMUM') {
+                    var $minThreshold = $newSelect.closest('.subfield-rule-row').find('input[name*="[minimum_threshold]"]');
+                    $minThreshold.show().prop('required', true).prop('disabled', false).val(ruleData.minimum_threshold || '');
+                }
+            }
+        }, 100);
         
         console.log('✅ addSubfieldRuleWithData() completed');
     }
 
-    function getAvailableSubfieldOptions() {
-        console.log('📋 getAvailableSubfieldOptions() called');
+    function getAvailableSubfieldOptions(includeAll) {
+        console.log('📋 getAvailableSubfieldOptions() called, includeAll:', includeAll);
         
-        if (!window.availableSubfields) {
+        if (!window.availableSubfields || window.availableSubfields.length === 0) {
             console.log('   No available subfields, returning empty string');
             return '';
         }
         
-        console.log('   Available subfields:', window.availableSubfields);
+        console.log('   Available subfields:', window.availableSubfields.length);
+        
+        // If includeAll is true, return all options (useful when creating new rows or loading existing data)
+        if (includeAll) {
+            var result = window.availableSubfields.map(function(subfield) {
+                return `<option value="${subfield.pid}">${subfield.str}</option>`;
+            }).join('');
+            console.log('   Generated HTML options (all):', result.length, 'chars');
+            return result;
+        }
+        
+        // Otherwise, filter out used values
         var usedValues = window.getUsedSubfieldValues();
         console.log('   Used values:', usedValues);
         
         var availableOptions = window.availableSubfields.filter(function(subfield) {
-            var isAvailable = !usedValues.includes(subfield.pid);
-            console.log(`   Subfield ${subfield.pid} (${subfield.str}): ${isAvailable ? 'available' : 'used'}`);
+            var isAvailable = !usedValues.includes(String(subfield.pid));
             return isAvailable;
         });
         
-        console.log('   Filtered available options:', availableOptions);
+        console.log('   Filtered available options:', availableOptions.length);
         
         var result = availableOptions.map(function(subfield) {
             return `<option value="${subfield.pid}">${subfield.str}</option>`;
         }).join('');
         
-        console.log('   Generated HTML options:', result);
+        console.log('   Generated HTML options:', result.length, 'chars');
         return result;
     }
 
@@ -792,7 +954,7 @@ $(document).ready(function() {
 
 
     
-    // Move rebuildAllSubfieldOptions to global scope
+    // Move rebuildAllSubfieldOptions to global scope - updated for category groups
     window.rebuildAllSubfieldOptions = function() {
         console.log('🔄 rebuildAllSubfieldOptions() called');
         console.log('📊 Current rule rows:', $('.subfield-rule-row').length);
@@ -800,7 +962,6 @@ $(document).ready(function() {
         try {
             var usedValues = window.getUsedSubfieldValues();
             console.log('🚫 Used values:', usedValues);
-            console.log('📋 Available subfields:', window.availableSubfields);
             
             $('.subfield-rule-row').each(function(index) {
                 console.log(`📝 Processing rule row ${index + 1}`);
@@ -811,6 +972,16 @@ $(document).ready(function() {
                 console.log(`   Select element:`, $select[0]);
                 console.log(`   Current value:`, currentValue);
                 
+                // Get the category group this rule belongs to
+                var $group = $select.closest('.category-group');
+                if (!$group.length) {
+                    console.log('   Rule not in category group, using global subfields');
+                    var subfields = window.availableSubfields;
+                } else {
+                    var subfields = $group.data('subcategories');
+                    console.log('📋 Available subfields for this group:', subfields);
+                }
+                
                 // Clear current options
                 var optionsBefore = $select.find('option').length;
                 $select.find('option:not(:first)').remove();
@@ -818,9 +989,9 @@ $(document).ready(function() {
                 console.log(`   Cleared options: ${optionsBefore} → ${optionsAfter}`);
                 
                 // Add available options
-                if (window.availableSubfields && Array.isArray(window.availableSubfields)) {
+                if (subfields && Array.isArray(subfields)) {
                     var addedOptions = 0;
-                    window.availableSubfields.forEach(function(subfield) {
+                    subfields.forEach(function(subfield) {
                         // Include current value and unused values
                         if (subfield.pid == currentValue || !usedValues.includes(subfield.pid)) {
                             var option = new Option(subfield.str, subfield.pid, false, false);
@@ -829,7 +1000,7 @@ $(document).ready(function() {
                         }
                     });
                     console.log(`   Added ${addedOptions} options`);
-            } else {
+                } else {
                     console.warn('   No available subfields or invalid format');
                 }
                 
@@ -850,28 +1021,44 @@ $(document).ready(function() {
         var $container = $(".or-alts[data-rule='" + ruleIndex + "']");
         // Reserve index 0 for the base rule we inject at submit-time
         var altIdx = $container.find('.or-alt').length + 1;
+        
+        // Check if this is category group mode or single mode
+        var $wrapper = $container.closest('.or-alts-wrapper');
+        var groupIndex = $wrapper.data('group');
+        var namePrefix = groupIndex !== undefined 
+            ? `category_groups[${groupIndex}][subfield_rules][${ruleIndex}][any_of][${altIdx}]`
+            : `subfield_rules[${ruleIndex}][any_of][${altIdx}]`;
+        
         var html = `
-            <div class="mt-2 d-flex align-items-center or-alt" data-alt="${altIdx}">
-                <span class="mx-1">OR</span>
-                <select class="form-control subfield-select ml-2" style="max-width: 200px;" name="subfield_rules[${ruleIndex}][any_of][${altIdx}][subfield_value]">
-                    <option value="">-- Subcategory --</option>
-                    ${getAvailableSubfieldOptions()}
-                </select>
-                <select class="form-control ml-2" style="max-width: 180px;" name="subfield_rules[${ruleIndex}][any_of][${altIdx}][requirement_type]">
-                    <option value="TOTAL_COUNT">Total Count</option>
-                    <option value="UNIQUE_VALUES">Unique Values</option>
-                    <option value="UNIQUE_VALUES_IN_RANGE">Unique Values in Range</option>
-                    <option value="PER_CASE_MINIMUM">Per-Case Minimum</option>
-                </select>
-                <input type="text" class="form-control ml-2" style="max-width: 140px;" name="subfield_rules[${ruleIndex}][any_of][${altIdx}][specific_value]" placeholder="Value">
-                <input type="number" class="form-control ml-2" style="max-width: 140px; display:none;" name="subfield_rules[${ruleIndex}][any_of][${altIdx}][minimum_threshold]" placeholder="Min/case" step="0.1">
-                <button type="button" class="btn btn-link text-danger ml-2 remove-or-alt">remove</button>
+            <div class="or-alt" data-alt="${altIdx}">
+                <div class="rule-col">
+                    <span class="mx-1" style="font-weight: 600; color: #495057;">OR</span>
+                    <select class="form-control subfield-select" name="${namePrefix}[subfield_value]">
+                        <option value="">-- Subcategory --</option>
+                        ${getAvailableSubfieldOptions(true)}
+                    </select>
+                </div>
+                <div class="rule-col">
+                    <select class="form-control" name="${namePrefix}[requirement_type]">
+                        <option value="TOTAL_COUNT">Total Count</option>
+                        <option value="UNIQUE_VALUES">Unique Values</option>
+                        <option value="UNIQUE_VALUES_IN_RANGE">Unique Values in Range</option>
+                        <option value="PER_CASE_MINIMUM">Per-Case Minimum</option>
+                    </select>
+                </div>
+                <div class="rule-col">
+                    <input type="text" class="form-control" name="${namePrefix}[specific_value]" placeholder="Value">
+                    <input type="number" class="form-control mt-1" name="${namePrefix}[minimum_threshold]" placeholder="Min/case" step="0.1" style="display:none;">
+                </div>
+                <div class="rule-col-actions">
+                    <button type="button" class="btn btn-link text-danger remove-or-alt" style="padding: 0; font-size: 14px;">remove</button>
+                </div>
             </div>
         `;
         $container.append(html);
         var $row = $container.children().last();
         var $sel = $row.find('select.subfield-select');
-        $sel.select2({ placeholder: '-- Subcategory --', width: '200px', allowClear: true });
+        $sel.select2({ placeholder: '-- Subcategory --', width: '100%', allowClear: true });
         if (data) {
             $sel.val(data.subfield_value).trigger('change');
             $row.find('select[name*="[requirement_type]"]').val(data.requirement_type);
@@ -904,33 +1091,105 @@ $(document).ready(function() {
     });
 
     // Move removeSubfieldRule to global scope so it can be called from onclick
-    window.removeSubfieldRule = function(ruleIndex) {
-        console.log('🗑️ removeSubfieldRule() called with index:', ruleIndex);
+    window.removeSubfieldRule = function(ruleIndex, groupIndex) {
+        console.log('🗑️ removeSubfieldRule() called with index:', ruleIndex, 'group:', groupIndex);
         
-        var $ruleToRemove = $('.subfield-rule-row[data-rule="' + ruleIndex + '"]');
+        var $ruleToRemove, $rulesContainer;
+        
+        if (groupIndex !== undefined && groupIndex !== null) {
+            // Category groups mode
+            var $group = $(`.category-group[data-group="${groupIndex}"]`);
+            $rulesContainer = $group.find('.subfield-rules-group');
+            $ruleToRemove = $rulesContainer.find('.subfield-rule-row[data-rule="' + ruleIndex + '"]');
+        } else {
+            // Single category mode
+            $rulesContainer = $('#subfieldRulesContainer');
+            $ruleToRemove = $rulesContainer.find('.subfield-rule-row[data-rule="' + ruleIndex + '"]');
+        }
+        
         console.log('   Rule to remove:', $ruleToRemove[0]);
+        
+        if ($ruleToRemove.length === 0) {
+            console.warn('   Rule not found');
+            return;
+        }
+        
+        // Also remove the associated OR alternatives wrapper
+        var $orWrapper = $ruleToRemove.next('.or-alts-wrapper');
+        if ($orWrapper.length) {
+            $orWrapper.remove();
+            console.log('   OR alternatives wrapper removed');
+        }
         
         $ruleToRemove.remove();
         console.log('   Rule removed from DOM');
         
         // Reindex remaining rules
-        console.log('   Reindexing remaining rules');
-        $('#subfieldRulesContainer').find('.subfield-rule-row').each(function(index) {
-            $(this).attr('data-rule', index);
-            $(this).find('select, input').each(function() {
-                var name = $(this).attr('name');
-                if (name) {
-                    $(this).attr('name', name.replace(/\[\d+\]/, '[' + index + ']'));
+        if (groupIndex !== undefined && groupIndex !== null) {
+            // Category groups mode
+            console.log('   Reindexing remaining rules in group', groupIndex);
+            $rulesContainer.find('.subfield-rule-row').each(function(index) {
+                var $row = $(this);
+                $row.attr('data-rule', index);
+                $row.find('select, input, button').each(function() {
+                    var name = $(this).attr('name');
+                    if (name) {
+                        $(this).attr('name', name.replace(/\[subfield_rules\]\[\d+\]/, '[subfield_rules][' + index + ']'));
+                    }
+                    var onclick = $(this).attr('onclick');
+                    if (onclick) {
+                        $(this).attr('onclick', onclick.replace(/removeSubfieldRule\(\d+,\s*\d+\)/, 'removeSubfieldRule(' + index + ',' + groupIndex + ')'));
+                    }
+                });
+                // Update OR wrapper
+                var $orWrapper = $row.next('.or-alts-wrapper');
+                if ($orWrapper.length) {
+                    $orWrapper.attr('data-rule', index);
+                    $orWrapper.find('.add-or-alt').attr('data-rule', index);
+                    $orWrapper.find('.or-alts').attr('data-rule', index);
+                    // Update name attributes in OR alternatives
+                    $orWrapper.find('select, input').each(function() {
+                        var name = $(this).attr('name');
+                        if (name) {
+                            var newName = name.replace(/category_groups\[\d+\]\[subfield_rules\]\[\d+\]/, 'category_groups[' + groupIndex + '][subfield_rules][' + index + ']');
+                            $(this).attr('name', newName);
+                        }
+                    });
                 }
             });
-            $(this).find('.remove-rule-btn').attr('onclick', 'removeSubfieldRule(' + index + ')');
-        });
-        
-        console.log('   Rules reindexed');
-        
-        // Update available options after removing a rule
-        console.log('   Calling rebuildAllSubfieldOptions()');
-        window.rebuildAllSubfieldOptions();
+        } else {
+            // Single category mode
+            console.log('   Reindexing remaining rules in single mode');
+            $rulesContainer.find('.subfield-rule-row').each(function(index) {
+                var $row = $(this);
+                $row.attr('data-rule', index);
+                $row.find('select, input, button').each(function() {
+                    var name = $(this).attr('name');
+                    if (name) {
+                        $(this).attr('name', name.replace(/\[subfield_rules\]\[\d+\]/, '[subfield_rules][' + index + ']'));
+                    }
+                    var onclick = $(this).attr('onclick');
+                    if (onclick) {
+                        $(this).attr('onclick', onclick.replace(/removeSubfieldRule\(\d+\)/, 'removeSubfieldRule(' + index + ')'));
+                    }
+                });
+                // Update OR wrapper
+                var $orWrapper = $row.next('.or-alts-wrapper');
+                if ($orWrapper.length) {
+                    $orWrapper.attr('data-rule', index);
+                    $orWrapper.find('.add-or-alt').attr('data-rule', index);
+                    $orWrapper.find('.or-alts').attr('data-rule', index);
+                    // Update name attributes in OR alternatives
+                    $orWrapper.find('select, input').each(function() {
+                        var name = $(this).attr('name');
+                        if (name) {
+                            var newName = name.replace(/\[subfield_rules\]\[\d+\]/, '[subfield_rules][' + index + ']');
+                            $(this).attr('name', newName);
+                        }
+                    });
+                }
+            });
+        }
         
         console.log('✅ removeSubfieldRule() completed');
     };
@@ -939,13 +1198,22 @@ $(document).ready(function() {
         var helpText = "If set, only entries matching this value will be counted. For OR conditions, separate values with a pipe (|).";
         var requiredValueHelp = "Number of cases/items required";
         
-        if (type === 'TOTAL_HOURS') {
+        // Show/hide field dependent section
+        if (type === 'TOTAL_HOURS' || type === 'TOTAL_HOURS_COMBINED') {
             $('#fieldDependentSection').slideUp();
         } else {
             $('#fieldDependentSection').slideDown();
             if (type === 'UNIQUE_VALUES_IN_RANGE') {
                 helpText = "Define the numeric range to check (e.g., 18-64).";
             }
+        }
+        
+        // Show/hide combined hours sources section
+        if (type === 'TOTAL_HOURS_COMBINED') {
+            $('#combinedHoursSources').slideDown();
+            $('#requiredValueHelp').text("Total value required when all sources are summed");
+        } else {
+            $('#combinedHoursSources').slideUp();
         }
         
         // Handle per-case minimum requirements
@@ -965,15 +1233,249 @@ $(document).ready(function() {
     
     function toggleFieldLogicMode() {
         if ($('#logicSingle').is(':checked')) {
+            // Single Category mode
             $('#singleFieldContainer').show();
-            $('#stid').prop('disabled', false);
             $('#multipleFieldContainer').hide();
+            $('#categoryGroupsInfo').hide();
+            $('#subfieldContainer').hide(); // Hide category groups container
+            $('#singleSubfieldContainer').hide(); // Will be shown when category with subfields is selected
+            $('#mainFieldValueContainer').show(); // Show category value filter
             $('#stids').prop('disabled', true);
-                } else {
+            
+        } else if ($('#logicMultiple').is(':checked')) {
+            // Multiple Categories (OR) mode
             $('#singleFieldContainer').hide();
-            $('#stid').prop('disabled', true);
             $('#multipleFieldContainer').show();
+            $('#categoryGroupsInfo').hide();
+            $('#subfieldContainer').hide(); // Hide category groups
+            $('#singleSubfieldContainer').hide(); // Hide single subfield container
             $('#stids').prop('disabled', false);
+            
+        } else if ($('#logicCategoryGroups').is(':checked')) {
+            // Multiple Category Groups (AND) mode
+            $('#singleFieldContainer').hide();
+            $('#multipleFieldContainer').hide();
+            $('#mainFieldValueContainer').hide(); // Hide main category value filter
+            $('#categoryGroupsInfo').show();
+            $('#singleSubfieldContainer').hide(); // Hide single subfield container
+            $('#subfieldContainer').show(); // Show category groups container
+            $('#stids').prop('disabled', true);
+            
+            // Initialize category groups if empty AND not loading saved data
+            if ($('#categoryGroupsContainer .category-group').length === 0 && !window.existingCategoryGroups) {
+                console.log('Category Groups mode: creating first group');
+                addCategoryGroup(0);
+                $('#addCategoryGroupBtn').show();
+            }
+        }
+    }
+
+    function updateAddCategoryButton() {
+        var $container = $('#categoryFiltersContainer');
+        var $rows = $container.find('.category-filter-row');
+        
+        $rows.each(function(index) {
+            var $row = $(this);
+            var $select = $row.find('select[name*="[stid]"]');
+            var $addBtn = $row.find('.add-category-filter');
+            
+            if ($select.val() && $rows.length === index + 1) {
+                $addBtn.show();
+            } else {
+                $addBtn.hide();
+            }
+        });
+    }
+
+    // Add category filter button handler
+    $(document).on('click', '.add-category-filter', function() {
+        var $container = $('#categoryFiltersContainer');
+        var rowCount = $container.find('.category-filter-row').length;
+        
+        var categoryOptions = '';
+        if (window.availableFields) {
+            window.availableFields.forEach(function(field) {
+                categoryOptions += `<option value="${field.stid}">${field.str}</option>`;
+            });
+        }
+        
+        var newRow = $(`
+            <div class="category-filter-row mb-2 d-flex align-items-center">
+                <select class="form-control" name="category_filters[${rowCount}][stid]" required>
+                    <option value="">-- Select Category --</option>
+                    ${categoryOptions}
+                </select>
+                <button type="button" class="btn btn-sm btn-danger ml-2 remove-category-filter">
+                    <i class="fa fa-times"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-success ml-2 add-category-filter" style="display:none;">
+                    <i class="fa fa-plus"></i> Add Another Category
+                </button>
+            </div>
+        `);
+        
+        $container.append(newRow);
+        
+        // Hide add button from previous row
+        $container.find('.category-filter-row').not(newRow).find('.add-category-filter').hide();
+    });
+
+    // Remove category filter button handler
+    $(document).on('click', '.remove-category-filter', function() {
+        var $row = $(this).closest('.category-filter-row');
+        $row.remove();
+        
+        // Update indices
+        $('#categoryFiltersContainer .category-filter-row').each(function(index) {
+            $(this).find('select').attr('name', `category_filters[${index}][stid]`);
+        });
+        
+        // Show add button on last row
+        updateAddCategoryButton();
+    });
+
+    // Show/hide add button based on selection
+    $(document).on('change', '#categoryFiltersContainer select', function() {
+        updateAddCategoryButton();
+    });
+    
+    // Add Category Group handler
+    $(document).on('click', '#addCategoryGroupBtn', function() {
+        var groupCount = $('.category-group').length;
+        addCategoryGroup(groupCount);
+    });
+    
+    // Handle requirement type changes in category groups (using delegation for dynamic elements)
+    $(document).on('change', '.category-requirement-type', function() {
+        var $select = $(this);
+        var $group = $select.closest('.category-group');
+        var $minThresholdRow = $group.find('.category-minimum-threshold').closest('.row');
+        var $minThresholdInput = $group.find('.category-minimum-threshold');
+        var $helpText = $group.find('.category-required-value-help');
+        var placeholder = $group.find('input[name*="[required_value]"]');
+        
+        if ($select.val() === 'PER_CASE_MINIMUM') {
+            $minThresholdRow.show();
+            $minThresholdInput.prop('required', true).prop('disabled', false);
+            $helpText.text('Number of cases needed (e.g., 3 = need 3 cases total)');
+            placeholder.attr('placeholder', 'e.g., 3 (how many cases you need)');
+        } else {
+            $minThresholdRow.hide();
+            $minThresholdInput.prop('required', false).prop('disabled', true);
+            $helpText.text('What the rule must meet');
+            placeholder.attr('placeholder', 'e.g., 5 or 18-64');
+        }
+    });
+    
+    // Remove Category Group handler
+    $(document).on('click', '.remove-category-group', function() {
+        var $group = $(this).closest('.category-group');
+        var $container = $('#categoryGroupsContainer');
+        
+        if ($container.find('.category-group').length > 1) {
+            $group.remove();
+            // Re-index groups
+            $container.find('.category-group').each(function(index) {
+                $(this).attr('data-group', index);
+                $(this).find('.category-group-number').text(index + 1);
+                $(this).find('select').attr('name', `category_groups[${index}][stid]`);
+            });
+        } else {
+            alert('You must have at least one category group.');
+        }
+    });
+    
+    function addCategoryGroup(groupIndex) {
+        console.log('Adding category group:', groupIndex);
+        
+        var categoryOptions = '';
+        if (window.availableFields) {
+            window.availableFields.forEach(function(field) {
+                categoryOptions += `<option value="${field.stid}">${field.str}</option>`;
+            });
+        }
+        
+        var groupHtml = `
+            <div class="category-group mb-4 border p-3 rounded" data-group="${groupIndex}">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="mb-0">Category Group <span class="category-group-number">${groupIndex + 1}</span></h6>
+                    <button type="button" class="btn btn-sm btn-danger remove-category-group">
+                        <i class="fa fa-times"></i> Remove Group
+                    </button>
+                </div>
+                
+                <div class="form-group mb-3">
+                    <label>Category</label>
+                    <select class="form-control category-select" name="category_groups[${groupIndex}][stid]" required>
+                        <option value="">-- Select Category --</option>
+                        ${categoryOptions}
+                    </select>
+                </div>
+                
+                <div class="subfield-rules-section">
+                    <label class="mb-2">Requirements for this Category</label>
+                    
+                    <!-- Subcategory Rules (if category has subcategories) -->
+                    <div class="subfield-rules-table" style="display:none;">
+                        <div class="subfield-rules-header">
+                            <div class="rule-col">Subcategory Value</div>
+                            <div class="rule-col">Requirement Type</div>
+                            <div class="rule-col">Rule Value</div>
+                            <div class="rule-col-actions">Actions</div>
+                        </div>
+                        <div class="subfield-rules-group" data-group="${groupIndex}">
+                            <!-- Rules will be added here -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-success mt-2 add-subfield-rule-btn" data-group="${groupIndex}">
+                            <i class="fa fa-plus"></i> Add Subcategory Rule
+                        </button>
+                    </div>
+                    
+                    <!-- Simple Requirement (if category has no subcategories) -->
+                    <div class="simple-requirement-container mb-3" style="display:none;">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label>Requirement Type</label>
+                                <select class="form-control category-requirement-type" name="category_groups[${groupIndex}][requirement_type]" data-group="${groupIndex}" required>
+                                    <option value="">-- Select Type --</option>
+                                    <option value="TOTAL_COUNT">Total Count</option>
+                                    <option value="TOTAL_HOURS">Total Hours</option>
+                                    <option value="UNIQUE_VALUES">Unique Values</option>
+                                    <option value="UNIQUE_VALUES_IN_RANGE">Unique Values in Range</option>
+                                    <option value="PER_CASE_MINIMUM">Per-Case Minimum</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label>Required Value</label>
+                                <input type="text" class="form-control" name="category_groups[${groupIndex}][required_value]" placeholder="e.g., 3 (number of cases needed)" required>
+                                <small class="text-muted category-required-value-help">How many cases total</small>
+                            </div>
+                        </div>
+                        <div class="row" style="display:none;">
+                            <div class="col-md-6">
+                                <label>Minimum Threshold per Case</label>
+                                <input type="number" class="form-control category-minimum-threshold" name="category_groups[${groupIndex}][minimum_threshold]" placeholder="e.g., 5" min="0" step="0.1">
+                                <small class="text-muted">Minimum sessions per case</small>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-6">
+                                <label>Maximum Value (Optional)</label>
+                                <input type="number" class="form-control category-max-value" name="category_groups[${groupIndex}][max_value]" placeholder="e.g., 2 (max count allowed)" min="0">
+                                <small class="text-muted">Maximum count/value allowed (e.g., max 2 presentations)</small>
+                            </div>
+                        </div>
+                        <small class="text-muted">This category doesn't have predefined subcategories. Specify the requirement directly.</small>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        $('#categoryGroupsContainer').append(groupHtml);
+        
+        // Show add button if there's at least one group
+        if ($('#categoryGroupsContainer .category-group').length > 0) {
+            $('#addCategoryGroupBtn').show();
         }
     }
 
@@ -981,19 +1483,179 @@ $(document).ready(function() {
     console.log('🚀 Initial State Setup started');
     console.log('   initialTbid:', initialTbid);
     console.log('   initialStid:', initialStid);
-    console.log('   existingSubfieldRules:', existingSubfieldRules);
+    console.log('   existingSubfieldRules:', window.existingSubfieldRules);
     
     toggleFieldDependent($('#requirement_type').val());
     toggleFieldLogicMode();
     filterParents(initialTbid);
+    
+    // Load hour sources if editing TOTAL_HOURS_COMBINED
+    <?php if ($is_editing && $standard['requirement_type'] == 'TOTAL_HOURS_COMBINED'): ?>
+    var fieldValueData = <?php echo json_encode($standard['field_value'] ?? ''); ?>;
+    console.log('📋 Loading hour sources from field_value:', fieldValueData);
+    if (fieldValueData) {
+        try {
+            var parsed = JSON.parse(fieldValueData);
+            // Support both old 'hour_sources' and new 'total_of' format
+            if (parsed.total_of && Array.isArray(parsed.total_of)) {
+                console.log('   Found sources (total_of):', parsed.total_of.length);
+                window.existingHourSources = parsed.total_of;
+            } else if (parsed.hour_sources && Array.isArray(parsed.hour_sources)) {
+                console.log('   Found sources (hour_sources legacy):', parsed.hour_sources.length);
+                window.existingHourSources = parsed.hour_sources;
+            }
+        } catch (e) {
+            console.error('   Error parsing hour sources:', e);
+        }
+    }
+    <?php endif; ?>
+    
+    // Load category groups if editing
+    <?php if ($is_editing): ?>
+    var fieldValueData = <?php echo json_encode($standard['field_value'] ?? ''); ?>;
+    if (fieldValueData) {
+        try {
+            var parsed = JSON.parse(fieldValueData);
+            if (parsed.category_groups && Array.isArray(parsed.category_groups)) {
+                console.log('📋 Loading category groups from field_value:', parsed.category_groups);
+                window.existingCategoryGroups = parsed.category_groups;
+            }
+        } catch (e) {
+            console.error('   Error parsing category groups:', e);
+        }
+    }
+    <?php endif; ?>
+    
     if (initialTbid) {
         loadFieldsForTable(initialTbid, function() {
             console.log('   Fields loaded for table, restoring selections');
+            
+            // Load hour sources if they exist
+            if (window.existingHourSources && window.existingHourSources.length > 0 && $('#requirement_type').val() === 'TOTAL_HOURS_COMBINED') {
+                console.log('   Loading existing hour sources');
+                // Clear the default row first
+                $('#hourSourcesContainer').empty();
+                
+                window.existingHourSources.forEach(function(source, index) {
+                    console.log(`   Loading source ${index + 1}: category=${source.category_stid}, value=${source.category_value}`);
+                    addHourSourceRow();
+                });
+                
+                // After all rows are added, populate their values
+                setTimeout(function() {
+                    window.existingHourSources.forEach(function(source, index) {
+                        var $row = $('.hour-source-row').eq(index);
+                        console.log(`   Setting values for source ${index + 1}`);
+                        
+                        // Set category
+                        $row.find('.source-category-select').val(source.category_stid);
+                        
+                        // Set max_value if present
+                        if (source.max_value !== undefined && source.max_value !== null) {
+                            $row.find('.source-max-value').val(source.max_value);
+                            console.log(`   Setting max_value for source ${index + 1}:`, source.max_value);
+                        }
+                        
+                        // Load and set category value
+                        if (source.category_stid) {
+                            // If no value was saved, check if we need to show manual input
+                            if (!source.category_value) {
+                                console.log(`   Source ${index + 1}: No category value saved, checking for predefined values`);
+                                // Try to load values, and if none found, show manual input
+                                loadCategoryValues(source.category_stid, $row.find('.source-value-select'), source.category_value);
+                            } else {
+                                loadCategoryValues(source.category_stid, $row.find('.source-value-select'), source.category_value);
+                            }
+                        }
+                    });
+                }, 200);
+            }
+            // Load category groups if they exist
+            if (window.existingCategoryGroups && window.existingCategoryGroups.length > 0) {
+                console.log('   Loading existing category groups:', window.existingCategoryGroups.length);
+                
+                // Switch to category groups mode
+                $('#logicCategoryGroups').prop('checked', true);
+                toggleFieldLogicMode();
+                
+                // Clear any auto-created groups before loading saved groups
+                $('#categoryGroupsContainer').empty();
+                
+                // Create category groups
+                window.existingCategoryGroups.forEach(function(group, index) {
+                    console.log(`   Loading category group ${index + 1}:`, group);
+                    addCategoryGroup(index);
+                    
+                    // Store the subcategories for this group (will be loaded when category is selected)
+                    var $group = $(`.category-group[data-group="${index}"]`);
+                    $group.data('stid', group.stid);
+                });
+                
+                // After all groups are created, load their data
+                setTimeout(function() {
+                    window.existingCategoryGroups.forEach(function(group, index) {
+                        var $categoryGroup = $(`.category-group[data-group="${index}"]`);
+                        
+                        // Set the category
+                        $categoryGroup.find('.category-select').val(group.stid);
+                        
+                        // Store the group data on the element for later use
+                        $categoryGroup.data('savedGroupData', group);
+                        
+                        // Load subcategories for this category, then populate rules
+                        if (group.stid) {
+                            loadSubfieldsForGroupAndPopulate(index, group.stid, group);
+                        }
+                        
+                        // Load simple requirements immediately (no subcategories needed)
+                        if (group.requirement_type && group.required_value) {
+                            console.log(`   Loading simple requirement for group ${index}`);
+                            var $simpleReq = $categoryGroup.find('.simple-requirement-container');
+                            var $reqTypeSelect = $simpleReq.find('select[name*="[requirement_type]"]');
+                            var $minThresholdInput = $simpleReq.find('input[name*="[minimum_threshold]"]');
+                            var $minThresholdRow = $minThresholdInput.closest('.row');
+                            
+                            $reqTypeSelect.val(group.requirement_type);
+                            $simpleReq.find('input[name*="[required_value]"]').val(group.required_value);
+                            
+                            // Handle minimum_threshold if it exists
+                            if (group.minimum_threshold) {
+                                console.log(`   Loading minimum_threshold for group ${index}:`, group.minimum_threshold);
+                                $minThresholdInput.val(group.minimum_threshold);
+                                $minThresholdRow.show();
+                                $minThresholdInput.prop('required', true).prop('disabled', false);
+                            }
+                            
+                            // Handle max_value if it exists
+                            if (group.max_value !== undefined && group.max_value !== null) {
+                                console.log(`   Loading max_value for group ${index}:`, group.max_value);
+                                $simpleReq.find('input[name*="[max_value]"]').val(group.max_value);
+                            }
+                        }
+                    });
+                }, 500);
+            }
+            
             // Restore selections after fields are loaded
             if ($('#logicSingle').is(':checked')) {
-                console.log('   Single field mode, setting stid to:', initialStid);
+                console.log('   Single field mode, setting stid dropdown');
+                
+                <?php if ($is_editing && !is_null($standard['stid'])): ?>
+                // Load single category
+                var initialStid = <?php echo $standard['stid']; ?>;
+                console.log('   Setting stid to:', initialStid);
+                
+                // Set the stid dropdown value
                 $('#stid').val(initialStid);
-                console.log('   stid value after setting:', $('#stid').val());
+                console.log('   stid set to:', initialStid);
+                console.log('   stid select options available:', $('#stid option').length);
+                
+                // Manually trigger the change handler to load subfields
+                // Use a longer delay to ensure fields are fully loaded
+                setTimeout(function() {
+                    console.log('   Triggering stid change event to load subfields');
+                    $('#stid').trigger('change');
+                }, 300);
                 
                 // Check field value after a short delay to see if it was set correctly
                 setTimeout(function() {
@@ -1001,20 +1663,19 @@ $(document).ready(function() {
                     console.log('   stid select element:', $('#stid')[0]);
                     console.log('   stid options:', $('#stid').find('option').map(function() { return {value: $(this).val(), text: $(this).text()}; }).get());
                 }, 100);
+                <?php else: ?>
+                var initialStid = null;
+                <?php endif; ?>
                 
-                // Load subcategories if editing and category is selected
-                if (initialStid && initialStid !== 'null') {
-                    console.log('   Category selected, loading subcategories');
-                    loadSubfieldsForField(initialStid);
-                } else if (initialStid === 'null' && existingSubfieldRules.length === 0) {
-                    console.log('   No category selected, checking for existing category value');
-                    // If editing but no category selected and no subcategory rules, show main category value
-                    var fieldValueData = <?php echo json_encode($standard['field_value'] ?? ''); ?>;
-                    if (fieldValueData && !fieldValueData.includes('SUBFIELD_RULES:')) {
-                        console.log('   Editing with existing category value, showing main category value container');
-                        $('#mainFieldValueContainer').show();
-                        $('#field_value').val(fieldValueData);
-                    }
+                // Show field value filter if there's a simple field_value (not complex rules)
+                var fieldValueData = <?php echo json_encode($standard['field_value'] ?? ''); ?>;
+                if (fieldValueData && !fieldValueData.includes('SUBFIELD_RULES:') && !fieldValueData.includes('category_groups')) {
+                    console.log('   Editing with existing category value, showing main category value container');
+                    $('#mainFieldValueContainer').show();
+                    $('#field_value').val(fieldValueData);
+                } else {
+                    // Show the field value container for simple edits
+                    $('#mainFieldValueContainer').show();
                 }
             } else {
                 console.log('   Multiple categories mode, setting selected categories');
@@ -1032,9 +1693,9 @@ $(document).ready(function() {
         var tableId = $(this).val();
         filterParents(tableId);
         loadFieldsForTable(tableId);
-        // Clear subcategories when table changes
+        // Clear category groups when table changes
         $('#subfieldContainer').hide();
-        $('#subfieldRulesContainer').empty();
+        $('#categoryGroupsContainer').empty();
         $('#mainFieldValueContainer').show();
     });
     
@@ -1042,18 +1703,350 @@ $(document).ready(function() {
         console.log('🎯 stid change event triggered');
         var fieldId = $(this).val();
         console.log('   Selected categoryId:', fieldId);
-        loadSubfieldsForField(fieldId);
+        
+        if ($('#logicCategoryGroups').is(':checked') && fieldId) {
+            // Multiple Category Groups mode - use category groups UI
+            if ($('#categoryGroupsContainer .category-group').length === 0) {
+                $('#addCategoryGroupBtn').show();
+                addCategoryGroup(0);
+            }
+            $('#categoryGroupsContainer .category-group:first .category-select').val(fieldId);
+            loadSubfieldsForField(fieldId);
+        } else if ($('#logicSingle').is(':checked') && fieldId) {
+            // Single Category mode - check if this category has subfields
+            console.log('   Single category mode - checking for subfields');
+            $.getJSON('ajax/get_subfields_for_field.php', { stid: fieldId }, function(subfields) {
+                console.log('   Subfields received:', subfields ? subfields.length : 0);
+                console.log('   Subfields data:', subfields);
+                if (subfields && subfields.length > 0) {
+                    // Has subfields - show subcategory rules UI
+                    window.availableSubfields = subfields;
+                    console.log('   ✅ Set window.availableSubfields with', subfields.length, 'items');
+                    console.log('   First few subfields:', subfields.slice(0, 3).map(s => ({pid: s.pid, str: s.str})));
+                    $('#singleSubfieldContainer').show();
+                    $('#mainFieldValueContainer').hide(); // Hide simple field value filter when using subfields
+                    $('#addSubfieldRuleBtn').show();
+                    
+                    // Load existing rules if editing (wait a bit to ensure UI is ready)
+                    if (window.existingSubfieldRules && window.existingSubfieldRules.length > 0) {
+                        console.log('   Loading existing subfield rules:', window.existingSubfieldRules.length);
+                        console.log('   Existing rules data:', window.existingSubfieldRules);
+                        $('#subfieldRulesContainer').empty();
+                        
+                        // Wait longer to ensure Select2 is initialized and subfields are loaded
+                        setTimeout(function() {
+                            console.log('   Starting to populate rules, availableSubfields:', window.availableSubfields);
+                            window.existingSubfieldRules.forEach(function(rule, index) {
+                                console.log(`   Creating rule ${index} from data:`, rule);
+                                addSubfieldRuleWithData(rule, index);
+                            });
+                            // Rebuild options after all rules are added
+                            setTimeout(function() {
+                                if (window.rebuildAllSubfieldOptions) {
+                                    window.rebuildAllSubfieldOptions();
+                                }
+                            }, 200);
+                        }, 300);
+                    }
+                } else {
+                    // No subfields - show simple field value filter
+                    $('#singleSubfieldContainer').hide();
+                    $('#mainFieldValueContainer').show();
+                }
+            }).fail(function() {
+                console.error('   Failed to load subfields');
+                $('#singleSubfieldContainer').hide();
+                $('#mainFieldValueContainer').show();
+            });
+        }
     });
+    
+    // Handle category group category change to load subcategories
+    $(document).on('change', '.category-group .category-select', function() {
+        var groupIndex = $(this).closest('.category-group').data('group');
+        var categoryId = $(this).val();
+        console.log(`Category Group ${groupIndex} changed to: ${categoryId}`);
+        
+        // Load subcategories for this group
+        if (categoryId) {
+            loadSubfieldsForGroup(groupIndex, categoryId);
+        }
+    });
+    
+    function loadSubfieldsForGroup(groupIndex, categoryId) {
+        $.getJSON('ajax/get_subfields_for_field.php', { stid: categoryId }, function(data) {
+            var $group = $(`.category-group[data-group="${groupIndex}"]`);
+            var $subfieldSection = $group.find('.subfield-rules-section');
+            var $rulesTable = $group.find('.subfield-rules-table');
+            var $simpleRequirement = $group.find('.simple-requirement-container');
+            
+            console.log(`Loaded ${data.length} subcategories for group ${groupIndex}`);
+            
+            // Store subcategories for this group
+            $group.data('subcategories', data);
+            
+            // Show appropriate UI based on whether subcategories exist
+            if (data && data.length > 0) {
+                // Has subcategories - show subcategory rules table
+                console.log(`   Group ${groupIndex} has subcategories, showing rules table`);
+                $rulesTable.show();
+                $simpleRequirement.hide().removeClass('shown');
+            } else {
+                // No subcategories - show simple requirement inputs
+                console.log(`   Group ${groupIndex} has no subcategories, showing simple requirement`);
+                $rulesTable.hide();
+                $simpleRequirement.show().addClass('shown');
+            }
+        }).fail(function() {
+            console.error(`Failed to load subcategories for group ${groupIndex}`);
+            // On error, show simple requirement as fallback
+            var $group = $(`.category-group[data-group="${groupIndex}"]`);
+            $group.find('.subfield-rules-table').hide();
+            $group.find('.simple-requirement-container').show().addClass('shown');
+        });
+    }
+    
+    function loadSubfieldsForGroupAndPopulate(groupIndex, categoryId, groupData) {
+        $.getJSON('ajax/get_subfields_for_field.php', { stid: categoryId }, function(data) {
+            var $group = $(`.category-group[data-group="${groupIndex}"]`);
+            var $rulesTable = $group.find('.subfield-rules-table');
+            var $simpleRequirement = $group.find('.simple-requirement-container');
+            
+            console.log(`Loaded ${data.length} subcategories for group ${groupIndex}`);
+            
+            // Store subcategories for this group
+            $group.data('subcategories', data);
+            
+            // Show appropriate UI based on whether subcategories exist
+            if (data && data.length > 0) {
+                // Has subcategories - show subcategory rules table
+                console.log(`   Group ${groupIndex} has subcategories, showing rules table`);
+                $rulesTable.show();
+                $simpleRequirement.hide().removeClass('shown');
+                
+                // Populate subcategory rules if they exist
+                if (groupData.subfield_rules && Array.isArray(groupData.subfield_rules)) {
+                    console.log(`   Populating ${groupData.subfield_rules.length} subcategory rules`);
+                    
+                    groupData.subfield_rules.forEach(function(rule, ruleIndex) {
+                        console.log(`   Creating rule ${ruleIndex + 1}:`, rule);
+                        
+                        // Add the rule row
+                        addSubfieldRuleToGroup(groupIndex);
+                        
+                        // Set values after a short delay to ensure element exists
+                        setTimeout(function() {
+                            var $row = $group.find('.subfield-rule-row').eq(ruleIndex);
+                            if ($row.length) {
+                                console.log(`   Setting values for rule row ${ruleIndex + 1}`);
+                                var $subfieldSelect = $row.find('.subfield-select');
+                                
+                                console.log(`   Available options in select:`, $subfieldSelect.find('option').map(function() { return {value: $(this).val(), text: $(this).text()}; }).get());
+                                console.log(`   Trying to set value to:`, rule.subfield_value);
+                                
+                                // Check if the option exists
+                                var optionExists = $subfieldSelect.find('option[value="' + rule.subfield_value + '"]').length > 0;
+                                console.log(`   Option exists?:`, optionExists);
+                                
+                                if (!optionExists) {
+                                    // Add the missing option
+                                    var subcategories = $group.data('subcategories');
+                                    if (subcategories) {
+                                        var missingOption = subcategories.find(function(s) { return s.pid == rule.subfield_value; });
+                                        if (missingOption) {
+                                            console.log(`   Adding missing option:`, missingOption);
+                                            var newOption = new Option(missingOption.str, missingOption.pid, false, false);
+                                            $subfieldSelect.append(newOption);
+                                        }
+                                    }
+                                }
+                                
+                                // Set the value
+                                $subfieldSelect.val(rule.subfield_value).trigger('change.select2');
+                                
+                                console.log(`   Subfield select value set to:`, rule.subfield_value);
+                                console.log(`   Current value after set:`, $subfieldSelect.val());
+                                
+                                // Set other values
+                                $row.find('select[name*="[requirement_type]"]').val(rule.requirement_type).trigger('change');
+                                $row.find('input[name*="[specific_value]"]').val(rule.specific_value);
+                                
+                                // Handle minimum threshold for PER_CASE_MINIMUM
+                                if (rule.requirement_type === 'PER_CASE_MINIMUM' && rule.minimum_threshold) {
+                                    var $minThreshold = $row.find('input[name*="[minimum_threshold]"]');
+                                    $minThreshold.show().prop('required', true).prop('disabled', false).val(rule.minimum_threshold);
+                                }
+                            }
+                        }, 200 * (ruleIndex + 1));
+                    });
+                }
+            } else {
+                // No subcategories - show simple requirement inputs
+                console.log(`   Group ${groupIndex} has no subcategories, showing simple requirement`);
+                $rulesTable.hide();
+                $simpleRequirement.show().addClass('shown');
+            }
+        }).fail(function() {
+            console.error(`Failed to load subcategories for group ${groupIndex}`);
+            var $group = $(`.category-group[data-group="${groupIndex}"]`);
+            $group.find('.subfield-rules-table').hide();
+            $group.find('.simple-requirement-container').show().addClass('shown');
+        });
+    }
     
     $('input[name="field_logic_mode"]').on('change', function() {
         toggleFieldLogicMode();
     });
 
-    // Add Rule button event handler
-    $(document).on('click', '#addSubfieldRuleBtn', function() {
-        console.log('🔘 Add Rule button clicked');
-        addSubfieldRule();
+    // Add Subfield Rule button event handler (for category groups)
+    $(document).on('click', '.add-subfield-rule-btn', function() {
+        var groupIndex = $(this).data('group');
+        console.log('🔘 Add Subcategory Rule button clicked for group:', groupIndex);
+        addSubfieldRuleToGroup(groupIndex);
     });
+
+    // Add Subfield Rule button event handler (for single category mode)
+    $(document).on('click', '#addSubfieldRuleBtn', function() {
+        console.log('🔘 Add Subcategory Rule button clicked (single mode)');
+        var ruleIndex = $('#subfieldRulesContainer .subfield-rule-row').length;
+        addSubfieldRuleWithData(null, ruleIndex);
+    });
+
+    // Add Hour Source button event handler
+    $(document).on('click', '#addHourSourceBtn', function() {
+        console.log('🔘 Add Hour Source button clicked');
+        addHourSourceRow();
+    });
+
+    // Remove Hour Source button event handler
+    $(document).on('click', '.remove-source-btn', function() {
+        var rowCount = $('.hour-source-row').length;
+        if (rowCount > 1) {
+            $(this).closest('.hour-source-row').remove();
+            reindexHourSources();
+        } else {
+            alert('You must have at least one hour source.');
+        }
+    });
+
+    // Category change handler to load category values
+    $(document).on('change', '.source-category-select', function() {
+        var $row = $(this).closest('.hour-source-row');
+        var $valueSelect = $row.find('.source-value-select');
+        var categoryStid = $(this).val();
+        
+        if (categoryStid) {
+            loadCategoryValues(categoryStid, $valueSelect);
+        } else {
+            $valueSelect.html('<option value="">-- Select Category First --</option>').prop('disabled', true);
+        }
+    });
+
+    function loadCategoryValues(categoryStid, $valueSelect, preselectedValue) {
+        $.getJSON('ajax/get_subfields_for_field.php', { stid: categoryStid }, function(data) {
+            if (data && data.length > 0) {
+                $valueSelect.html('<option value="">-- Select Value --</option>');
+                $.each(data, function(index, item) {
+                    var selected = (preselectedValue && item.pid == preselectedValue);
+                    var option = new Option(item.str, item.pid, false, false);
+                    $valueSelect.append(option);
+                    if (selected) {
+                        option.selected = true;
+                    }
+                });
+                $valueSelect.prop('disabled', false);
+                if (preselectedValue) {
+                    console.log('   Preselected value:', preselectedValue);
+                }
+            } else {
+                // No predefined values available - replace with text input
+                console.log('   No predefined values, converting to text input');
+                var savedValue = preselectedValue || '';
+                var $manualInput = $('<input type="text" class="form-control form-control-sm manual-category-value" placeholder="Enter value or leave blank for all" value="' + savedValue + '" />');
+                $manualInput.attr('name', $valueSelect.attr('name'));
+                $valueSelect.replaceWith($manualInput);
+                if (savedValue) {
+                    console.log('   Restored saved value:', savedValue);
+                }
+            }
+        }).fail(function() {
+            console.log('   AJAX failed, using manual input');
+            var savedValue = preselectedValue || '';
+            var $manualInput = $('<input type="text" class="form-control form-control-sm manual-category-value" placeholder="Enter value or leave blank for all" value="' + savedValue + '" />');
+            $manualInput.attr('name', $valueSelect.attr('name'));
+            $valueSelect.replaceWith($manualInput);
+        });
+    }
+
+    function addHourSourceRow() {
+        var rowCount = $('.hour-source-row').length;
+        console.log(`Adding hour source row ${rowCount + 1}`);
+        
+        var categoryOptions = '';
+        if (window.availableFields) {
+            window.availableFields.forEach(function(field) {
+                categoryOptions += `<option value="${field.stid}">${field.str}</option>`;
+            });
+        }
+        
+                var newRow = `
+            <tr class="hour-source-row">
+                <td>
+                    <select class="form-control form-control-sm source-category-select" name="hour_sources[${rowCount}][category_stid]" required>
+                        <option value="">-- Select Category --</option>
+                        ${categoryOptions}
+                    </select>
+                    <small class="text-muted">Required</small>
+                </td>
+                <td>
+                    <select class="form-control form-control-sm source-value-select" name="hour_sources[${rowCount}][category_value]" disabled>
+                        <option value="">-- No filter (all values) --</option>
+                    </select>
+                    <small class="text-muted">Optional - leave blank for all values</small>
+                </td>
+                <td>
+                    <input type="number" class="form-control form-control-sm source-max-value" name="hour_sources[${rowCount}][max_value]" placeholder="e.g., 40" min="0" step="0.1">
+                    <small class="text-muted">Cap hours at this value</small>
+                </td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-danger remove-source-btn">Remove</button>
+                </td>
+            </tr>
+        `;
+        
+        $('#hourSourcesContainer').append(newRow);
+    }
+
+    function reindexHourSources() {
+        $('.hour-source-row').each(function(index) {
+            $(this).find('select, input').each(function() {
+                var name = $(this).attr('name');
+                if (name) {
+                    $(this).attr('name', name.replace(/\[\d+\]/, '[' + index + ']'));
+                }
+            });
+        });
+    }
+
+    function updateHourSourceCategories() {
+        if (!window.availableFields) return;
+        
+        $('.hour-source-row').each(function() {
+            // Update category filter dropdown
+            var $categorySelect = $(this).find('.source-category-select');
+            var categoryCurrentValue = $categorySelect.val();
+            
+            $categorySelect.find('option').not(':first').remove();
+            
+            window.availableFields.forEach(function(field) {
+                $categorySelect.append(new Option(field.str, field.stid, false, false));
+            });
+            
+            if (categoryCurrentValue) {
+                $categorySelect.val(categoryCurrentValue);
+            }
+        });
+    }
 
     // Handle form submission
     $('#standardForm').on('submit', function(e) {
@@ -1064,24 +2057,284 @@ $(document).ready(function() {
         console.log('🔍 Running form validation');
         
         
+        // Collect category groups data
+        var categoryGroups = [];
+        $('.category-group').each(function() {
+            var $group = $(this);
+            var groupIndex = $group.data('group');
+            var stid = $group.find('.category-select').val();
+            
+            if (!stid) {
+                console.log(`   Skipping group ${groupIndex} - no category selected`);
+                return;
+            }
+            
+            var groupData = {
+                stid: stid
+            };
+            
+            // Check if this group uses simple requirement or subcategory rules
+            var $simpleRequirement = $group.find('.simple-requirement-container');
+            var $rulesTable = $group.find('.subfield-rules-table');
+            
+            // Determine which UI is active
+            if ($simpleRequirement.is(':visible') && $rulesTable.is(':hidden')) {
+                // Simple requirement (no subcategories)
+                var requirementType = $simpleRequirement.find('select[name*="[requirement_type]"]').val();
+                var requiredValue = $simpleRequirement.find('input[name*="[required_value]"]').val();
+                var minimumThreshold = $simpleRequirement.find('input[name*="[minimum_threshold]"]').val();
+                var maxValue = $simpleRequirement.find('input[name*="[max_value]"]').val();
+                
+                if (requirementType && requiredValue) {
+                    groupData.requirement_type = requirementType;
+                    groupData.required_value = requiredValue;
+                    
+                    // Add minimum_threshold if it exists and is not empty
+                    if (minimumThreshold && minimumThreshold !== '') {
+                        groupData.minimum_threshold = minimumThreshold;
+                    }
+                    
+                    // Add max_value if it exists and is not empty
+                    if (maxValue && maxValue !== '') {
+                        groupData.max_value = parseInt(maxValue);
+                    }
+                }
+            } else if ($simpleRequirement.is(':hidden') && $rulesTable.is(':visible')) {
+                // Subcategory rules
+                var subfieldRules = [];
+                $group.find('.subfield-rule-row').each(function() {
+                    var $ruleRow = $(this);
+                    var subfieldValue = $ruleRow.find('.subfield-select').val();
+                    var requirementType = $ruleRow.find('select[name*="[requirement_type]"]').val();
+                    var specificValue = $ruleRow.find('input[name*="[specific_value]"]').val();
+                    
+                    if (subfieldValue && requirementType && specificValue) {
+                        subfieldRules.push({
+                            subfield_value: subfieldValue,
+                            requirement_type: requirementType,
+                            specific_value: specificValue
+                        });
+                    }
+                });
+                
+                if (subfieldRules.length > 0) {
+                    groupData.subfield_rules = subfieldRules;
+                }
+            }
+            
+            if (Object.keys(groupData).length > 1) { // Has more than just stid
+                categoryGroups.push(groupData);
+            }
+        });
+        
+        console.log('   Category groups collected:', categoryGroups);
+        
+        // If we have category groups, store them as JSON in field_value
+        if (categoryGroups.length > 0) {
+            var categoryGroupsJson = JSON.stringify({ category_groups: categoryGroups });
+            console.log('   Category groups JSON:', categoryGroupsJson);
+            
+            // Add or update hidden field
+            var $existingField = $('input[name="category_groups_json"]');
+            if ($existingField.length) {
+                $existingField.val(categoryGroupsJson);
+            } else {
+                $('form#standardForm').append(`<input type="hidden" name="category_groups_json" value="">`);
+                $('input[name="category_groups_json"]').val(categoryGroupsJson);
+            }
+        }
+        
+        // Custom validation for TOTAL_HOURS_COMBINED requirement type
+        if ($('#requirement_type').val() === 'TOTAL_HOURS_COMBINED') {
+            console.log('🔍 Processing TOTAL_HOURS_COMBINED requirement type');
+            
+            // Validate and collect hour sources
+            var hourSources = [];
+            var hourSourcesValid = true;
+            
+            $('.hour-source-row').each(function(index) {
+                var $row = $(this);
+                var categoryStid = $row.find('.source-category-select').val();
+                
+                // Get value from either select or text input
+                var $valueElement = $row.find('.source-value-select, .manual-category-value');
+                var categoryValue = $valueElement.val();
+                var maxValue = $row.find('.source-max-value').val();
+                
+                console.log(`   Source ${index + 1}: category=${categoryStid}, value=${categoryValue}, max=${maxValue}`);
+                
+                if (!categoryStid) {
+                    console.log(`   ❌ Source ${index + 1} missing category`);
+                    hourSourcesValid = false;
+                    return;
+                }
+                
+                // categoryValue can be empty (meaning "all values")
+                var sourceData = {
+                    category_stid: categoryStid,
+                    category_value: categoryValue || ''  // Empty string means "all values"
+                };
+                
+                // Add max_value if provided
+                if (maxValue && maxValue !== '') {
+                    sourceData.max_value = parseFloat(maxValue);
+                }
+                
+                hourSources.push(sourceData);
+            });
+            
+            if (!hourSourcesValid) {
+                console.log('❌ Hour sources validation failed');
+                alert('Please complete all source fields properly.');
+                return;
+            }
+            
+            if (hourSources.length === 0) {
+                console.log('❌ No hour sources defined');
+                alert('Please add at least one source.');
+                return;
+            }
+            
+            console.log('   Sources to save:', hourSources);
+            
+            // Store as JSON in field_value
+            var sourcesJson = JSON.stringify({ total_of: hourSources });
+            console.log('   Sources JSON:', sourcesJson);
+            
+            // Add or update hidden field for field_value
+            if ($('#combinedHoursFieldValue').length) {
+                $('#combinedHoursFieldValue').val(sourcesJson);
+            } else {
+                $('form#standardForm').append('<input type="hidden" name="field_value" id="combinedHoursFieldValue" value="">');
+                $('#combinedHoursFieldValue').val(sourcesJson);
+            }
+        }
+
         // Custom validation for subfield rules
-        var hasSubfieldRules = $('.subfield-rule-row').length > 0;
-        console.log(`🔍 Checking subfield rules: ${hasSubfieldRules ? 'Yes' : 'No'} (${$('.subfield-rule-row').length} rules)`);
+        // Only validate editable rows (not read-only preview sections)
+        // Check which mode we're in and only validate rows in that mode's container
+        // IMPORTANT: Exclude the preview section which contains read-only displays
+        var isCategoryGroupsMode = $('#logicCategoryGroups').is(':checked');
+        var isSingleMode = $('#logicSingle').is(':checked');
+        var $editableSubfieldRows;
+        
+        if (isCategoryGroupsMode) {
+            // Only validate category group rules (exclude preview section)
+            $editableSubfieldRows = $('#categoryGroupsContainer .subfield-rule-row').not('.subfield-rule-row:has(span.badge)');
+            // Also exclude any rows inside the preview fieldset
+            $editableSubfieldRows = $editableSubfieldRows.not('fieldset:has(legend:contains("Read-only")) .subfield-rule-row');
+            console.log('🔍 Category Groups mode active - validating only category group rules');
+        } else if (isSingleMode) {
+            // Validate subfield rules in single category mode
+            $editableSubfieldRows = $('#singleSubfieldContainer .subfield-rule-row');
+            console.log('🔍 Single Category mode active - validating subfield rules');
+        } else {
+            // Multiple categories mode or other - no subfield rules to validate
+            $editableSubfieldRows = $();
+            console.log('🔍 Not in Category Groups or Single mode - no subfield rules to validate');
+        }
+        
+        // Final filter: exclude any rows that don't have form inputs (read-only preview rows)
+        $editableSubfieldRows = $editableSubfieldRows.filter(function() {
+            var $row = $(this);
+            // Preview rows don't have form inputs, only text/divs
+            var hasFormInputs = $row.find('select, input[type="text"], input[type="number"]').length > 0;
+            return hasFormInputs;
+        });
+        
+        var hasSubfieldRules = $editableSubfieldRows.length > 0;
+        console.log(`🔍 Checking subfield rules: ${hasSubfieldRules ? 'Yes' : 'No'} (${$editableSubfieldRows.length} editable rules)`);
         
         if (hasSubfieldRules) {
             var validSubfieldRules = true;
-            $('.subfield-rule-row').each(function(index) {
+            $editableSubfieldRows.each(function(index) {
                 var $row = $(this);
-                var subfieldValue = $row.find('.subfield-select').val();
+                
+                // Skip if this row is in a hidden container
+                if (!$row.is(':visible') || $row.closest(':hidden').length > 0) {
+                    console.log(`   Rule ${index + 1} is hidden, skipping validation`);
+                    return true; // continue to next
+                }
+                
+                // Try multiple selectors for subfield value (category groups use different names)
+                var $subfieldSelect = $row.find('.subfield-select');
+                var subfieldValue = null;
+                
+                // If .subfield-select exists, get its value (works even with Select2)
+                if ($subfieldSelect.length > 0) {
+                    subfieldValue = $subfieldSelect.val();
+                }
+                
+                // If no .subfield-select or no value, try finding by name pattern
+                if (!$subfieldSelect.length || !subfieldValue) {
+                    var $selectByName = $row.find('select[name*="[subfield_values]"], select[name*="[subfield_value]"]');
+                    if ($selectByName.length > 0) {
+                        subfieldValue = $selectByName.val();
+                        $subfieldSelect = $selectByName;
+                    }
+                }
+                
+                // Also try getting from Select2 data if the select is hidden
+                if ($subfieldSelect.length > 0 && $subfieldSelect.data('select2')) {
+                    var select2Data = $subfieldSelect.data('select2');
+                    if (!subfieldValue && select2Data && select2Data.data) {
+                        // Try to get from Select2 internal data
+                        var currentSelection = $subfieldSelect.select2('data');
+                        if (currentSelection && currentSelection.length > 0) {
+                            subfieldValue = currentSelection[0].id;
+                        }
+                    }
+                }
+                
+                // Debug: Find all selects in the row (including hidden Select2 selects)
+                var allSelects = $row.find('select');
+                var visibleSelects = $row.find('select').filter(':not(.select2-hidden-accessible)');
+                console.log(`   Rule ${index + 1} - Found ${allSelects.length} total select elements (${visibleSelects.length} visible):`);
+                allSelects.each(function() {
+                    var $sel = $(this);
+                    var isHidden = $sel.hasClass('select2-hidden-accessible');
+                    console.log(`     - name="${$sel.attr('name')}", val="${$sel.val()}", class="${$sel.attr('class')}", hidden=${isHidden}`);
+                });
+                
+                // Also check Select2 hidden selects specifically
+                var select2Selects = $row.find('select.select2-hidden-accessible');
+                if (select2Selects.length > 0) {
+                    console.log(`   Rule ${index + 1} - Found ${select2Selects.length} Select2 hidden selects:`);
+                    select2Selects.each(function() {
+                        var $sel = $(this);
+                        try {
+                            var select2Data = $sel.select2('data');
+                            console.log(`     - name="${$sel.attr('name')}", val="${$sel.val()}", Select2 data:`, select2Data);
+                        } catch(e) {
+                            console.log(`     - name="${$sel.attr('name')}", val="${$sel.val()}", Select2 error:`, e.message);
+                        }
+                    });
+                }
+                
                 var requirementType = $row.find('select[name*="[requirement_type]"]').val();
                 var specificValue = $row.find('input[name*="[specific_value]"]').val();
                 var minThreshold = $row.find('input[name*="[minimum_threshold]"]').val();
-                var orCount = $row.find('.or-alts .or-alt').length;
+                var $orWrapper = $row.next('.or-alts-wrapper');
+                var orCount = $orWrapper.length ? $orWrapper.find('.or-alts .or-alt').length : 0;
                 
-                console.log(`   Rule ${index + 1}: subfield=${subfieldValue}, type=${requirementType}, value=${specificValue}, threshold=${minThreshold}`);
+                console.log(`   Rule ${index + 1}: subfield=${subfieldValue}, type=${requirementType}, value=${specificValue}, threshold=${minThreshold}, orCount=${orCount}`);
+                
+                // Only validate if this row is actually in use (has some data)
+                // Skip empty rows that might be placeholders or read-only preview rows
+                var hasFormElements = allSelects.length > 0 || $row.find('input[type="text"], input[type="number"]').length > 0;
+                
+                if (!hasFormElements) {
+                    console.log(`   Rule ${index + 1} has no form elements (might be preview/placeholder), skipping validation`);
+                    return true; // continue to next - don't fail on rows without form elements
+                }
+                
+                if (orCount === 0 && !subfieldValue && !requirementType && !specificValue) {
+                    console.log(`   Rule ${index + 1} appears empty, skipping validation`);
+                    return true; // continue to next - don't fail on empty placeholder rows
+                }
                 
                 if ((!subfieldValue || !requirementType || !specificValue) && orCount === 0) {
-                    console.log(`   ❌ Rule ${index + 1} missing required fields`);
+                    console.log(`   ❌ Rule ${index + 1} missing required fields (subfield=${subfieldValue}, type=${requirementType}, value=${specificValue})`);
                     validSubfieldRules = false;
                     return false;
                 }
@@ -1095,15 +2348,29 @@ $(document).ready(function() {
                 // Validate OR alternatives if present
                 if (orCount > 0) {
                     var orValid = true;
-                    $row.find('.or-alts .or-alt').each(function() {
+                    var hasAtLeastOneCompleteAlt = false;
+                    $orWrapper.find('.or-alts .or-alt').each(function() {
                         var $alt = $(this);
                         var altSub = $alt.find('select[name*="[subfield_value]"]').val();
                         var altType = $alt.find('select[name*="[requirement_type]"]').val();
                         var altVal  = $alt.find('input[name*="[specific_value]"]').val();
                         var altMin  = $alt.find('input[name*="[minimum_threshold]"]').val();
+
+                        // Skip empty placeholder OR rows
+                        if (!altSub && !altType && !altVal) {
+                            return; // continue
+                        }
+
+                        // Mark that we have a usable OR alternative
+                        hasAtLeastOneCompleteAlt = true;
+
+                        // Validate required fields for non-empty OR rows
                         if (!altSub || !altType || !altVal) { orValid = false; return false; }
                         if (altType === 'PER_CASE_MINIMUM' && (!altMin || parseFloat(altMin) <= 0)) { orValid = false; return false; }
                     });
+
+                    // If no complete OR alts exist and base is incomplete, it will be caught by base validation above.
+                    // Only fail here if we had at least one non-empty OR row and it was invalid.
                     if (!orValid) {
                         console.log(`   ❌ Rule ${index + 1} has invalid OR alternative`);
                         validSubfieldRules = false;
@@ -1120,6 +2387,33 @@ $(document).ready(function() {
                 console.log('✅ Subfield rules validation passed');
             }
         }
+        
+        // CRITICAL: Disable hidden required fields BEFORE validation runs
+        // This prevents HTML5 validation from failing on invisible required fields
+        console.log('🔧 Disabling hidden required fields...');
+        
+        $('#minimum_threshold').prop('disabled', $('#minimumThresholdContainer').is(':hidden'));
+        $('.subfield-rule-row input[name*="[minimum_threshold]"]').each(function() {
+            $(this).prop('disabled', $(this).is(':hidden'));
+        });
+        
+        // Disable hour sources section if hidden
+        var isCombinedHoursHidden = $('#combinedHoursSources').is(':hidden');
+        console.log('   combinedHoursSources is hidden?', isCombinedHoursHidden);
+        if (isCombinedHoursHidden) {
+            var $hourSourceFields = $('.hour-source-row select[required], .hour-source-row input[required]');
+            console.log('   Found hour source fields to disable:', $hourSourceFields.length);
+            $hourSourceFields.prop('disabled', true);
+        }
+        
+        // Also disable any other hidden required fields
+        $(this).find('input[required], select[required], textarea[required]').each(function() {
+            if ($(this).is(':hidden') || $(this).closest(':hidden').length > 0) {
+                $(this).prop('disabled', true);
+            }
+        });
+        
+        console.log('   Disabling hidden fields complete');
         
         if (this.checkValidity() === false) {
             console.log('❌ Form validation failed');
@@ -1158,15 +2452,24 @@ $(document).ready(function() {
         if ($('#logicSingle').is(':checked')) {
             console.log('   Disabling multiple fields input (single mode)');
             $('#stids').prop('disabled', true);
-        } else {
+            
+            // Ensure stid value is included (it should already be in the form)
+            // No need to add hidden field - the #stid select is already in the form
+        } else if ($('#logicMultiple').is(':checked')) {
             console.log('   Disabling single field input (multiple mode)');
             $('#stid').prop('disabled', true);
+            $('#stids').prop('disabled', false);
+        } else if ($('#logicCategoryGroups').is(':checked')) {
+            // Category groups mode - stid might be null
+            $('#stid').prop('disabled', true);
+            $('#stids').prop('disabled', true);
         }
         
         // AND/OR transform: consolidate base + OR alts into any_of[] with continuous indices
         $('.subfield-rule-row').each(function(index) {
             var $row = $(this);
-            var $orContainer = $row.find('.or-alts');
+            var $orWrapper = $row.next('.or-alts-wrapper');
+            var $orContainer = $orWrapper.find('.or-alts');
             if (!($orContainer.length && $orContainer.children('.or-alt').length > 0)) return;
 
             var anyOfItems = [];
@@ -1209,19 +2512,6 @@ $(document).ready(function() {
                 }
             }
             $row.append(hiddenHtml);
-        });
-
-        // Disable hidden required fields to prevent validation errors
-        $('#minimum_threshold').prop('disabled', $('#minimumThresholdContainer').is(':hidden'));
-        $('.subfield-rule-row input[name*="[minimum_threshold]"]').each(function() {
-            $(this).prop('disabled', $(this).is(':hidden'));
-        });
-        
-        // Also disable any other hidden required fields
-        $(this).find('input[required], select[required], textarea[required]').each(function() {
-            if ($(this).is(':hidden')) {
-                $(this).prop('disabled', true);
-            }
         });
         
         // Handle minimum threshold validation

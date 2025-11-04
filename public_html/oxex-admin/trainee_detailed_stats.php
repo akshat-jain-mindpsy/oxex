@@ -1775,11 +1775,13 @@ if ($view === 'babcp') {
                         $selected_trainee = $_GET['score_trainee'] ?? '';
                         
                         // Get current trainee's pass standard results (if trainee is selected)
+                        // This will check ALL trainee logs against EACH pass standard's conditions
                         $trainee_scores = [];
                         $current_trainee_key = ($trainee_key ?? '') ?: $selected_trainee;
                         if (!empty($current_trainee_key)) {
                             foreach ($pass_standards as $standard) {
-                                $result = checkCompetencyStatus($current_trainee_key, $standard['psid'], $pdo);
+                                // Use checkPassStandardStatus to evaluate this specific standard against all trainee logs
+                                $result = checkPassStandardStatus($current_trainee_key, $standard['psid'], $pdo);
                                 // Ensure we have a valid result structure
                                 if (!$result || !is_array($result)) {
                                     $result = [
@@ -1790,9 +1792,12 @@ if ($view === 'babcp') {
                                         'subfield_results' => []
                                     ];
                                 }
+                                // Get matching logs for this standard
+                                $matching_logs = getMatchingLogsForStandard($current_trainee_key, $standard['psid'], $pdo);
                                 $trainee_scores[] = [
                                     'standard' => $standard,
-                                    'result' => $result
+                                    'result' => $result,
+                                    'matching_logs' => $matching_logs
                                 ];
                             }
                         }
@@ -1870,200 +1875,151 @@ if ($view === 'babcp') {
                            </div>
                         </div>
                         
-                        <!-- Debug Information -->
-                        <div class="row mb-4">
-                           <div class="col-12">
-                              <div class="card">
-                                 <div class="card-header">
-                                    <h6><i class="fas fa-bug"></i> Debug Information</h6>
-                                 </div>
-                                 <div class="card-body">
-                                    <div class="row">
-                                       <div class="col-md-6">
-                                          <h6>Current Trainee Key:</h6>
-                                          <code><?php echo htmlspecialchars($current_trainee_key ?? 'None'); ?></code>
-                                       </div>
-                                       <div class="col-md-6">
-                                          <h6>Total Pass Standards:</h6>
-                                          <code><?php echo count($pass_standards); ?></code>
-                                       </div>
-                                    </div>
-                                    <hr>
-                                    
-                                    <!-- Trainee Raw Data -->
-                                    <h6>Trainee Raw Data from Database:</h6>
-                                    <div style="max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
-                                       <pre><?php 
-                                       if (!empty($current_trainee_key)) {
-                                           echo "=== TRAINEE LOG DATA ===\n";
-                                           $log_query = "SELECT tl.*, t.tab_name, st.str as select_type_name 
-                                                       FROM trainee_log tl 
-                                                       LEFT JOIN tabs_tbl t ON tl.tbid = t.tbid 
-                                                       LEFT JOIN select_types st ON tl.stid = st.stid 
-                                                       WHERE tl.trainkey = ? 
-                                                       ORDER BY tl.date_added DESC 
-                                                       LIMIT 20";
-                                           $log_stmt = $pdo->prepare($log_query);
-                                           $log_stmt->execute([$current_trainee_key]);
-                                           $log_count = 0;
-                                           while ($log_row = $log_stmt->fetch(PDO::FETCH_ASSOC)) {
-                                               $log_count++;
-                                               echo "Log Entry #$log_count:\n";
-                                               echo "  - Table: " . ($log_row['tab_name'] ?? 'Unknown') . " (ID: " . $log_row['tbid'] . ")\n";
-                                               echo "  - Select Type: " . ($log_row['select_type_name'] ?? 'Unknown') . " (ID: " . $log_row['stid'] . ")\n";
-                                               echo "  - Select Value: " . ($log_row['select_val'] ?? 'None') . "\n";
-                                               echo "  - Log Key: " . $log_row['logkey'] . "\n";
-                                               echo "  - Date: " . $log_row['date_added'] . "\n";
-                                               echo "\n";
-                                           }
-                                           echo "Total log entries found: $log_count\n\n";
-                                           
-                                           echo "=== ID TO NAME MAPPING ===\n";
-                                           
-                                           // Get all select types with their IDs and names
-                                           $select_types_query = "SELECT stid, str FROM select_types ORDER BY stid";
-                                           $select_types_stmt = $pdo->query($select_types_query);
-                                           echo "Select Type IDs and Names:\n";
-                                           while ($select_type = $select_types_stmt->fetch(PDO::FETCH_ASSOC)) {
-                                               echo "  ID " . $select_type['stid'] . ": " . $select_type['str'] . "\n";
-                                           }
-                                           echo "\n";
-                                           
-                                           // Get all table names
-                                           $tables_query = "SELECT tbid, tab_name FROM tabs_tbl ORDER BY tbid";
-                                           $tables_stmt = $pdo->query($tables_query);
-                                           echo "Table IDs and Names:\n";
-                                           while ($table = $tables_stmt->fetch(PDO::FETCH_ASSOC)) {
-                                               echo "  ID " . $table['tbid'] . ": " . $table['tab_name'] . "\n";
-                                           }
-                                           echo "\n";
-                                           
-                                           echo "=== PASS STANDARD TABLES ===\n";
-                                           foreach ($pass_standards as $standard) {
-                                               echo "Standard: " . $standard['standard_name'] . " (Table ID: " . $standard['tbid'] . ")\n";
-                                               
-                                               // Get data for this standard's table
-                                               $standard_data_query = "SELECT COUNT(*) as count FROM trainee_log WHERE trainkey = ? AND tbid = ?";
-                                               $standard_data_stmt = $pdo->prepare($standard_data_query);
-                                               $standard_data_stmt->execute([$current_trainee_key, $standard['tbid']]);
-                                               $standard_data = $standard_data_stmt->fetch(PDO::FETCH_ASSOC);
-                                               echo "  - Entries in table " . $standard['tbid'] . ": " . $standard_data['count'] . "\n";
-                                               
-                                               // Get the actual field_value from pass_standards table
-                                               $field_value_query = "SELECT field_value FROM pass_standards WHERE psid = ?";
-                                               $field_value_stmt = $pdo->prepare($field_value_query);
-                                               $field_value_stmt->execute([$standard['psid']]);
-                                               $field_value_row = $field_value_stmt->fetch(PDO::FETCH_ASSOC);
-                                               $field_value = $field_value_row['field_value'] ?? '';
-                                               
-                                               // Check if it has subfield rules
-                                               if (!empty($field_value) && strpos($field_value, 'SUBFIELD_RULES:') !== false) {
-                                                   echo "  - Has subfield rules: YES\n";
-                                                   echo "  - Field value: " . substr($field_value, 0, 200) . "...\n";
-                                                   
-                                                   // Parse and show subfield details
-                                                   if (preg_match('/SUBFIELD_RULES:(.+)/', $field_value, $matches)) {
-                                                       $subfield_rules_json = $matches[1];
-                                                       $subfield_rules = json_decode($subfield_rules_json, true);
-                                                       if ($subfield_rules) {
-                                                           echo "  - Parsed subfield rules:\n";
-                                                           foreach ($subfield_rules as $i => $rule) {
-                                                               if (isset($rule['any_of'])) {
-                                                                   echo "    Rule " . ($i + 1) . " (OR):\n";
-                                                                   foreach ($rule['any_of'] as $j => $alt) {
-                                                                       echo "      Alt " . ($j + 1) . ": subfield_value=" . $alt['subfield_value'] . 
-                                                                            ", type=" . $alt['requirement_type'] . 
-                                                                            ", value=" . $alt['specific_value'] . "\n";
-                                                                   }
-                                                               } else {
-                                                                   echo "    Rule " . ($i + 1) . ": subfield_value=" . $rule['subfield_value'] . 
-                                                                        ", type=" . $rule['requirement_type'] . 
-                                                                        ", value=" . $rule['specific_value'] . "\n";
-                                                               }
-                                                           }
-                                                       }
-                                                   }
-                                               } else {
-                                                   echo "  - Has subfield rules: NO\n";
-                                                   echo "  - Field value: " . ($field_value ?: 'Empty') . "\n";
-                                               }
-                                               echo "\n";
-                                           }
-                                       } else {
-                                           echo "No trainee selected.\n";
-                                       }
-                                       ?></pre>
-                                    </div>
-                                    
-                                    <h6>Pass Standard Evaluation Results:</h6>
-                                    <div style="max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px;">
-                                       <pre><?php 
-                                       if (!empty($trainee_scores)) {
-                                           foreach ($trainee_scores as $i => $score) {
-                                               echo "Standard " . ($i + 1) . ": " . $score['standard']['standard_name'] . "\n";
-                                               echo "  - Passed: " . (($score['result']['is_passed'] ?? false) ? 'YES' : 'NO') . "\n";
-                                               echo "  - Current: " . ($score['result']['current_value'] ?? 0) . "\n";
-                                               echo "  - Required: " . ($score['result']['required_value'] ?? 0) . "\n";
-                                               if (!empty($score['result']['subfield_results'] ?? [])) {
-                                                   echo "  - Subfields: " . count($score['result']['subfield_results'] ?? []) . " rules\n";
-                                               }
-                                               echo "\n";
-                                           }
-                                       } else {
-                                           echo "No trainee scores available.\n";
-                                           echo "Current trainee key: " . ($current_trainee_key ?? 'None') . "\n";
-                                           echo "Selected trainee: " . ($selected_trainee ?? 'None') . "\n";
-                                           echo "Main trainee key: " . ($trainee_key ?? 'None') . "\n";
-                                       }
-                                       ?></pre>
-                                    </div>
-                                 </div>
-                              </div>
-                           </div>
-                        </div>
-                        
                         <!-- Pass Standard Results -->
                         <div class="row">
-                           <?php foreach ($trainee_scores as $score): ?>
-                           <div class="col-md-6 col-lg-4 mb-3">
-                              <div class="card <?php echo ($score['result']['is_passed'] ?? false) ? 'border-success' : 'border-danger'; ?>">
-                                 <div class="card-header <?php echo ($score['result']['is_passed'] ?? false) ? 'bg-success text-white' : 'bg-danger text-white'; ?>">
-                                    <h6 class="mb-0">
-                                       <?php echo ($score['result']['is_passed'] ?? false) ? '<i class="fas fa-check-circle"></i>' : '<i class="fas fa-times-circle"></i>'; ?>
-                                       <?php echo htmlspecialchars($score['standard']['standard_name']); ?>
-                                    </h6>
+                           <?php foreach ($trainee_scores as $index => $score): 
+                              $current_val = $score['result']['current_value'] ?? 0;
+                              $required_val = $score['result']['required_value'] ?? 0;
+                              $is_passed = $score['result']['is_passed'] ?? false;
+                              $progress = $required_val > 0 ? min(100, round(($current_val / $required_val) * 100)) : 0;
+                              $matching_logs = $score['matching_logs'] ?? [];
+                           ?>
+                           <div class="col-12 mb-4">
+                              <div class="card shadow-sm <?php echo $is_passed ? 'border-success' : 'border-warning'; ?>">
+                                 <div class="card-header <?php echo $is_passed ? 'bg-success text-white' : 'bg-warning text-dark'; ?>">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                       <h5 class="mb-0">
+                                          <?php echo $is_passed ? '<i class="fas fa-check-circle"></i>' : '<i class="fas fa-exclamation-circle"></i>'; ?>
+                                          <?php echo htmlspecialchars($score['standard']['standard_name']); ?>
+                                       </h5>
+                                       <button class="btn btn-sm <?php echo $is_passed ? 'btn-light' : 'btn-dark'; ?>" type="button" data-toggle="collapse" data-target="#standard-<?php echo $index; ?>" aria-expanded="false">
+                                          <i class="fas fa-chevron-down"></i> View Details
+                                       </button>
+                                    </div>
                                  </div>
                                  <div class="card-body">
-                                    <div class="row text-center">
-                                       <div class="col-6">
-                                          <div class="metric-value <?php echo ($score['result']['is_passed'] ?? false) ? 'text-success' : 'text-danger'; ?>">
-                                             <?php echo $score['result']['current_value'] ?? 0; ?>
+                                    <!-- Progress Section -->
+                                    <div class="mb-3">
+                                       <div class="d-flex justify-content-between mb-2">
+                                          <div>
+                                             <span class="badge <?php echo $is_passed ? 'bg-success' : 'bg-warning'; ?> fs-6 px-3 py-2">
+                                                <?php echo $current_val; ?> / <?php echo $required_val; ?>
+                                             </span>
+                                             <span class="ms-2 <?php echo $is_passed ? 'text-success' : 'text-warning'; ?> fw-bold">
+                                                <?php echo $progress; ?>% Complete
+                                             </span>
                                           </div>
-                                          <div class="metric-label">Current</div>
+                                          <div>
+                                             <span class="badge <?php echo $is_passed ? 'bg-success' : 'bg-warning'; ?> fs-6 px-3 py-2">
+                                                <?php echo count($matching_logs); ?> <?php echo count($matching_logs) == 1 ? 'Log Entry' : 'Log Entries'; ?>
+                                             </span>
+                                          </div>
                                        </div>
-                                       <div class="col-6">
-                                          <div class="metric-value text-muted">
-                                             <?php echo $score['result']['required_value'] ?? 0; ?>
+                                       <div class="progress" style="height: 25px;">
+                                          <div class="progress-bar <?php echo $is_passed ? 'bg-success' : 'bg-warning'; ?> progress-bar-striped" 
+                                               role="progressbar" 
+                                               style="width: <?php echo $progress; ?>%"
+                                               aria-valuenow="<?php echo $progress; ?>" 
+                                               aria-valuemin="0" 
+                                               aria-valuemax="100">
+                                             <?php echo $progress; ?>%
                                           </div>
-                                          <div class="metric-label">Required</div>
                                        </div>
                                     </div>
-                                    
+
+                                    <!-- Subfield Results -->
                                     <?php if (!empty($score['result']['subfield_results'] ?? [])): ?>
-                                    <hr>
-                                    <small class="text-muted">Subfield Requirements:</small>
-                                    <ul class="list-unstyled mt-2">
-                                       <?php foreach (($score['result']['subfield_results'] ?? []) as $subfield): ?>
-                                       <li class="mb-1">
-                                          <span class="badge <?php echo ($subfield['is_passed'] ?? false) ? 'badge-success' : 'badge-danger'; ?>">
-                                             <?php echo ($subfield['is_passed'] ?? false) ? '✓' : '✗'; ?>
-                                          </span>
-                                          <?php echo htmlspecialchars($subfield['subfield_name'] ?? 'Unknown'); ?>
-                                          (<?php echo $subfield['current_value'] ?? 0; ?>/<?php echo $subfield['required_value'] ?? 0; ?>)
-                                       </li>
-                                       <?php endforeach; ?>
-                                    </ul>
+                                    <div class="mb-3">
+                                       <h6 class="text-muted mb-2"><i class="fas fa-list"></i> Subfield Requirements:</h6>
+                                       <div class="row">
+                                          <?php foreach (($score['result']['subfield_results'] ?? []) as $subfield): ?>
+                                          <div class="col-md-6 mb-2">
+                                             <div class="d-flex align-items-center">
+                                                <span class="badge <?php echo ($subfield['is_passed'] ?? false) ? 'bg-success' : 'bg-danger'; ?> me-2">
+                                                   <?php echo ($subfield['is_passed'] ?? false) ? '<i class="fas fa-check"></i>' : '<i class="fas fa-times"></i>'; ?>
+                                                </span>
+                                                <span class="small">
+                                                   <?php echo htmlspecialchars($subfield['subfield_name'] ?? 'Unknown'); ?>
+                                                   <strong>(<?php echo $subfield['current_value'] ?? 0; ?>/<?php echo $subfield['required_value'] ?? 0; ?>)</strong>
+                                                </span>
+                                             </div>
+                                          </div>
+                                          <?php endforeach; ?>
+                                       </div>
+                                    </div>
                                     <?php endif; ?>
+                                    
+                                    <!-- Collapsible Logs Section -->
+                                    <div class="collapse" id="standard-<?php echo $index; ?>">
+                                       <hr>
+                                       <div class="mt-3">
+                                          <h6 class="text-muted mb-3">
+                                             <i class="fas fa-file-alt"></i> Matching Log Entries 
+                                             <span class="badge bg-secondary"><?php echo count($matching_logs); ?></span>
+                                          </h6>
+                                          
+                                          <?php if (empty($matching_logs)): ?>
+                                             <div class="alert alert-info mb-0">
+                                                <i class="fas fa-info-circle"></i> No log entries match this standard's criteria.
+                                             </div>
+                                          <?php else: ?>
+                                             <div style="max-height: 400px; overflow-y: auto;">
+                                                <div class="list-group">
+                                                   <?php foreach ($matching_logs as $log): 
+                                                      $log_date = $log['date'];
+                                                      // Format date if it's in YYYYMMDD format (integer stored as string)
+                                                      if (strlen($log_date) == 8 && is_numeric($log_date)) {
+                                                         $year = substr($log_date, 0, 4);
+                                                         $month = substr($log_date, 4, 2);
+                                                         $day = substr($log_date, 6, 2);
+                                                         $log_date = $day . '/' . $month . '/' . $year;
+                                                      } elseif (is_numeric($log_date) && strlen($log_date) >= 8) {
+                                                         // Handle integer dates
+                                                         $log_date_str = (string)$log_date;
+                                                         if (strlen($log_date_str) >= 8) {
+                                                            $year = substr($log_date_str, 0, 4);
+                                                            $month = substr($log_date_str, 4, 2);
+                                                            $day = substr($log_date_str, 6, 2);
+                                                            $log_date = $day . '/' . $month . '/' . $year;
+                                                         }
+                                                      } else {
+                                                         // Try to parse as date string
+                                                         $timestamp = strtotime($log_date);
+                                                         if ($timestamp !== false) {
+                                                            $log_date = date('d/m/Y', $timestamp);
+                                                         }
+                                                         // $log_date is now formatted and safe to display
+                                                      }
+                                                   ?>
+                                                   <div class="list-group-item">
+                                                      <div class="d-flex justify-content-between align-items-start">
+                                                         <div class="flex-grow-1">
+                                                            <div class="d-flex align-items-center mb-2">
+                                                               <i class="fas fa-calendar-alt text-muted me-2"></i>
+                                                               <strong class="me-2"><?php echo htmlspecialchars($log_date); ?></strong>
+                                                               <span class="badge bg-primary"><?php echo htmlspecialchars($log['tab_name']); ?></span>
+                                                            </div>
+                                                            <div class="ms-4">
+                                                               <?php foreach ($log['fields'] as $field): ?>
+                                                               <div class="small text-muted mb-1">
+                                                                  <strong><?php echo htmlspecialchars($field['select_type_name']); ?>:</strong>
+                                                                  <code><?php echo htmlspecialchars($field['select_val']); ?></code>
+                                                               </div>
+                                                               <?php endforeach; ?>
+                                                            </div>
+                                                         </div>
+                                                         <div class="text-end">
+                                                            <small class="text-muted d-block">Log Key:</small>
+                                                            <code class="small"><?php echo substr($log['logkey'], 0, 8); ?>...</code>
+                                                         </div>
+                                                      </div>
+                                                   </div>
+                                                   <?php endforeach; ?>
+                                                </div>
+                                             </div>
+                                          <?php endif; ?>
+                                       </div>
+                                    </div>
                                  </div>
                               </div>
                            </div>

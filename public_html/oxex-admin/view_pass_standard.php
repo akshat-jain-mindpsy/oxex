@@ -44,6 +44,8 @@ function generateStandardExplanation($row) {
         }
     } elseif ($requirement_type == 'TOTAL_HOURS') {
         $explanation = "This rule requires a <strong>total of {$required_value} hours</strong> across all cases";
+    } elseif ($requirement_type == 'TOTAL_HOURS_COMBINED') {
+        $explanation = "This rule requires a <strong>total of {$required_value} hours</strong> combined from multiple sources";
     } elseif ($requirement_type == 'TOTAL_COUNT') {
         $explanation = "This rule requires a <strong>total count of {$required_value}</strong> records";
     } elseif ($requirement_type == 'UNIQUE_VALUES') {
@@ -64,6 +66,96 @@ function generateStandardExplanation($row) {
         $explanation .= " for <strong>any of these fields: {$or_fields}</strong>";
     } else {
         $explanation .= " (no specific field selected)";
+    }
+    
+    // Handle TOTAL_HOURS_COMBINED specially
+    if ($requirement_type == 'TOTAL_HOURS_COMBINED' && !empty($field_value)) {
+        try {
+            $total_of_data = json_decode($field_value, true);
+            if (isset($total_of_data['total_of']) && is_array($total_of_data['total_of'])) {
+                global $supabase_pdo;
+                $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+                
+                $explanation .= "<br><br><strong>Combined Sources:</strong>";
+                foreach ($total_of_data['total_of'] as $index => $source) {
+                    $source_num = $index + 1;
+                    $category_stid = $source['category_stid'] ?? '';
+                    $category_value = $source['category_value'] ?? '';
+                    
+                    // Get category name
+                    $category_name = "Unknown Category";
+                    if ($pdo && $category_stid) {
+                        $cat_stmt = $pdo->prepare("SELECT str FROM select_types WHERE stid = ?");
+                        $cat_stmt->execute([$category_stid]);
+                        $cat_row = $cat_stmt->fetch(PDO::FETCH_ASSOC);
+                        if ($cat_row) {
+                            $category_name = $cat_row['str'];
+                        }
+                    }
+                    
+                    $value_display = '';
+                    if ($category_value) {
+                        // Get value name if it's a PID
+                        if (is_numeric($category_value) && $pdo) {
+                            $val_stmt = $pdo->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
+                            $val_stmt->execute([$category_value]);
+                            $val_row = $val_stmt->fetch(PDO::FETCH_ASSOC);
+                            if ($val_row) {
+                                $value_display = htmlspecialchars($val_row['select_val']);
+                            } else {
+                                $value_display = htmlspecialchars($category_value);
+                            }
+                        } else {
+                            $value_display = htmlspecialchars($category_value);
+                        }
+                    } else {
+                        $value_display = '<em>all values</em>';
+                    }
+                    
+                    $max_display = '';
+                    if (isset($source['max_value']) && $source['max_value'] !== null) {
+                        $max_display = " (max: <strong>" . htmlspecialchars($source['max_value']) . " hours</strong>)";
+                    }
+                    $explanation .= "<br><strong>Source {$source_num}:</strong> {$category_name} = {$value_display}{$max_display}";
+                }
+                return $explanation;
+            } elseif (isset($total_of_data['hour_sources']) && is_array($total_of_data['hour_sources'])) {
+                // Legacy support for old hour_sources format
+                global $supabase_pdo;
+                $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+                
+                $explanation .= "<br><br><strong>Combined Sources:</strong>";
+                foreach ($total_of_data['hour_sources'] as $index => $source) {
+                    $source_num = $index + 1;
+                    $category_stid = $source['category_stid'] ?? '';
+                    $category_value = $source['category_value'] ?? '';
+                    
+                    // Get category name
+                    $category_name = "Unknown Category";
+                    if ($pdo && $category_stid) {
+                        $cat_stmt = $pdo->prepare("SELECT str FROM select_types WHERE stid = ?");
+                        $cat_stmt->execute([$category_stid]);
+                        $cat_row = $cat_stmt->fetch(PDO::FETCH_ASSOC);
+                        if ($cat_row) {
+                            $category_name = $cat_row['str'];
+                        }
+                    }
+                    
+                    $value_display = '';
+                    if ($category_value) {
+                        $value_display = htmlspecialchars($category_value);
+                    } else {
+                        $value_display = '<em>all values</em>';
+                    }
+                    
+                    $explanation .= "<br><strong>Source {$source_num}:</strong> {$category_name} = {$value_display}";
+                }
+                return $explanation;
+            }
+        } catch (Exception $e) {
+            error_log("Error parsing TOTAL_HOURS_COMBINED data: " . $e->getMessage());
+            $explanation .= " (Error parsing sources data)";
+        }
     }
     
     // Add field value filter - be specific about what values are checked
@@ -435,8 +527,102 @@ if (!empty($standard['who_by'])) {
                                 </div>
                             </div>
 
+                            <?php 
+                            // Parse total_of sources if this is TOTAL_HOURS_COMBINED
+                            $total_of_sources = [];
+                            if ($standard['requirement_type'] == 'TOTAL_HOURS_COMBINED' && !empty($standard['field_value'])) {
+                                try {
+                                    $total_of_data = json_decode($standard['field_value'], true);
+                                    if (isset($total_of_data['total_of']) && is_array($total_of_data['total_of'])) {
+                                        $total_of_sources = $total_of_data['total_of'];
+                                    } elseif (isset($total_of_data['hour_sources']) && is_array($total_of_data['hour_sources'])) {
+                                        // Legacy support
+                                        $total_of_sources = $total_of_data['hour_sources'];
+                                    }
+                                } catch (Exception $e) {
+                                    error_log("Error parsing total_of data: " . $e->getMessage());
+                                }
+                            }
+                            ?>
+                            
+                            <?php if (!empty($total_of_sources)): ?>
+                            <!-- Combined Sources -->
+                            <div class="combined-sources-section mt-4">
+                                <h5>Combined Sources</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Source</th>
+                                                <th>Category</th>
+                                                <th>Category Value</th>
+                                                <th>Max Value</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($total_of_sources as $index => $source): ?>
+                                            <tr>
+                                                <td><strong>Source <?php echo $index + 1; ?></strong></td>
+                                                <td>
+                                                    <?php
+                                                    $category_stid = $source['category_stid'] ?? '';
+                                                    $category_name = 'Unknown';
+                                                    if ($category_stid) {
+                                                        $cat_stmt = $pdo->prepare("SELECT str FROM select_types WHERE stid = ?");
+                                                        $cat_stmt->execute([$category_stid]);
+                                                        $cat_row = $cat_stmt->fetch(PDO::FETCH_ASSOC);
+                                                        if ($cat_row) {
+                                                            $category_name = $cat_row['str'];
+                                                        }
+                                                    }
+                                                    echo htmlspecialchars($category_name);
+                                                    ?>
+                                                </td>
+                                                <td>
+                                                    <?php
+                                                    $category_value = $source['category_value'] ?? '';
+                                                    if ($category_value) {
+                                                        // Get value name if it's a PID
+                                                        if (is_numeric($category_value)) {
+                                                            $val_stmt = $pdo->prepare("SELECT select_val FROM select_gen WHERE pid = ?");
+                                                            $val_stmt->execute([$category_value]);
+                                                            $val_row = $val_stmt->fetch(PDO::FETCH_ASSOC);
+                                                            if ($val_row) {
+                                                                echo htmlspecialchars($val_row['select_val']);
+                                                            } else {
+                                                                echo htmlspecialchars($category_value);
+                                                            }
+                                                        } else {
+                                                            echo htmlspecialchars($category_value);
+                                                        }
+                                                    } else {
+                                                        echo '<em class="text-muted">All values</em>';
+                                                    }
+                                                    ?>
+                                                </td>
+                                                <td>
+                                                    <?php
+                                                    $max_value = $source['max_value'] ?? null;
+                                                    if ($max_value !== null && $max_value !== '') {
+                                                        echo '<strong>' . htmlspecialchars($max_value) . '</strong> hours max';
+                                                    } else {
+                                                        echo '<em class="text-muted">No limit</em>';
+                                                    }
+                                                    ?>
+                                                </td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <small class="text-muted">
+                                    These sources will be summed together to meet the required total value. If a source has a max value, it will be capped at that amount.
+                                </small>
+                            </div>
+                            <?php endif; ?>
 
                             <!-- Subfield Rules -->
+                            <?php if (empty($total_of_sources)): ?>
                             <div class="subfield-rules-section">
                                 <h5>Subfield Rules</h5>
                                 <?php if (!empty($subfield_rule_groups)): ?>
@@ -500,6 +686,7 @@ if (!empty($standard['who_by'])) {
                                     </div>
                                 <?php endif; ?>
                             </div>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>

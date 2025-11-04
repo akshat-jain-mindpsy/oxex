@@ -10,6 +10,11 @@ check_session_timeout();
 include 'incl/sess.php';
 $formurl = 'logbook.php'; # which page send form
 $usingSupabase = (isset($supabase_pdo) && $supabase_pdo instanceof PDO);
+
+// Ensure $trainkey is always defined before use
+if (!isset($trainkey)) { 
+    $trainkey = ''; 
+}
 // this page shows the logbook data entry for the selected table
 //  1. show a date selector to enter data for that date
 //  2. show a list of previously-entered data
@@ -149,7 +154,7 @@ if ($done == 'done' && $table != 'table') {
   $modifylog = 1; # either way, there is now data for this date
   
   // Redirect to logbook.php with tab=1 after successful save
-  $redirectUrl = '/oxex/public_html/logbook.php?tab=1';
+  $redirectUrl = '/logbook.php?tab=1';
   ob_end_clean(); // Clear any output before redirect
   header('Location: ' . $redirectUrl);
   exit();

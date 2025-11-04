@@ -34,6 +34,8 @@ function generateStandardExplanation($row) {
         }
     } elseif ($requirement_type == 'TOTAL_HOURS') {
         $explanation = "This rule requires a <strong>total of {$required_value} hours</strong> across all cases";
+    } elseif ($requirement_type == 'TOTAL_HOURS_COMBINED') {
+        $explanation = "This rule requires a <strong>total of {$required_value} hours</strong> combined from multiple sources";
     } elseif ($requirement_type == 'TOTAL_COUNT') {
         $explanation = "This rule requires a <strong>total count of {$required_value}</strong> records";
     } elseif ($requirement_type == 'UNIQUE_VALUES') {
