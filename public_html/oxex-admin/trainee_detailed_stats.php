@@ -1778,28 +1778,123 @@ if ($view === 'babcp') {
                         // This will check ALL trainee logs against EACH pass standard's conditions
                         $trainee_scores = [];
                         $current_trainee_key = ($trainee_key ?? '') ?: $selected_trainee;
+                        
+                        // Debug: Log trainee selection
+                        error_log('[TRAINEE DEBUG] Starting pass standard evaluation');
+                        error_log('[TRAINEE DEBUG] current_trainee_key: ' . var_export($current_trainee_key, true));
+                        error_log('[TRAINEE DEBUG] trainee_key: ' . var_export($trainee_key ?? 'NOT SET', true));
+                        error_log('[TRAINEE DEBUG] selected_trainee: ' . var_export($selected_trainee, true));
+                        error_log('[TRAINEE DEBUG] pass_standards count: ' . count($pass_standards));
+                        
                         if (!empty($current_trainee_key)) {
-                            foreach ($pass_standards as $standard) {
-                                // Use checkPassStandardStatus to evaluate this specific standard against all trainee logs
-                                $result = checkPassStandardStatus($current_trainee_key, $standard['psid'], $pdo);
-                                // Ensure we have a valid result structure
-                                if (!$result || !is_array($result)) {
+                            foreach ($pass_standards as $index => $standard) {
+                                // Debug: Log each standard being evaluated
+                                error_log('[TRAINEE DEBUG] ========================================');
+                                error_log('[TRAINEE DEBUG] Evaluating standard #' . ($index + 1) . ' of ' . count($pass_standards));
+                                error_log('[TRAINEE DEBUG] standard[psid]: ' . var_export($standard['psid'], true) . ' (type: ' . gettype($standard['psid']) . ')');
+                                error_log('[TRAINEE DEBUG] standard[standard_name]: ' . var_export($standard['standard_name'], true));
+                                error_log('[TRAINEE DEBUG] standard[tbid]: ' . var_export($standard['tbid'] ?? 'NOT SET', true) . ' (type: ' . gettype($standard['tbid'] ?? null) . ')');
+                                error_log('[TRAINEE DEBUG] standard[required_value]: ' . var_export($standard['required_value'] ?? 'NOT SET', true));
+                                error_log('[TRAINEE DEBUG] Full standard array: ' . json_encode($standard));
+                                
+                                try {
+                                    // Use checkPassStandardStatus to evaluate this specific standard against all trainee logs
+                                    error_log('[TRAINEE DEBUG] Calling checkPassStandardStatus with:');
+                                    error_log('[TRAINEE DEBUG]   - traineeKey: ' . var_export($current_trainee_key, true) . ' (type: ' . gettype($current_trainee_key) . ')');
+                                    error_log('[TRAINEE DEBUG]   - psid: ' . var_export($standard['psid'], true) . ' (type: ' . gettype($standard['psid']) . ')');
+                                    
+                                    $result = checkPassStandardStatus($current_trainee_key, $standard['psid'], $pdo);
+                                    
+                                    error_log('[TRAINEE DEBUG] checkPassStandardStatus returned successfully');
+                                    error_log('[TRAINEE DEBUG] result type: ' . gettype($result));
+                                    error_log('[TRAINEE DEBUG] result is_array: ' . var_export(is_array($result), true));
+                                    if (is_array($result)) {
+                                        error_log('[TRAINEE DEBUG] result keys: ' . implode(', ', array_keys($result)));
+                                        error_log('[TRAINEE DEBUG] result[is_passed]: ' . var_export($result['is_passed'] ?? 'NOT SET', true));
+                                        error_log('[TRAINEE DEBUG] result[current_value]: ' . var_export($result['current_value'] ?? 'NOT SET', true));
+                                        error_log('[TRAINEE DEBUG] result[required_value]: ' . var_export($result['required_value'] ?? 'NOT SET', true));
+                                        if (isset($result['breakdown']['category_groups'])) {
+                                            error_log('[TRAINEE DEBUG] result has category_groups: ' . count($result['breakdown']['category_groups']));
+                                        }
+                                        if (isset($result['children'])) {
+                                            error_log('[TRAINEE DEBUG] result has children: ' . count($result['children']));
+                                        }
+                                    } else {
+                                        error_log('[TRAINEE DEBUG] result is not an array, value: ' . var_export($result, true));
+                                    }
+                                    
+                                    // Ensure we have a valid result structure
+                                    if (!$result || !is_array($result)) {
+                                        error_log('[TRAINEE DEBUG] Result is invalid, creating default structure');
+                                        $result = [
+                                            'is_passed' => false,
+                                            'standard_name' => $standard['standard_name'],
+                                            'current_value' => 0,
+                                            'required_value' => $standard['required_value'],
+                                            'subfield_results' => []
+                                        ];
+                                    }
+                                    
+                                    // Get matching logs for this standard
+                                    error_log('[TRAINEE DEBUG] Calling getMatchingLogsForStandard');
+                                    $matching_logs = getMatchingLogsForStandard($current_trainee_key, $standard['psid'], $pdo);
+                                    error_log('[TRAINEE DEBUG] getMatchingLogsForStandard returned ' . count($matching_logs) . ' logs');
+                                    
+                                    $trainee_scores[] = [
+                                        'standard' => $standard,
+                                        'result' => $result,
+                                        'matching_logs' => $matching_logs
+                                    ];
+                                    
+                                    error_log('[TRAINEE DEBUG] Successfully added score for standard #' . ($index + 1));
+                                } catch (Exception $e) {
+                                    error_log('[TRAINEE DEBUG] ERROR evaluating standard #' . ($index + 1) . ': ' . $e->getMessage());
+                                    error_log('[TRAINEE DEBUG] Exception trace: ' . $e->getTraceAsString());
+                                    error_log('[TRAINEE DEBUG] Standard that caused error: ' . json_encode($standard));
+                                    
+                                    // Create error result
                                     $result = [
                                         'is_passed' => false,
-                                        'standard_name' => $standard['standard_name'],
+                                        'standard_name' => $standard['standard_name'] . ' (ERROR)',
                                         'current_value' => 0,
                                         'required_value' => $standard['required_value'],
-                                        'subfield_results' => []
+                                        'subfield_results' => [],
+                                        'error' => $e->getMessage()
+                                    ];
+                                    
+                                    $trainee_scores[] = [
+                                        'standard' => $standard,
+                                        'result' => $result,
+                                        'matching_logs' => []
+                                    ];
+                                } catch (PDOException $e) {
+                                    error_log('[TRAINEE DEBUG] PDO ERROR evaluating standard #' . ($index + 1) . ': ' . $e->getMessage());
+                                    error_log('[TRAINEE DEBUG] PDO Exception code: ' . $e->getCode());
+                                    error_log('[TRAINEE DEBUG] PDO Exception trace: ' . $e->getTraceAsString());
+                                    error_log('[TRAINEE DEBUG] Standard that caused PDO error: ' . json_encode($standard));
+                                    
+                                    // Create error result
+                                    $result = [
+                                        'is_passed' => false,
+                                        'standard_name' => $standard['standard_name'] . ' (PDO ERROR)',
+                                        'current_value' => 0,
+                                        'required_value' => $standard['required_value'],
+                                        'subfield_results' => [],
+                                        'error' => $e->getMessage()
+                                    ];
+                                    
+                                    $trainee_scores[] = [
+                                        'standard' => $standard,
+                                        'result' => $result,
+                                        'matching_logs' => []
                                     ];
                                 }
-                                // Get matching logs for this standard
-                                $matching_logs = getMatchingLogsForStandard($current_trainee_key, $standard['psid'], $pdo);
-                                $trainee_scores[] = [
-                                    'standard' => $standard,
-                                    'result' => $result,
-                                    'matching_logs' => $matching_logs
-                                ];
                             }
+                            
+                            error_log('[TRAINEE DEBUG] Completed evaluation of all standards');
+                            error_log('[TRAINEE DEBUG] Total scores collected: ' . count($trainee_scores));
+                        } else {
+                            error_log('[TRAINEE DEBUG] No trainee selected, skipping evaluation');
                         }
                         ?>
                         
@@ -1946,6 +2041,148 @@ if ($view === 'babcp') {
                                           </div>
                                           <?php endforeach; ?>
                                        </div>
+                                    </div>
+                                    <?php endif; ?>
+                                    
+                                    <!-- Category Groups Results -->
+                                    <?php if (!empty($score['result']['breakdown']['category_groups'] ?? [])): ?>
+                                    <div class="mb-3">
+                                       <h6 class="text-muted mb-2"><i class="fas fa-layer-group"></i> Category Groups:</h6>
+                                       <?php foreach ($score['result']['breakdown']['category_groups'] as $group): ?>
+                                          <div class="card mb-2">
+                                             <div class="card-body">
+                                                <h6><?php echo htmlspecialchars($group['group_name'] ?? 'Category Group'); ?></h6>
+                                                <div class="d-flex align-items-center">
+                                                   <span class="badge <?php echo ($group['is_passed'] ?? false) ? 'bg-success' : 'bg-danger'; ?> me-2">
+                                                      <?php echo ($group['is_passed'] ?? false) ? '<i class="fas fa-check"></i>' : '<i class="fas fa-times"></i>'; ?>
+                                                   </span>
+                                                   <span>
+                                                      <?php echo $group['current_value'] ?? 0; ?> / <?php echo $group['required_value'] ?? 0; ?>
+                                                   </span>
+                                                </div>
+                                                
+                                                <!-- Subfield rules within category group -->
+                                                <?php if (!empty($group['subfield_rules'] ?? [])): ?>
+                                                   <div class="mt-2 ms-4">
+                                                      <?php foreach ($group['subfield_rules'] as $subfield): 
+                                                         // Get subfield name - look it up if not provided
+                                                         $subfield_name = $subfield['subfield_name'] ?? null;
+                                                         if (empty($subfield_name) && !empty($subfield['subfield_value'])) {
+                                                            // Try to look up the name using the helper function if available
+                                                            if (function_exists('_getSubfieldName')) {
+                                                               $subfield_name = _getSubfieldName($subfield['subfield_value'], $pdo);
+                                                            } else {
+                                                               $subfield_name = 'Subfield ' . ($subfield['subfield_value'] ?? 'Unknown');
+                                                            }
+                                                         }
+                                                         $subfield_name = $subfield_name ?? 'Unknown';
+                                                      ?>
+                                                         <div class="small mb-1">
+                                                            <span class="badge <?php echo ($subfield['is_passed'] ?? false) ? 'bg-success' : 'bg-danger'; ?>">
+                                                               <?php echo htmlspecialchars($subfield_name); ?>
+                                                               (<?php echo $subfield['current_value'] ?? 0; ?>/<?php echo $subfield['required_value'] ?? 0; ?>)
+                                                            </span>
+                                                         </div>
+                                                      <?php endforeach; ?>
+                                                   </div>
+                                                <?php endif; ?>
+                                             </div>
+                                          </div>
+                                       <?php endforeach; ?>
+                                    </div>
+                                    <?php endif; ?>
+                                    
+                                    <!-- Child Rules Results -->
+                                    <?php if (!empty($score['result']['children'] ?? [])): ?>
+                                    <div class="mb-3">
+                                       <h6 class="text-muted mb-2"><i class="fas fa-sitemap"></i> Child Requirements:</h6>
+                                       <?php foreach ($score['result']['children'] as $child_index => $child): ?>
+                                          <div class="card mb-2 ms-4 border-start border-3">
+                                             <div class="card-body">
+                                                <h6 class="small">
+                                                   <?php echo htmlspecialchars($child['standard_name'] ?? 'Child Requirement'); ?>
+                                                </h6>
+                                                <div class="d-flex align-items-center">
+                                                   <span class="badge <?php echo ($child['is_passed'] ?? false) ? 'bg-success' : 'bg-danger'; ?> me-2">
+                                                      <?php echo ($child['is_passed'] ?? false) ? '<i class="fas fa-check"></i>' : '<i class="fas fa-times"></i>'; ?>
+                                                   </span>
+                                                   <span class="small">
+                                                      <?php echo $child['current_value'] ?? 0; ?> / <?php echo $child['required_value'] ?? 0; ?>
+                                                   </span>
+                                                </div>
+                                                
+                                                <!-- Recursively show child's subfield results if any -->
+                                                <?php if (!empty($child['subfield_rules'] ?? [])): ?>
+                                                   <div class="mt-2 ms-3">
+                                                      <?php foreach ($child['subfield_rules'] as $subfield): 
+                                                         // Get subfield name - look it up if not provided
+                                                         $subfield_name = $subfield['subfield_name'] ?? null;
+                                                         if (empty($subfield_name) && !empty($subfield['subfield_value'])) {
+                                                            // Try to look up the name using the helper function if available
+                                                            if (function_exists('_getSubfieldName')) {
+                                                               $subfield_name = _getSubfieldName($subfield['subfield_value'], $pdo);
+                                                            } else {
+                                                               $subfield_name = 'Subfield ' . ($subfield['subfield_value'] ?? 'Unknown');
+                                                            }
+                                                         }
+                                                         $subfield_name = $subfield_name ?? 'Unknown';
+                                                      ?>
+                                                         <div class="small mb-1">
+                                                            <span class="badge <?php echo ($subfield['is_passed'] ?? false) ? 'bg-success' : 'bg-warning'; ?>">
+                                                               <?php echo htmlspecialchars($subfield_name); ?>
+                                                               (<?php echo $subfield['current_value'] ?? 0; ?>/<?php echo $subfield['required_value'] ?? 0; ?>)
+                                                            </span>
+                                                         </div>
+                                                      <?php endforeach; ?>
+                                                   </div>
+                                                <?php endif; ?>
+                                                
+                                                <!-- Recursively show child's category groups if any -->
+                                                <?php if (!empty($child['category_groups'] ?? [])): ?>
+                                                   <div class="mt-2 ms-3">
+                                                      <h6 class="text-muted small mb-1"><i class="fas fa-layer-group"></i> Category Groups:</h6>
+                                                      <?php foreach ($child['category_groups'] as $child_group): ?>
+                                                         <div class="card mb-1">
+                                                            <div class="card-body p-2">
+                                                               <div class="small d-flex align-items-center">
+                                                                  <span class="badge <?php echo ($child_group['is_passed'] ?? false) ? 'bg-success' : 'bg-danger'; ?> me-2">
+                                                                     <?php echo ($child_group['is_passed'] ?? false) ? '<i class="fas fa-check"></i>' : '<i class="fas fa-times"></i>'; ?>
+                                                                  </span>
+                                                                  <span>
+                                                                     <?php echo htmlspecialchars($child_group['group_name'] ?? 'Category Group'); ?>
+                                                                     (<?php echo $child_group['current_value'] ?? 0; ?>/<?php echo $child_group['required_value'] ?? 0; ?>)
+                                                                  </span>
+                                                               </div>
+                                                            </div>
+                                                         </div>
+                                                      <?php endforeach; ?>
+                                                   </div>
+                                                <?php endif; ?>
+                                                
+                                                <!-- Recursively show child's children if any (nested children) -->
+                                                <?php if (!empty($child['children'] ?? [])): ?>
+                                                   <div class="mt-2 ms-3">
+                                                      <h6 class="text-muted small mb-1"><i class="fas fa-sitemap"></i> Nested Requirements:</h6>
+                                                      <?php foreach ($child['children'] as $nested_child): ?>
+                                                         <div class="card mb-1 ms-2">
+                                                            <div class="card-body p-2">
+                                                               <div class="small d-flex align-items-center">
+                                                                  <span class="badge <?php echo ($nested_child['is_passed'] ?? false) ? 'bg-success' : 'bg-danger'; ?> me-2">
+                                                                     <?php echo ($nested_child['is_passed'] ?? false) ? '<i class="fas fa-check"></i>' : '<i class="fas fa-times"></i>'; ?>
+                                                                  </span>
+                                                                  <span>
+                                                                     <?php echo htmlspecialchars($nested_child['standard_name'] ?? 'Nested Requirement'); ?>
+                                                                     (<?php echo $nested_child['current_value'] ?? 0; ?>/<?php echo $nested_child['required_value'] ?? 0; ?>)
+                                                                  </span>
+                                                               </div>
+                                                            </div>
+                                                         </div>
+                                                      <?php endforeach; ?>
+                                                   </div>
+                                                <?php endif; ?>
+                                             </div>
+                                          </div>
+                                       <?php endforeach; ?>
                                     </div>
                                     <?php endif; ?>
                                     

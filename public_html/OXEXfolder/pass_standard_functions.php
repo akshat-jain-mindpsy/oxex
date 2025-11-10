@@ -187,10 +187,23 @@ function _evaluateCategoryGroups($rule, $traineeKey, $pdo, $population_logkeys =
     
     // Evaluate each category group
     foreach ($rule['category_groups'] as $group) {
-        $group_result = _evaluateSingleCategoryGroup($rule, $group, $traineeKey, $pdo, $population_logkeys, $tbid);
-        $category_results[] = $group_result;
-        
-        if (!$group_result['is_passed']) {
+        try {
+            $group_result = _evaluateSingleCategoryGroup($rule, $group, $traineeKey, $pdo, $population_logkeys, $tbid);
+            $category_results[] = $group_result;
+            
+            if (!$group_result['is_passed']) {
+                $all_groups_passed = false;
+            }
+        } catch (Exception $e) {
+            // Handle invalid category group data gracefully
+            error_log('[PASS DEBUG] Error evaluating category group: ' . $e->getMessage());
+            $category_results[] = [
+                'group_name' => "Category Group (stid: " . ($group['stid'] ?? 'N/A') . ") - ERROR",
+                'is_passed' => false,
+                'current_value' => 0,
+                'required_value' => 0,
+                'error' => $e->getMessage()
+            ];
             $all_groups_passed = false;
         }
     }
@@ -281,11 +294,80 @@ function _evaluateCategoryGroupWithSubfields($group, $traineeKey, $pdo, $populat
     $subfield_results = [];
     $all_subfields_passed = true;
     
+    // Evaluate each subfield rule; support any_of groups
     foreach ($group['subfield_rules'] as $subfield_rule) {
-        $subfield_result = _evaluateCategorySubfieldRule($group, $subfield_rule, $traineeKey, $pdo, $population_logkeys, $tbid);
-        $subfield_results[] = $subfield_result;
-        
-        if (!$subfield_result['is_passed']) {
+        try {
+            // any_of: treat as a single requirement that passes if any alternative passes
+            if (isset($subfield_rule['any_of']) && is_array($subfield_rule['any_of']) && !empty($subfield_rule['any_of'])) {
+                $alternatives = $subfield_rule['any_of'];
+                $alt_results = [];
+                $any_passed = false;
+                foreach ($alternatives as $alt) {
+                    // Skip alternatives with invalid subfield_value
+                    if (empty($alt['subfield_value']) || 
+                        !is_numeric($alt['subfield_value']) || 
+                        trim((string)$alt['subfield_value']) === '') {
+                        continue;
+                    }
+                    $alt_result = _evaluateCategorySubfieldRule($group, $alt, $traineeKey, $pdo, $population_logkeys, $tbid);
+                    $alt_results[] = $alt_result;
+                    if ($alt_result['is_passed']) {
+                        $any_passed = true;
+                    }
+                }
+                $subfield_results[] = [
+                    'subfield_value' => null,
+                    'subfield_name' => 'any_of',
+                    'requirement_type' => 'ANY_OF',
+                    'is_passed' => $any_passed,
+                    'current_value' => array_sum(array_map(function($r){ return $r['is_passed'] ? 1 : 0; }, $alt_results)),
+                    'required_value' => 1,
+                    'alternatives' => $alt_results
+                ];
+                if (!$any_passed) {
+                    $all_subfields_passed = false;
+                }
+            } else {
+                // Skip subfield rules with invalid subfield_value (unless it's a TOTAL_COUNT without subfield)
+                $skip_rule = false;
+                if (!empty($subfield_rule['subfield_value']) && 
+                    (!is_numeric($subfield_rule['subfield_value']) || trim((string)$subfield_rule['subfield_value']) === '')) {
+                    // Invalid subfield_value - skip this rule
+                    $skip_rule = true;
+                }
+                
+                if (!$skip_rule) {
+                    $subfield_result = _evaluateCategorySubfieldRule($group, $subfield_rule, $traineeKey, $pdo, $population_logkeys, $tbid);
+                    $subfield_results[] = $subfield_result;
+                    if (!$subfield_result['is_passed']) {
+                        $all_subfields_passed = false;
+                    }
+                } else {
+                    // Add a failed result for invalid rule
+                    $subfield_results[] = [
+                        'subfield_value' => $subfield_rule['subfield_value'] ?? '',
+                        'subfield_name' => 'Invalid Rule',
+                        'requirement_type' => $subfield_rule['requirement_type'] ?? 'TOTAL_COUNT',
+                        'is_passed' => false,
+                        'current_value' => 0,
+                        'required_value' => 0,
+                        'error' => 'Invalid subfield_value'
+                    ];
+                    $all_subfields_passed = false;
+                }
+            }
+        } catch (Exception $e) {
+            // Handle invalid subfield rule data gracefully
+            error_log('[PASS DEBUG] Error evaluating subfield rule: ' . $e->getMessage());
+            $subfield_results[] = [
+                'subfield_value' => $subfield_rule['subfield_value'] ?? '',
+                'subfield_name' => 'Error',
+                'requirement_type' => $subfield_rule['requirement_type'] ?? 'TOTAL_COUNT',
+                'is_passed' => false,
+                'current_value' => 0,
+                'required_value' => 0,
+                'error' => $e->getMessage()
+            ];
             $all_subfields_passed = false;
         }
     }
@@ -308,22 +390,49 @@ function _evaluateCategoryGroupSimple($group, $traineeKey, $pdo, $population_log
     $where_clauses = ["trainkey = ?"];
     
     // Add tbid filter if provided (from main_rule)
-    if (!empty($tbid)) {
-        $where_clauses[] = "tbid = ?";
-        $types .= 'i';
-        $params[] = $tbid;
+    if (!empty($tbid) && $tbid !== '' && is_numeric($tbid) && trim((string)$tbid) !== '') {
+        $tbid_int = (int)$tbid;
+        if ($tbid_int > 0) {
+            $where_clauses[] = "tbid = ?";
+            $types .= 'i';
+            $params[] = $tbid_int;
+            error_log('[PASS DEBUG] Added tbid to params: ' . $tbid_int);
+        } else {
+            error_log('[PASS DEBUG] tbid validation failed: tbid_int=' . $tbid_int);
+        }
+    } else {
+        error_log('[PASS DEBUG] tbid not added: empty=' . var_export(empty($tbid), true) . ', is_numeric=' . var_export(is_numeric($tbid), true));
     }
     
     // Add STID condition (supports group['stids'] for OR-of-stids)
     if (!empty($group['stids']) && is_array($group['stids'])) {
-        $placeholders = implode(',', array_fill(0, count($group['stids']), '?'));
-        $where_clauses[] = "stid IN ($placeholders)";
-        $types .= str_repeat('i', count($group['stids']));
-        foreach ($group['stids'] as $sid) { $params[] = (int)$sid; }
-    } elseif (!empty($group['stid'])) {
-        $where_clauses[] = "stid = ?";
-        $types .= 'i';
-        $params[] = $group['stid'];
+        // Filter out invalid stids before building query
+        $valid_stids = array_filter($group['stids'], function($sid) {
+            return is_numeric($sid) && trim((string)$sid) !== '' && (int)$sid > 0;
+        });
+        if (!empty($valid_stids)) {
+            $placeholders = implode(',', array_fill(0, count($valid_stids), '?'));
+            $where_clauses[] = "stid IN ($placeholders)";
+            $types .= str_repeat('i', count($valid_stids));
+            foreach ($valid_stids as $sid) {
+                $params[] = (int)$sid;
+            }
+            error_log('[PASS DEBUG] Added stids to params: ' . json_encode($valid_stids));
+        } else {
+            error_log('[PASS DEBUG] No valid stids found in group[stids]');
+        }
+    } elseif (isset($group['stid']) && $group['stid'] !== '' && is_numeric($group['stid']) && trim((string)$group['stid']) !== '') {
+        $stid_int = (int)$group['stid'];
+        if ($stid_int > 0) {
+            $where_clauses[] = "stid = ?";
+            $types .= 'i';
+            $params[] = $stid_int;
+            error_log('[PASS DEBUG] Added stid to params: ' . $stid_int);
+        } else {
+            error_log('[PASS DEBUG] stid validation failed: stid_int=' . $stid_int . ', original=' . var_export($group['stid'], true));
+        }
+    } else {
+        error_log('[PASS DEBUG] stid not added: isset=' . var_export(isset($group['stid']), true) . ', empty=' . var_export(empty($group['stid']), true) . ', is_numeric=' . var_export(is_numeric($group['stid'] ?? null), true));
     }
     
     // Handle parent population if provided
@@ -355,32 +464,41 @@ function _evaluateCategoryGroupSimple($group, $traineeKey, $pdo, $population_log
                 FROM trainee_log t1
                 WHERE t1.trainkey = ? ";
         // Support stid OR stids
+        $types = 's';
+        $params = [$traineeKey];
         if (!empty($group['stids']) && is_array($group['stids'])) {
-            $base_query .= " AND t1.stid IN (" . implode(',', array_fill(0, count($group['stids']), '?')) . ")";
-        } else {
-            $base_query .= " AND t1.stid = ?";
+            // Filter out invalid stids before building query
+            $valid_stids = array_filter($group['stids'], function($sid) {
+                return is_numeric($sid) && trim((string)$sid) !== '' && (int)$sid > 0;
+            });
+            if (!empty($valid_stids)) {
+                $placeholders = implode(',', array_fill(0, count($valid_stids), '?'));
+                $base_query .= " AND t1.stid IN ($placeholders)";
+                $types .= str_repeat('i', count($valid_stids));
+                foreach ($valid_stids as $sid) {
+                    $params[] = (int)$sid;
+                }
+            }
+        } elseif (isset($group['stid']) && $group['stid'] !== '' && is_numeric($group['stid']) && trim((string)$group['stid']) !== '') {
+            $stid_int = (int)$group['stid'];
+            if ($stid_int > 0) {
+                $base_query .= " AND t1.stid = ?";
+                $types .= 'i';
+                $params[] = $stid_int;
+            }
         }
-        if (!empty($tbid)) {
-            $base_query .= " AND t1.tbid = ?";
+        if (!empty($tbid) && $tbid !== '' && is_numeric($tbid) && trim((string)$tbid) !== '') {
+            $tbid_int = (int)$tbid;
+            if ($tbid_int > 0) {
+                $base_query .= " AND t1.tbid = ?";
+                $params[] = $tbid_int;
+                $types .= 'i';
+            }
         }
         $base_query .= "
                 GROUP BY t1.logkey
             ) max_sessions
             WHERE max_sessions.max_value >= ?";
-        
-        $types = 's';
-        $params = [$traineeKey];
-        if (!empty($group['stids']) && is_array($group['stids'])) {
-            $types .= str_repeat('i', count($group['stids']));
-            foreach ($group['stids'] as $sid) { $params[] = (int)$sid; }
-        } else {
-            $types .= 'i';
-            $params[] = (int)$group['stid'];
-        }
-        if (!empty($tbid)) {
-            $params[] = $tbid;
-            $types .= 'i';
-        }
         $params[] = (float)$group['minimum_threshold'];
         $types .= 'd';
         
@@ -395,19 +513,8 @@ function _evaluateCategoryGroupSimple($group, $traineeKey, $pdo, $population_log
         // Rebuild where clauses (empty since conditions are in base_query)
         $where_clauses = [];
     } else {
-        // Standard query
-        $where_clauses = ["trainkey = ?"];
-        if (!empty($tbid)) {
-            $where_clauses[] = "tbid = ?";
-        }
-        if (!empty($group['stid'])) {
-            $where_clauses[] = "stid = ?";
-        }
-        
-        if ($population_logkeys !== null && !empty($population_logkeys)) {
-            $placeholders = implode(',', array_fill(0, count($population_logkeys), '?'));
-            $where_clauses[] = "logkey IN ($placeholders)";
-        }
+        // Standard query - use existing where_clauses and params built earlier
+        // No need to rebuild them, they're already correct from lines 306-339
     }
     
     // Execute query
@@ -416,6 +523,18 @@ function _evaluateCategoryGroupSimple($group, $traineeKey, $pdo, $population_log
         if (!empty($where_clauses)) {
             $final_query .= " WHERE " . implode(" AND ", $where_clauses);
         }
+        
+
+        // Check for empty strings in params
+        foreach ($params as $idx => $param) {
+            if ($param === '' || (is_string($param) && trim($param) === '')) {
+                error_log('[PASS DEBUG] ERROR: Empty string param at index ' . $idx . ': ' . var_export($param, true));
+            }
+            if (is_numeric($param) && (int)$param <= 0 && $idx > 0) {
+                error_log('[PASS DEBUG] WARNING: Non-positive numeric param at index ' . $idx . ': ' . var_export($param, true));
+            }
+        }
+        
         $stmt = $pdo->prepare($final_query);
         $stmt->execute($params);
         $current_value = $stmt->fetchColumn();
@@ -445,54 +564,191 @@ function _evaluateCategorySubfieldRule($group, $subfield_rule, $traineeKey, $pdo
     $where_clauses = ["trainkey = ?"];
     
     // Add tbid filter if provided
-    if (!empty($tbid)) {
-        $where_clauses[] = "tbid = ?";
-        $types .= 'i';
-        $params[] = $tbid;
-    }
-    
-    // Add main STID
-    if (!empty($group['stid'])) {
-        $where_clauses[] = "stid = ?";
-        $types .= 'i';
-        $params[] = $group['stid'];
-    }
-    
-    // Add subfield value
-    if (!empty($subfield_rule['subfield_value'])) {
-        // Convert PID to STID
-        $pid = $subfield_rule['subfield_value'];
-        $stid_query = "SELECT stid FROM select_gen WHERE pid = ?";
-        $stid_stmt = $pdo->prepare($stid_query);
-        $stid_stmt->execute([$pid]);
-        $stid_row = $stid_stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($stid_row) {
-            $where_clauses[] = "stid = ?";
+    if (!empty($tbid) && $tbid !== '' && is_numeric($tbid) && trim((string)$tbid) !== '') {
+        $tbid_int = (int)$tbid;
+        if ($tbid_int > 0) {
+            $where_clauses[] = "tbid = ?";
             $types .= 'i';
-            $params[] = $stid_row['stid'];
+            $params[] = $tbid_int;
         }
     }
     
-    if ($population_logkeys !== null && !empty($population_logkeys)) {
-        $placeholders = implode(',', array_fill(0, count($population_logkeys), '?'));
-        $where_clauses[] = "logkey IN ($placeholders)";
-        $types .= str_repeat('s', count($population_logkeys));
-        array_push($params, ...$population_logkeys);
+    // Add main STID (from group)
+    if (isset($group['stid']) && $group['stid'] !== '' && is_numeric($group['stid']) && trim((string)$group['stid']) !== '') {
+        $stid_int = (int)$group['stid'];
+        if ($stid_int > 0) {
+            $where_clauses[] = "stid = ?";
+            $types .= 'i';
+            $params[] = $stid_int;
+        }
     }
     
-    $base_query = "SELECT COUNT(*) FROM trainee_log";
+    // Add subfield value (PID filter)
+    $sub_pid = null;
+    if (!empty($subfield_rule['subfield_value'] ?? '') && 
+        is_numeric($subfield_rule['subfield_value']) && 
+        trim((string)$subfield_rule['subfield_value']) !== '') {
+        $pid = $subfield_rule['subfield_value'];
+        $sub_pid = (int)$pid;
+        if ($sub_pid > 0) {
+            // pid filter (direct)
+            $where_clauses[] = "pid = ?";
+            $types .= 'i';
+            $params[] = $sub_pid;
+            // Also map PID to STID (usually redundant but harmless)
+            $stid_query = "SELECT stid FROM select_gen WHERE pid = ?";
+            $stid_stmt = $pdo->prepare($stid_query);
+            $stid_stmt->execute([$sub_pid]);
+            $stid_row = $stid_stmt->fetch(PDO::FETCH_ASSOC);
+            if ($stid_row && !empty($stid_row['stid']) && is_numeric($stid_row['stid'])) {
+                $stid_val = (int)$stid_row['stid'];
+                if ($stid_val > 0) {
+                    $where_clauses[] = "stid = ?";
+                    $types .= 'i';
+                    $params[] = $stid_val;
+                }
+            }
+        }
+    }
+    
+    // If this is a child rule, constrain the query to the parent's population of logkeys
+    if ($population_logkeys !== null) {
+        if (empty($population_logkeys)) {
+            $current_value = 0;
+            $required_value = 0;
+            if (isset($subfield_rule['specific_value']) && 
+                is_numeric($subfield_rule['specific_value']) && 
+                trim((string)$subfield_rule['specific_value']) !== '') {
+                $required_value = (int)$subfield_rule['specific_value'];
+            }
+            $is_passed = ($current_value >= $required_value);
+            return [
+                'subfield_value' => $subfield_rule['subfield_value'] ?? '',
+                'subfield_name' => _getSubfieldName($subfield_rule['subfield_value'] ?? '', $pdo),
+                'requirement_type' => $subfield_rule['requirement_type'] ?? 'TOTAL_COUNT',
+                'is_passed' => $is_passed,
+                'current_value' => $current_value,
+                'required_value' => $required_value
+            ];
+        } else {
+            $placeholders = implode(',', array_fill(0, count($population_logkeys), '?'));
+            $where_clauses[] = "logkey IN ($placeholders)";
+            $types .= str_repeat('s', count($population_logkeys));
+            array_push($params, ...$population_logkeys);
+        }
+    }
+    
+    // Build the query based on requirement type
+    $base_query = "";
+    $sub_req_type = $subfield_rule['requirement_type'] ?? 'TOTAL_COUNT';
+    switch ($sub_req_type) {
+        case 'PER_CASE_MINIMUM':
+            // Count distinct cases where per-case maximum numeric select_val meets minimum_threshold
+            $min_threshold = null;
+            if (isset($subfield_rule['minimum_threshold']) && 
+                is_numeric($subfield_rule['minimum_threshold']) && 
+                trim((string)$subfield_rule['minimum_threshold']) !== '') {
+                $min_threshold = (float)$subfield_rule['minimum_threshold'];
+            }
+            $specific_required = trim((string)($subfield_rule['specific_value'] ?? '0'));
+            $required_value = (is_numeric($specific_required) && $specific_required !== '') ? (int)$specific_required : 0;
+            
+            $inner_params = [$traineeKey];
+            $inner_query = "SELECT COUNT(DISTINCT max_sessions.logkey) FROM ( SELECT t1.logkey, MAX(CASE WHEN t1.select_val IS NOT NULL AND t1.select_val != '' AND t1.select_val ~ '^[0-9]+\\.?[0-9]*$' THEN CAST(t1.select_val AS DECIMAL(10,2)) ELSE NULL END) AS max_value FROM trainee_log t1 WHERE t1.trainkey = ?";
+            
+            // tbid
+            if (!empty($tbid) && is_numeric($tbid) && (int)$tbid > 0) {
+                $inner_query .= " AND t1.tbid = ?";
+                $inner_params[] = (int)$tbid;
+            }
+            
+            // main stid (from group)
+            if (isset($group['stid']) && is_numeric($group['stid']) && (int)$group['stid'] > 0) {
+                $inner_query .= " AND t1.stid = ?";
+                $inner_params[] = (int)$group['stid'];
+            }
+            
+            // pid (subfield filter)
+            if (!is_null($sub_pid) && $sub_pid !== '' && is_numeric($sub_pid) && (int)$sub_pid > 0) {
+                $inner_query .= " AND t1.pid = ?";
+                $inner_params[] = (int)$sub_pid;
+            }
+            
+            // parent population
+            if ($population_logkeys !== null && !empty($population_logkeys)) {
+                $ph = implode(',', array_fill(0, count($population_logkeys), '?'));
+                $inner_query .= " AND t1.logkey IN ($ph)";
+                foreach ($population_logkeys as $lk) { $inner_params[] = $lk; }
+            }
+            
+            $inner_query .= " GROUP BY t1.logkey ) max_sessions WHERE max_sessions.max_value >= ?";
+            $inner_params[] = ($min_threshold !== null && $min_threshold > 0 ? $min_threshold : 0.0);
+            $stmt = $pdo->prepare($inner_query);
+            $stmt->execute($inner_params);
+            $current_value = (int)$stmt->fetchColumn();
+            $is_passed = ($current_value >= $required_value);
+            return [
+                'subfield_value' => $subfield_rule['subfield_value'] ?? '',
+                'subfield_name' => _getSubfieldName($subfield_rule['subfield_value'] ?? '', $pdo),
+                'requirement_type' => 'PER_CASE_MINIMUM',
+                'is_passed' => $is_passed,
+                'current_value' => $current_value,
+                'required_value' => $required_value
+            ];
+        case 'UNIQUE_VALUES':
+            // Count distinct values for the subfield (pid or select_val), default to pid
+            $base_query = "SELECT COUNT(DISTINCT pid) FROM trainee_log";
+            break;
+        case 'UNIQUE_VALUES_IN_RANGE':
+            $base_query = "SELECT COUNT(DISTINCT pid) FROM trainee_log";
+            // Add range condition if specific_value contains a range
+            if (!empty($subfield_rule['specific_value']) && strpos($subfield_rule['specific_value'], '-') !== false) {
+                list($start, $end) = explode('-', $subfield_rule['specific_value']);
+                // For subfield ranges, apply to a numeric select_val if present
+                $where_clauses[] = "CASE WHEN select_val ~ '^[0-9]+$' THEN CAST(select_val AS INTEGER) ELSE NULL END BETWEEN ? AND ?";
+                $types .= 'ii';
+                $params[] = trim($start);
+                $params[] = trim($end);
+            }
+            break;
+        case 'TOTAL_COUNT':
+        default:
+            $base_query = "SELECT COUNT(*) FROM trainee_log";
+            break;
+    }
+    
+    // Execute the query
     $final_query = $base_query . " WHERE " . implode(" AND ", $where_clauses);
     $stmt = $pdo->prepare($final_query);
     $stmt->execute($params);
     $current_value = $stmt->fetchColumn();
-    
+
     $current_value = $current_value ?? 0;
-    $required_value = isset($subfield_rule['specific_value']) ? (int)$subfield_rule['specific_value'] : 0;
-    $is_passed = ($current_value >= $required_value);
+    $required_value_raw = trim((string)($subfield_rule['specific_value'] ?? '0'));
+    $required_value = is_numeric($required_value_raw) ? (int)$required_value_raw : 0;
+
+    // Flexible comparison for UNIQUE_VALUES: allow ranges ("X-Y") or CSV lists ("a, b, c")
+    $is_passed = false;
+    if ($sub_req_type === 'UNIQUE_VALUES' && $required_value_raw !== '') {
+        if (strpos($required_value_raw, '-') !== false) {
+            // Range format: "X-Y"
+            list($start, $end) = array_map('trim', explode('-', $required_value_raw));
+            $is_passed = ($current_value >= (int)$start && $current_value <= (int)$end);
+        } elseif (strpos($required_value_raw, ',') !== false) {
+            // CSV format: "a, b, c"
+            $allowed_values = array_map('trim', explode(',', $required_value_raw));
+            $is_passed = in_array((string)$current_value, $allowed_values);
+        } else {
+            // Single value
+            $is_passed = ($current_value >= $required_value);
+        }
+    } else {
+        $is_passed = ($current_value >= $required_value);
+    }
     
     return [
         'subfield_value' => $subfield_rule['subfield_value'] ?? '',
+        'subfield_name' => _getSubfieldName($subfield_rule['subfield_value'] ?? '', $pdo),
         'requirement_type' => $subfield_rule['requirement_type'] ?? 'TOTAL_COUNT',
         'is_passed' => $is_passed,
         'current_value' => $current_value,
@@ -553,10 +809,10 @@ function _evaluateRule($rule, $traineeKey, $pdo, $population_logkeys = null) {
     $where_clauses = ["trainkey = ?"];
 
     // Add tbid filter to only check logs from the correct table/competency
-    if (!empty($rule['tbid'])) {
+    if (!empty($rule['tbid']) && is_numeric($rule['tbid']) && (int)$rule['tbid'] > 0) {
         $where_clauses[] = "tbid = ?";
         $types .= 'i';
-        $params[] = $rule['tbid'];
+        $params[] = (int)$rule['tbid'];
     }
 
     // Handle TOTAL_HOURS as a special case (legacy single-field hours)
@@ -587,6 +843,9 @@ function _evaluateRule($rule, $traineeKey, $pdo, $population_logkeys = null) {
                     }
                     
                     $category_stid = (int)$source['category_stid'];
+                    if ($category_stid <= 0) {
+                        continue; // Skip invalid category_stid
+                    }
                     $category_value = isset($source['category_value']) ? $source['category_value'] : '';
                     $max_value = isset($source['max_value']) && is_numeric($source['max_value']) ? (float)$source['max_value'] : null;
                     
@@ -595,9 +854,9 @@ function _evaluateRule($rule, $traineeKey, $pdo, $population_logkeys = null) {
                     $source_where = ["trainkey = ?"];
                     
                     // Add tbid filter
-                    if (!empty($rule['tbid'])) {
+                    if (!empty($rule['tbid']) && is_numeric($rule['tbid']) && (int)$rule['tbid'] > 0) {
                         $source_where[] = "tbid = ?";
-                        $source_params[] = $rule['tbid'];
+                        $source_params[] = (int)$rule['tbid'];
                     }
                     
                     // Add category_stid filter
@@ -676,12 +935,12 @@ function _evaluateRule($rule, $traineeKey, $pdo, $population_logkeys = null) {
             $base_query .= " AND t1.stid IN ($placeholders)";
             $types .= str_repeat('i', count($rule['or_fields']));
             array_push($params, ...array_map('intval', $rule['or_fields']));
-        } else {
+        } elseif (!empty($rule['stid']) && is_numeric($rule['stid']) && (int)$rule['stid'] > 0) {
             $base_query .= " AND t1.stid = ?";
             $types .= 'i';
             $params[] = (int)$rule['stid'];
         }
-        if (!empty($rule['tbid'])) {
+        if (!empty($rule['tbid']) && is_numeric($rule['tbid']) && (int)$rule['tbid'] > 0) {
             $base_query .= " AND t1.tbid = ?";
             $types .= 'i';
             $params[] = (int)$rule['tbid'];
@@ -719,10 +978,10 @@ function _evaluateRule($rule, $traineeKey, $pdo, $population_logkeys = null) {
             $where_clauses[] = "stid IN ($placeholders)";
             $types .= str_repeat('i', count($rule['or_fields']));
             array_push($params, ...$rule['or_fields']);
-        } elseif (!is_null($rule['stid'])) {
+        } elseif (!is_null($rule['stid']) && is_numeric($rule['stid']) && (int)$rule['stid'] > 0) {
             $where_clauses[] = "stid = ?";
             $types .= 'i';
-            $params[] = $rule['stid'];
+            $params[] = (int)$rule['stid'];
         }
 
         // Add field_value condition
@@ -909,17 +1168,17 @@ function _evaluateSubfieldIndividualRule($main_rule, $subfield_rule, $traineeKey
     $where_clauses = ["trainkey = ?"];
     
     // Add tbid filter to only check logs from the correct table/competency
-    if (!empty($main_rule['tbid'])) {
+    if (!empty($main_rule['tbid']) && is_numeric($main_rule['tbid']) && (int)$main_rule['tbid'] > 0) {
         $where_clauses[] = "tbid = ?";
         $types .= 'i';
-        $params[] = $main_rule['tbid'];
+        $params[] = (int)$main_rule['tbid'];
     }
     
     // Add the main field condition
-    if (!is_null($main_rule['stid'])) {
+    if (!is_null($main_rule['stid']) && is_numeric($main_rule['stid']) && (int)$main_rule['stid'] > 0) {
         $where_clauses[] = "stid = ?";
         $types .= 'i';
-        $params[] = $main_rule['stid'];
+        $params[] = (int)$main_rule['stid'];
     }
     
     // Add the subfield value condition: filter by pid (and keep stid mapping for safety)
@@ -1130,16 +1389,16 @@ function _getLogkeysForPassedRule($rule, $traineeKey, $pdo, $parent_population_l
     $where_clauses = ["trainkey = ?"];
 
     // Add tbid filter to only get logkeys from the correct table/competency
-    if (!empty($rule['tbid'])) {
+    if (!empty($rule['tbid']) && is_numeric($rule['tbid']) && (int)$rule['tbid'] > 0) {
         $where_clauses[] = "tbid = ?";
         $types .= 'i';
-        $params[] = $rule['tbid'];
+        $params[] = (int)$rule['tbid'];
     }
 
-    if (!is_null($rule['stid'])) {
+    if (!is_null($rule['stid']) && is_numeric($rule['stid']) && (int)$rule['stid'] > 0) {
         $where_clauses[] = "stid = ?";
         $types .= 'i';
-        $params[] = $rule['stid'];
+        $params[] = (int)$rule['stid'];
     }
     
     if (!empty($rule['field_value'])) {
@@ -1317,13 +1576,13 @@ function getMatchingLogsForStandard($traineeKey, $psid, $pdo) {
             // Get logkeys with just tbid + stid (no field_value filter)
             $params = [$traineeKey];
             $where_clauses = ["trainkey = ?"];
-            if (!empty($standard['tbid'])) {
+            if (!empty($standard['tbid']) && is_numeric($standard['tbid']) && (int)$standard['tbid'] > 0) {
                 $where_clauses[] = "tbid = ?";
-                $params[] = $standard['tbid'];
+                $params[] = (int)$standard['tbid'];
             }
-            if (!is_null($standard['stid'])) {
+            if (!is_null($standard['stid']) && is_numeric($standard['stid']) && (int)$standard['stid'] > 0) {
                 $where_clauses[] = "stid = ?";
-                $params[] = $standard['stid'];
+                $params[] = (int)$standard['stid'];
             }
             $logkey_query = "SELECT DISTINCT logkey FROM trainee_log WHERE " . implode(" AND ", $where_clauses);
             $logkey_stmt = $pdo->prepare($logkey_query);
@@ -1391,9 +1650,11 @@ function getMatchingLogsForStandard($traineeKey, $psid, $pdo) {
             $suppression_clauses = [];
             $suppression_params = [];
             foreach ($per_case_minimum_rules as $rule) {
-                $suppression_clauses[] = "AND NOT (tl.stid = ? AND tl.select_val IS NOT NULL AND tl.select_val != '' AND tl.select_val ~ '^[0-9]+\\.?[0-9]*$' AND CAST(tl.select_val AS DECIMAL(10,2)) < ?)";
-                $suppression_params[] = $rule['stid'];
-                $suppression_params[] = $rule['minimum_threshold'];
+                if (!empty($rule['stid']) && is_numeric($rule['stid']) && (int)$rule['stid'] > 0) {
+                    $suppression_clauses[] = "AND NOT (tl.stid = ? AND tl.select_val IS NOT NULL AND tl.select_val != '' AND tl.select_val ~ '^[0-9]+\\.?[0-9]*$' AND CAST(tl.select_val AS DECIMAL(10,2)) < ?)";
+                    $suppression_params[] = (int)$rule['stid'];
+                    $suppression_params[] = (float)$rule['minimum_threshold'];
+                }
             }
             if (!empty($suppression_clauses)) {
                 $fields_query .= ' ' . implode(' ', $suppression_clauses);
@@ -1455,6 +1716,9 @@ function _getLogkeysForTotalHoursCombined($rule, $traineeKey, $pdo) {
             }
             
             $category_stid = (int)$source['category_stid'];
+            if ($category_stid <= 0) {
+                continue; // Skip invalid category_stid
+            }
             $category_value = isset($source['category_value']) ? $source['category_value'] : '';
             
             // Build query for this source
@@ -1462,9 +1726,9 @@ function _getLogkeysForTotalHoursCombined($rule, $traineeKey, $pdo) {
             $where_clauses = ["trainkey = ?"];
             
             // Add tbid filter if provided
-            if (!empty($rule['tbid'])) {
+            if (!empty($rule['tbid']) && is_numeric($rule['tbid']) && (int)$rule['tbid'] > 0) {
                 $where_clauses[] = "tbid = ?";
-                $params[] = $rule['tbid'];
+                $params[] = (int)$rule['tbid'];
             }
             
             // Add category_stid filter
@@ -1502,9 +1766,9 @@ function _getLogkeysForSimpleRule($rule, $traineeKey, $pdo) {
     $where_clauses = ["trainkey = ?"];
     
     // Add tbid filter
-    if (!empty($rule['tbid'])) {
+    if (!empty($rule['tbid']) && is_numeric($rule['tbid']) && (int)$rule['tbid'] > 0) {
         $where_clauses[] = "tbid = ?";
-        $params[] = $rule['tbid'];
+        $params[] = (int)$rule['tbid'];
     }
     
     // Add STID condition (single field or multiple OR fields)
@@ -1512,9 +1776,9 @@ function _getLogkeysForSimpleRule($rule, $traineeKey, $pdo) {
         $placeholders = implode(',', array_fill(0, count($rule['or_fields']), '?'));
         $where_clauses[] = "stid IN ($placeholders)";
         array_push($params, ...$rule['or_fields']);
-    } elseif (!is_null($rule['stid'])) {
+    } elseif (!is_null($rule['stid']) && is_numeric($rule['stid']) && (int)$rule['stid'] > 0) {
         $where_clauses[] = "stid = ?";
-        $params[] = $rule['stid'];
+        $params[] = (int)$rule['stid'];
     }
     
     // Add field_value condition
@@ -1595,15 +1859,15 @@ function _getLogkeysForSubfieldRule($main_rule, $subfield_rule, $traineeKey, $pd
     $where_clauses = ["trainkey = ?"];
     
     // Add tbid filter
-    if (!empty($main_rule['tbid'])) {
+    if (!empty($main_rule['tbid']) && is_numeric($main_rule['tbid']) && (int)$main_rule['tbid'] > 0) {
         $where_clauses[] = "tbid = ?";
-        $params[] = $main_rule['tbid'];
+        $params[] = (int)$main_rule['tbid'];
     }
     
     // Add the main field condition
-    if (!is_null($main_rule['stid'])) {
+    if (!is_null($main_rule['stid']) && is_numeric($main_rule['stid']) && (int)$main_rule['stid'] > 0) {
         $where_clauses[] = "stid = ?";
-        $params[] = $main_rule['stid'];
+        $params[] = (int)$main_rule['stid'];
     }
     
     // For subfield rules, we need to match based on the requirement type
@@ -1617,10 +1881,14 @@ function _getLogkeysForSubfieldRule($main_rule, $subfield_rule, $traineeKey, $pd
         $any_of_conditions = [];
         $any_of_params = [];
         foreach ($subfield_rule['any_of'] as $alt) {
-            if (!empty($alt['subfield_value'])) {
-                $pid = $alt['subfield_value'];
-                $any_of_conditions[] = "pid = ?";
-                $any_of_params[] = $pid;
+            if (!empty($alt['subfield_value']) && 
+                is_numeric($alt['subfield_value']) && 
+                trim((string)$alt['subfield_value']) !== '') {
+                $pid = (int)$alt['subfield_value'];
+                if ($pid > 0) {
+                    $any_of_conditions[] = "pid = ?";
+                    $any_of_params[] = $pid;
+                }
             }
         }
         if (!empty($any_of_conditions)) {
@@ -1630,12 +1898,16 @@ function _getLogkeysForSubfieldRule($main_rule, $subfield_rule, $traineeKey, $pd
         }
     }
     // If no any_of, check direct subfield_value
-    elseif (!empty($subfield_rule['subfield_value'] ?? '')) {
-        $pid = $subfield_rule['subfield_value'];
-        // Match by pid field in trainee_log
-        $where_clauses[] = "pid = ?";
-        $params[] = $pid;
-        $has_subfield_condition = true;
+    elseif (!empty($subfield_rule['subfield_value'] ?? '') && 
+            is_numeric($subfield_rule['subfield_value']) && 
+            trim((string)$subfield_rule['subfield_value']) !== '') {
+        $pid = (int)$subfield_rule['subfield_value'];
+        if ($pid > 0) {
+            // Match by pid field in trainee_log
+            $where_clauses[] = "pid = ?";
+            $params[] = $pid;
+            $has_subfield_condition = true;
+        }
     }
     
     // If no subfield condition, we'll match all entries with the stid (for TOTAL_COUNT of all values)
@@ -1661,9 +1933,9 @@ function _getLogkeysForCategoryGroup($main_rule, $group, $traineeKey, $pdo) {
     
     // Add tbid filter
     $tbid = $main_rule['tbid'] ?? $group['tbid'] ?? null;
-    if (!empty($tbid)) {
+    if (!empty($tbid) && is_numeric($tbid) && (int)$tbid > 0) {
         $where_clauses[] = "tbid = ?";
-        $params[] = $tbid;
+        $params[] = (int)$tbid;
     }
     
     // Handle PER_CASE_MINIMUM with minimum_threshold for simple category groups (no subfield rules)
@@ -1686,10 +1958,16 @@ function _getLogkeysForCategoryGroup($main_rule, $group, $traineeKey, $pdo) {
                 AND t1.select_val IS NOT NULL 
                 AND t1.select_val != ''
                 AND t1.select_val ~ '^[0-9]+\\.?[0-9]*$'";
-        $params = [$traineeKey, $group['stid']];
-        if (!empty($tbid)) {
-            $logkey_query .= " AND t1.tbid = ?";
-            $params[] = $tbid;
+        // Validate stid before using it
+        if (!empty($group['stid']) && is_numeric($group['stid']) && (int)$group['stid'] > 0) {
+            $params = [$traineeKey, (int)$group['stid']];
+            if (!empty($tbid) && is_numeric($tbid) && (int)$tbid > 0) {
+                $logkey_query .= " AND t1.tbid = ?";
+                $params[] = (int)$tbid;
+            }
+        } else {
+            // Invalid stid, return empty array
+            return [];
         }
         $logkey_query .= "
                 GROUP BY t1.logkey
@@ -1710,11 +1988,22 @@ function _getLogkeysForCategoryGroup($main_rule, $group, $traineeKey, $pdo) {
         // Standard query - no minimum threshold filter
         // Add main STID (supports group['stids'])
         if (!empty($group['stids']) && is_array($group['stids'])) {
-            $where_clauses[] = "stid IN (" . implode(',', array_fill(0, count($group['stids']), '?')) . ")";
-            foreach ($group['stids'] as $sid) { $params[] = (int)$sid; }
-        } elseif (!empty($group['stid'])) {
-            $where_clauses[] = "stid = ?";
-            $params[] = $group['stid'];
+            // Filter out invalid stids before building query
+            $valid_stids = array_filter($group['stids'], function($sid) {
+                return is_numeric($sid) && trim((string)$sid) !== '' && (int)$sid > 0;
+            });
+            if (!empty($valid_stids)) {
+                $where_clauses[] = "stid IN (" . implode(',', array_fill(0, count($valid_stids), '?')) . ")";
+                foreach ($valid_stids as $sid) {
+                    $params[] = (int)$sid;
+                }
+            }
+        } elseif (isset($group['stid']) && $group['stid'] !== '' && is_numeric($group['stid']) && trim((string)$group['stid']) !== '') {
+            $stid_int = (int)$group['stid'];
+            if ($stid_int > 0) {
+                $where_clauses[] = "stid = ?";
+                $params[] = $stid_int;
+            }
         }
         
         // Handle subfield rules in category group
