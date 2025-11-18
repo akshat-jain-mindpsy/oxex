@@ -771,7 +771,7 @@ function validateAndConvertTime($timeValue) {
                   <tr>
                     <?php
                     // Define the specific fields we want to show (ensure Placement Number is included and prioritised)
-                    $wanted_fields = array('Placement Number', 'Placement', 'Patient ID', 'Clinical specialism', 'Date (latest session/contact)', 
+                    $wanted_fields = array('Placement Number', 'Placement', 'Patient ID (Anonymised)', 'Clinical specialism', 'Date (latest session/contact)', 
                     'Supervision type', 'Format', 'Leadership activity',	'Supervision model','Supervision methods used');
                     
                     $placeholders = rtrim(str_repeat('?,', count($wanted_fields)), ',');

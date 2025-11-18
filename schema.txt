@@ -59,12 +59,51 @@ classDiagram
         +int date_modified
     }
 
+    class pages_tbl {
+        +int pid PK
+        +varchar filename
+        +varchar page_name
+        +varchar googleTitle
+        +varchar googleDesc
+        +varchar googleKeywords
+        +varchar bannerTitle
+        +varchar page_title
+        +text page_txt1_to_12
+        +int date_added
+        +int date_modified
+    }
+
+    class footer_tbl {
+        +int fid PK
+        +text footerl
+        +text footerm
+        +text footerr
+    }
+
+    class glossary {
+        +int gid PK
+        +varchar term
+        +text description
+        +char(32) who_by
+        +int date_added
+        +int date_modified
+    }
+
     class field_sections {
         +int section_id PK
         +varchar(255) section_name
         +int section_order
         +text section_description
-        +text table_ids
+        +datetime created_at
+        +datetime updated_at
+    }
+
+    class section_table_link {
+        +int link_id PK
+        +int section_id FK
+        +tinyint tbid FK
+        +varchar stid
+        +int display_order
     }
 
     class select_types {
@@ -75,6 +114,14 @@ classDiagram
         +tinyint wouldlike
         +smallint sort_order
         +int section_id FK
+    }
+
+    class select_gen {
+        +int pid PK
+        +mediumint stid
+        +varchar select_type
+        +tinyint single
+        +text select_val
     }
 
     class trainee_tbl {
@@ -163,6 +210,7 @@ classDiagram
         +char(32) who_by
         +int date_added
         +int date_modified
+        +int end_date
     }
 
     class subset_link_tbl {
@@ -187,17 +235,229 @@ classDiagram
         +int taskdate
     }
 
+    class logbook {
+        +char(32) lid PK
+        +char(32) trainkey FK
+        +char(8) tab
+        +char(16) placement
+        +char(16) placement_type
+        +varchar(255) organisation
+        +char(8) session
+        +char(8) date_started
+        +char(8) date_completed
+        +char(16) contact_time
+    }
+
+    class logins {
+        +int lid PK
+        +int pid FK
+        +int date_attempt
+        +int ip_attempt
+    }
+
+    class pass_standards {
+        +int psid PK
+        +varchar(255) standard_name
+        +tinyint tbid FK
+        +mediumint stid FK
+        +varchar(32) requirement_type
+        +int required_value
+        +text field_value
+        +int parent_standard_id
+        +tinyint is_active
+        +varchar(32) who_by
+        +int date_added
+        +int date_modified
+        +numeric minimum_threshold
+    }
+
+    class pass_standard_fields {
+        +int id PK
+        +int standard_id FK
+        +mediumint stid FK
+    }
+
+    class csv_templates {
+        +int id PK
+        +varchar(255) template_name
+        +text description
+        +varchar(255) created_by
+        +timestamp date_created
+    }
+
+    class csv_template_columns {
+        +int id PK
+        +int template_id FK
+        +int table_id
+        +int field_id
+        +int display_order
+    }
+
+    class trainee_group {
+        +char(32) tgif PK
+        +char(32) usrkey
+        +char(32) groupkey
+        +varchar(255) group_name
+        +int date_added
+        +int date_modified
+    }
+
+    class trainee_group_list {
+        +char(32) tgil PK
+        +char(32) groupkey FK
+        +char(32) trainkey FK
+        +int date_added
+    }
+
+    class trainee_report_ok {
+        +int trid PK
+        +char(32) trainkey FK
+        +char(32) who_by
+        +tinyint super_pass
+        +text super_txt
+        +tinyint tbid FK
+        +int date_added
+        +int date_modified
+    }
+
+    class report_manager {
+        +int rmid PK
+        +tinyint tbid FK
+        +varchar(255) report_title
+        +text report_notes
+        +mediumint stid
+        +tinyint valtype
+        +tinyint sort_order
+        +tinyint situation
+        +tinyint age
+        +tinyint agefrom
+        +tinyint ageto
+        +char(32) who_by
+        +int date_added
+        +int date_modified
+    }
+
+    class report_maker {
+        +int rid PK
+        +varchar(255) report_title
+        +tinyint sort_order
+        +char(32) who_by
+        +int date_added
+        +int date_modified
+    }
+
+    class report_maker_det {
+        +int rfid PK
+        +int rid FK
+        +mediumint stid FK
+        +int minval
+        +tinyint valtype
+        +tinyint sort_order
+    }
+
+    class report_data {
+        +int rdid PK
+        +int rmid FK
+        +real valuea
+        +real valueb
+        +int valuetxt
+    }
+
+    class report_colour {
+        +int rcid PK
+        +varchar(32) colour
+    }
+
+    class sys_global {
+        +int sgid PK
+        +varchar(255) email_host
+        +varchar(255) mailuser
+        +varchar(255) mailpw
+        +varchar(255) mailfromemail
+        +varchar(255) company_name
+        +varchar(16) colour1
+        +varchar(16) colour2
+        +varchar(16) colour3
+        +varchar(16) colour4
+    }
+
+    class site_emails_tbl {
+        +int sei PK
+        +varchar(255) email_subject
+        +text email_body
+        +text email_body2
+        +text email_body3
+        +varchar(255) email_title
+        +int date_added
+        +varchar(64) used_on
+    }
+
+    class semantic_blog {
+        +char(32) sbid PK
+        +tinyint sort_order
+        +char(8) date_published
+        +char(8) date_modified
+        +varchar(255) author
+        +char(32) ptid
+        +char(32) gid
+        +varchar(255) blog_title
+        +varchar(255) semantic_title
+        +varchar(255) semantic_url
+        +text blog_abstract
+        +text page_txt1
+        +text page_txt2
+        +text page_txt3
+    }
+
+    class reset_tbl {
+        +int laid PK
+        +int pid FK
+        +char(32) usrkey
+        +int timesent
+        +int timeexp
+        +char(8) req_date
+        +char(64) tokenhash
+        +char(64) tokensalt
+        +tinyint invalidated
+    }
+
     blog_subject_tags "1" -- "many" blog_link_tbl: has
+    who_there "1" -- "many" admin_msg: messages
+    who_there "1" -- "many" trainee_group: owners
+    who_there "1" -- "many" pass_standards: authors
+    who_there "1" -- "many" trainee_report_ok: reviewers
     field_sections "1" -- "many" select_types: contains
+    field_sections "1" -- "many" section_table_link: used-by
+    tabs_tbl "1" -- "many" section_table_link: organizes
     tabs_tbl "1" -- "many" tab_fields: has
     select_types "1" -- "many" tab_fields: used-in
+    select_types "1" -- "many" select_gen: options
     tabs_tbl "1" -- "many" trainee_tab_link: associated-with
     trainee_tbl "1" -- "many" trainee_tab_link: has-access-to
     trainee_tbl "1" -- "many" trainee_log: creates
     tabs_tbl "1" -- "many" trainee_log: categorizes
     select_types "1" -- "many" trainee_log: has-value-of
+    trainee_tbl "1" -- "many" logbook: sessions
+    logbook "1" -- "many" trainee_log: detail
+    trainee_tbl "1" -- "many" logins: attempts
+    pass_standards "1" -- "many" pass_standard_fields: or-fields
+    pass_standards "1" -- "many" pass_standards: child-rules
+    tabs_tbl "1" -- "many" pass_standards: standards
+    select_types "1" -- "many" pass_standards: primary-field
+    select_types "1" -- "many" pass_standard_fields: alternatives
+    csv_templates "1" -- "many" csv_template_columns: columns
+    tabs_tbl "1" -- "many" csv_template_columns: export-table
+    select_types "1" -- "many" csv_template_columns: export-field
+    select_types "1" -- "many" report_maker_det: metrics
     uni_tbl "1" -- "many" trainee_tbl: enrolls
+    tabs_tbl "1" -- "many" report_manager: reports
+    tabs_tbl "1" -- "many" trainee_report_ok: review-target
     subset_tbl "1" -- "many" subset_link_tbl: references
     trainee_tbl "1" -- "many" subset_link_tbl: belongs-to
+    trainee_group "1" -- "many" trainee_group_list: members
+    trainee_tbl "1" -- "many" trainee_group_list: grouped
     trainee_tbl "1" -- "many" timesheet: logs
     tasks "1" -- "many" timesheet: categorizes
+    report_manager "1" -- "many" report_data: values
+    report_maker "1" -- "many" report_maker_det: definitions
+    trainee_tbl "1" -- "many" trainee_report_ok: approvals
