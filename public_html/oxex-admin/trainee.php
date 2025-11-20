@@ -89,14 +89,14 @@ if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
    $stmt->execute([$which]); 
    $stmt->closeCursor();
 
-   // delete the trainee
-   $stmt = $pdo->prepare("DELETE FROM trainee_tbl WHERE trainkey = ? LIMIT 1");
+  // delete the trainee (PostgreSQL doesn't support LIMIT in DELETE)
+  $stmt = $pdo->prepare("DELETE FROM trainee_tbl WHERE trainkey = ?");
    $stmt->execute([$which]); 
    if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Trainee's Records Deleted</strong></div></div></div>";
    }
-   $stmt->close();
+   $stmt->closeCursor();
 
 }
 if ($del == "wipe" && ($admintype == 'AT' || $admintype == 'DV')) {
@@ -109,7 +109,7 @@ if ($del == "wipe" && ($admintype == 'AT' || $admintype == 'DV')) {
     // show message when deleting, not refreshing
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Trainee Data Wiped</strong></div></div></div>";
    }
-   $stmt->close();
+   $stmt->closeCursor();
 
    // their attendance log
    $stmt = $pdo->prepare("DELETE FROM timesheet WHERE trainkey = ?");
@@ -178,7 +178,7 @@ if ($newadmin == 'newadmin') {
   error_log("Trainee insert values - name: '$name', email: '$email', uid: $uid, supervisor: '$supervisor', usrkey: '$usrkey', today: '$today', tandc: $tandc, last_used: $last_used");
 
   // write new record
-  $insert_stmt = $pdo->prepare("INSERT INTO trainee_tbl (name, email, uid, supervisor, supervisor2, supervisor3, syslink, year, trainkey, txtpw, password, salt, who_by, date_added, date_modified, last_used, tandc, tutor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  $insert_stmt = $pdo->prepare("INSERT INTO trainee_tbl (name, email, uid, supervisor, supervisor2, supervisor3, syslink, year, trainkey, txtpw, password, salt, who_by, date_added, date_modified, last_used, tandc, tutor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING tid");
   
   if (!$insert_stmt) {
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to prepare statement: " . $pdo->errorInfo()[2] . "</strong></div></div></div>";
@@ -186,7 +186,7 @@ if ($newadmin == 'newadmin') {
     if (!$insert_stmt->execute([$name, $email, $uid, $supervisor, $supervisor2, $supervisor3, $syslink, $year, $trainkey, $txtpw, $password, $salt, $usrkey, $date_added, $date_modified, $last_used, $tandc, $tutor])) {
       $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to insert trainee: " . $insert_stmt->errorInfo()[2] . "</strong></div></div></div>";
     } else {
-      $newid = $pdo->lastInsertId();
+      $newid = $insert_stmt->fetchColumn();
       $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-success\" role=\"alert\"><strong>Trainee added successfully!</strong></div></div></div>";
     }
     $insert_stmt->closeCursor();
@@ -227,26 +227,14 @@ if ($newadmin == 'newadmin') {
                <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
             </div>
             <?php echo $delalert ?>
-            <!-- Search and Filter Controls -->
             <div class="row mb-3">
-               <div class="col-12 mb-2">
-                  <form method="GET" action="" class="form-inline">
-                     <div class="input-group">
-                        <input type="text" class="form-control" name="search" placeholder="Search trainees..." value="<?php echo htmlspecialchars($_GET['search'] ?? ''); ?>">
-                        <div class="input-group-append">
-                           <button class="btn btn-outline-secondary" type="submit">Search</button>
-</div>
-                     <?php if (isset($_GET['search']) && !empty($_GET['search'])): ?>
-                        <a href="?page=1#report" class="btn btn-sm btn-outline-danger ml-2">Clear</a>
-                     <?php endif; ?>
-                  </form>
-               </div>
-               <div class="col-12 text-right">
+               <div class="col text-right">
                   <small class="text-muted">
                      <?php echo $total_trainees; ?> total trainees
                   </small>
-                           </div>
- 
+               </div>
+            </div>
+
                              <div class="row">
                <div class="col-xl-12">
                   <div class="table-responsive">
@@ -273,23 +261,44 @@ $search_term = isset($_GET['search']) ? trim($_GET['search']) : '';
 // Build search conditions
 $search_condition = '';
 $search_params = [];
-$search_types = '';
 
-if (!empty($search_term)) {
-    $search_condition = "WHERE name LIKE ? OR email LIKE ?";
-    $search_params = ["%$search_term%", "%$search_term%"];
-    $search_types = "ss";
+if ($search_term !== '') {
+    $search_condition = "
+        WHERE (
+            t.name ILIKE :search
+            OR t.email ILIKE :search
+            OR CAST(t.uid AS TEXT) ILIKE :search
+            OR CAST(t.year AS TEXT) ILIKE :search
+            OR t.syslink ILIKE :search
+            OR t.trainkey ILIKE :search
+            OR EXISTS (
+                SELECT 1
+                FROM uni_tbl u
+                WHERE u.uid = t.uid
+                AND u.university ILIKE :search
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM who_there wt
+                WHERE wt.realname ILIKE :search
+                AND wt.usrkey IN (t.supervisor, t.supervisor2, t.supervisor3, t.tutor)
+            )
+        )
+    ";
+    $like_value = "%{$search_term}%";
+    $search_params[':search'] = $like_value;
 }
 
 // Get filtered count for pagination with search
-$count_query = "SELECT COUNT(*) as total FROM trainee_tbl $search_condition";
+$count_query = "SELECT COUNT(*) as total FROM trainee_tbl t $search_condition";
 $count_stmt = $pdo->prepare($count_query);
 
 if (!empty($search_params)) {
-    $count_stmt->execute($search_params);
-} else {
-    $count_stmt->execute();
+    foreach ($search_params as $param => $value) {
+        $count_stmt->bindValue($param, $value, PDO::PARAM_STR);
+    }
 }
+$count_stmt->execute();
 $filtered_trainees = $count_stmt->fetchColumn();
 $count_stmt->closeCursor();
 
@@ -300,15 +309,33 @@ $valueyearstart = date('Y').'0101'; # YYYYMMDD format
 $valueyearend = date('Y').'1231';
 
 // Modified query with pagination and search
-$query = "SELECT trainkey, name, uid, year, supervisor, supervisor2, supervisor3, tutor, txtpw, email FROM trainee_tbl $search_condition ORDER BY name LIMIT ? OFFSET ?";
+$query = "
+    SELECT
+        t.trainkey,
+        t.name,
+        t.uid,
+        t.year,
+        t.supervisor,
+        t.supervisor2,
+        t.supervisor3,
+        t.tutor,
+        t.txtpw,
+        t.email
+    FROM trainee_tbl t
+    $search_condition
+    ORDER BY t.name
+    LIMIT :limit OFFSET :offset
+";
 $tableset = $pdo->prepare($query);
 
 if (!empty($search_params)) {
-    $all_params = array_merge($search_params, [$items_per_page, $offset]);
-    $tableset->execute($all_params);
-} else {
-    $tableset->execute([$items_per_page, $offset]);
+    foreach ($search_params as $param => $value) {
+        $tableset->bindValue($param, $value, PDO::PARAM_STR);
+    }
 }
+$tableset->bindValue(':limit', (int)$items_per_page, PDO::PARAM_INT);
+$tableset->bindValue(':offset', (int)$offset, PDO::PARAM_INT);
+$tableset->execute();
 while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
     $trainkey = $row['trainkey'];
     $name = $row['name'];
@@ -806,10 +833,60 @@ $tableset->closeCursor();
    <?php include 'incl/adminjs.php' ?>
    <script>
    $(document).ready(function() {
-      $('#maintable').dataTable( {
+     var traineeDataTable = $('#maintable').DataTable( {
          "lengthMenu": [[ 10, 25, 50, 75, 100, 250, -1 ], [10, 25, 50, 75, 100, 250, "All"] ],
         "pageLength": 250
       });
+     
+     var dataTableSearchInput = $('#maintable_filter input[type="search"]').first();
+     var activeSearchTerm = <?php echo json_encode($search_term); ?>;
+     var searchDebounceTimer = null;
+     var searchDebounceDelayMs = 400;
+     
+     if (dataTableSearchInput.length) {
+        // Remove DataTables' default filtering handlers so we can control behavior
+        dataTableSearchInput.off('.DT');
+        dataTableSearchInput.val(activeSearchTerm);
+        console.log('[TraineeSearch] Initialised search input with value:', activeSearchTerm);
+        
+        var triggerServerSearch = function(term) {
+           var trimmedTerm = term.trim();
+           var currentUrl = new URL(window.location.href);
+           
+           if (trimmedTerm.length) {
+              currentUrl.searchParams.set('search', trimmedTerm);
+              currentUrl.searchParams.set('page', '1');
+              console.log('[TraineeSearch] Applying search term to URL:', trimmedTerm);
+           } else {
+              currentUrl.searchParams.delete('search');
+              currentUrl.searchParams.delete('page');
+              console.log('[TraineeSearch] Clearing search term from URL');
+           }
+           
+           currentUrl.hash = 'report';
+           window.location.href = currentUrl.toString();
+        };
+        
+        dataTableSearchInput.on('input', function() {
+           var value = $(this).val();
+           console.log('[TraineeSearch] Search input changed:', value);
+           clearTimeout(searchDebounceTimer);
+           searchDebounceTimer = setTimeout(function() {
+              triggerServerSearch(value);
+           }, searchDebounceDelayMs);
+        });
+        
+        dataTableSearchInput.on('keydown', function(event) {
+           if (event.key === 'Enter') {
+              event.preventDefault();
+              clearTimeout(searchDebounceTimer);
+              triggerServerSearch($(this).val());
+           }
+        });
+     } else {
+        console.warn('[TraineeSearch] DataTables search input not found');
+     }
+     
      $('.summernote').summernote({
         tabsize: 2,
         height: 160,

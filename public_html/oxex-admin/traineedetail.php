@@ -182,11 +182,9 @@ if ($row) {
   $last_used = $row['last_used'];
   $tandc = $row['tandc'];
 }
-   $date_added = strtotime($date_added);
-   $date_modified = strtotime($date_modified);
-   if ($last_used != 0) {
-      $last_used = strtotime($last_used);
-   }
+$date_added_ts = !empty($date_added) ? strtotime($date_added) : null;
+$date_modified_ts = !empty($date_modified) ? strtotime($date_modified) : null;
+$last_used_ts = !empty($last_used) && $last_used != 0 ? strtotime($last_used) : null;
    // who changed last?
  $stmt = $supabase_pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
   $stmt->execute([$who_by]);
@@ -228,10 +226,10 @@ if ($row) {
                            <div class="card-title">Amend <?php echo $changename ?></div>
                         </div>
                         <div class="card-body">
-                           <p>Record created on <?php echo date("D jS M Y", $date_added) ?> and last modified on <?php echo date("D jS M Y", $date_modified) ?> by <?php echo $who_by ?></p>
+                           <p>Record created on <?php echo $date_added_ts ? date("D jS M Y", $date_added_ts) : 'Unknown date' ?> and last modified on <?php echo $date_modified_ts ? date("D jS M Y", $date_modified_ts) : 'Unknown date' ?> by <?php echo $who_by ?></p>
                            <?php
-                           if ($last_used != 0) {
-                              echo "<p>Trainee last logged in on ".date("D jS M Y", $last_used)."</p>";
+                           if ($last_used_ts) {
+                              echo "<p>Trainee last logged in on ".date("D jS M Y", $last_used_ts)."</p>";
                            }
                            if ($txtpw != '') {
                               echo "<p>The trainee has <em>not</em> changed their temporary password, which is <strong>$txtpw</strong></p>";
