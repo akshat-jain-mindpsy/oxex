@@ -112,6 +112,16 @@ function login($email, $password, $unused = null) {
          $salt = $row['salt'] ?? '';
          $txtpw = $row['txtpw'] ?? '';
 
+         if ($trainkey && (!is_numeric($user_id) || $user_id === null)) {
+            $repairedId = ensure_trainee_tid($trainkey);
+            if ($repairedId !== null) {
+               $user_id = $repairedId;
+               error_log("login(): repaired missing tid for trainkey {$trainkey} -> {$repairedId}");
+            } else {
+               error_log("login(): unable to repair missing tid for trainkey {$trainkey}");
+            }
+         }
+
          $passwordHashed = hash('sha512', $password.$salt);
          $_SESSION['neednewpw'] = ($txtpw != '') ? 1 : 0;
 
@@ -160,11 +170,44 @@ function login_check($unused = null) {
      $login_string = $_SESSION['login_string'];
      $ip_address = $_SERVER['REMOTE_ADDR']; // Get the IP address of the user. 
      $user_browser = $_SERVER['HTTP_USER_AGENT']; // Get the user-agent string of the user.
+     $session_trainkey = $_SESSION['trainkey'] ?? '';
  
     if ($supabase_pdo instanceof PDO) {
         try {
-           $stmt = $supabase_pdo->prepare('select password from trainee_tbl where tid = ? limit 1');
-           $stmt->execute([$user_id]);
+           $lookupColumn = 'tid';
+           $lookupValue = null;
+
+           if ($user_id !== '' && $user_id !== null && is_numeric($user_id)) {
+              $lookupValue = (int)$user_id;
+           } elseif ($session_trainkey !== '') {
+              $lookupColumn = 'trainkey';
+              $lookupValue = $session_trainkey;
+              $repairedId = ensure_trainee_tid($session_trainkey);
+              if ($repairedId !== null) {
+                 $_SESSION['user_id'] = (string)$repairedId;
+                 $lookupColumn = 'tid';
+                 $lookupValue = $repairedId;
+                 error_log("login_check: repaired session user_id using trainkey {$session_trainkey}");
+              } else {
+                 error_log("login_check: proceeding with trainkey fallback for {$session_trainkey}");
+              }
+           } else {
+              error_log('login_check blocked: session user_id missing and no trainkey');
+              return false;
+           }
+
+           if ($lookupValue === null || $lookupValue === '') {
+              error_log('login_check blocked: unable to determine lookup value');
+              return false;
+           }
+
+           if ($lookupColumn === 'tid') {
+              $stmt = $supabase_pdo->prepare('select password from trainee_tbl where tid = ? limit 1');
+           } else {
+              $stmt = $supabase_pdo->prepare('select password from trainee_tbl where trainkey = ? limit 1');
+           }
+
+           $stmt->execute([$lookupValue]);
            $row = $stmt->fetch(PDO::FETCH_ASSOC);
            if (!$row) { return false; }
            $password = $row['password'];
@@ -200,4 +243,60 @@ function escapeString($value){
 }
 
 $reset_salt = '93b97938d3249309c9f30a25318671e911d0d5f6c06820fc0ee9d92fc3bb1f19fedf55735142864a93ff4e5c128c41c4c613728cf247cc2eab1ecad9e4402448';
+
+function ensure_trainee_tid($trainkey) {
+  global $supabase_pdo;
+  if (!$supabase_pdo instanceof PDO) {
+     return null;
+  }
+  if (!$trainkey) {
+     return null;
+  }
+  try {
+     if (!$supabase_pdo->inTransaction()) {
+        $supabase_pdo->beginTransaction();
+        $startedTxn = true;
+     } else {
+        $startedTxn = false;
+     }
+
+     $stmt = $supabase_pdo->prepare('select tid from trainee_tbl where trainkey = ? limit 1 for update');
+     $stmt->execute([$trainkey]);
+     $row = $stmt->fetch(PDO::FETCH_ASSOC);
+     $stmt->closeCursor();
+
+     if (!$row) {
+        if ($startedTxn) { $supabase_pdo->commit(); }
+        return null;
+     }
+
+     if (isset($row['tid']) && is_numeric($row['tid']) && (int)$row['tid'] > 0) {
+        if ($startedTxn) { $supabase_pdo->commit(); }
+        return (int)$row['tid'];
+     }
+
+     $nextStmt = $supabase_pdo->query('select coalesce(max(tid), 0) + 1 as next_tid from trainee_tbl');
+     $nextTid = (int)$nextStmt->fetchColumn();
+     $nextStmt->closeCursor();
+
+     if ($nextTid <= 0) {
+        throw new RuntimeException('ensure_trainee_tid: invalid nextTid calculated');
+     }
+
+     $update = $supabase_pdo->prepare('update trainee_tbl set tid = ? where trainkey = ?');
+     $update->execute([$nextTid, $trainkey]);
+     $update->closeCursor();
+
+     if ($startedTxn) { $supabase_pdo->commit(); }
+
+     error_log("ensure_trainee_tid: backfilled tid {$nextTid} for trainkey {$trainkey}");
+     return $nextTid;
+  } catch (Throwable $e) {
+     if (isset($startedTxn) && $startedTxn && $supabase_pdo->inTransaction()) {
+        $supabase_pdo->rollBack();
+     }
+     error_log('ensure_trainee_tid failed: ' . $e->getMessage());
+     return null;
+  }
+}
 ?>

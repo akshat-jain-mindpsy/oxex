@@ -5,6 +5,32 @@ sec_session_start();
 include 'incl/sess.php';
 include 'incl/admin_vars.php';
 
+function generate_next_tid(PDO $pdo) {
+    try {
+        $stmt = $pdo->query("SELECT nextval(pg_get_serial_sequence('trainee_tbl','tid')) AS next_tid");
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt->closeCursor();
+        if ($row && isset($row['next_tid'])) {
+            return (int)$row['next_tid'];
+        }
+    } catch (Throwable $e) {
+        error_log('generate_next_tid sequence failed: ' . $e->getMessage());
+    }
+
+    try {
+        $stmt = $pdo->query("SELECT COALESCE(MAX(tid), 0) + 1 AS next_tid FROM trainee_tbl");
+        $next = (int)$stmt->fetchColumn();
+        $stmt->closeCursor();
+        if ($next <= 0) {
+            $next = 1;
+        }
+        return $next;
+    } catch (Throwable $e) {
+        error_log('generate_next_tid fallback failed: ' . $e->getMessage());
+        return null;
+    }
+}
+
 // Get session variables
 $usrkey = isset($_SESSION['usrkey']) ? $_SESSION['usrkey'] : '';
 
@@ -178,18 +204,24 @@ if ($newadmin == 'newadmin') {
   error_log("Trainee insert values - name: '$name', email: '$email', uid: $uid, supervisor: '$supervisor', usrkey: '$usrkey', today: '$today', tandc: $tandc, last_used: $last_used");
 
   // write new record
-  $insert_stmt = $pdo->prepare("INSERT INTO trainee_tbl (name, email, uid, supervisor, supervisor2, supervisor3, syslink, year, trainkey, txtpw, password, salt, who_by, date_added, date_modified, last_used, tandc, tutor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING tid");
-  
-  if (!$insert_stmt) {
-    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to prepare statement: " . $pdo->errorInfo()[2] . "</strong></div></div></div>";
+  $newTid = generate_next_tid($pdo);
+  if ($newTid === null) {
+    $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Unable to allocate trainee ID</strong></div></div></div>";
   } else {
-    if (!$insert_stmt->execute([$name, $email, $uid, $supervisor, $supervisor2, $supervisor3, $syslink, $year, $trainkey, $txtpw, $password, $salt, $usrkey, $date_added, $date_modified, $last_used, $tandc, $tutor])) {
-      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to insert trainee: " . $insert_stmt->errorInfo()[2] . "</strong></div></div></div>";
+    $insert_stmt = $pdo->prepare("INSERT INTO trainee_tbl (tid, name, email, uid, supervisor, supervisor2, supervisor3, syslink, year, trainkey, txtpw, password, salt, who_by, date_added, date_modified, last_used, tandc, tutor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING tid");
+  
+    if (!$insert_stmt) {
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to prepare statement: " . $pdo->errorInfo()[2] . "</strong></div></div></div>";
     } else {
-      $newid = $insert_stmt->fetchColumn();
-      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-success\" role=\"alert\"><strong>Trainee added successfully!</strong></div></div></div>";
+      $params = [$newTid, $name, $email, $uid, $supervisor, $supervisor2, $supervisor3, $syslink, $year, $trainkey, $txtpw, $password, $salt, $usrkey, $date_added, $date_modified, $last_used, $tandc, $tutor];
+      if (!$insert_stmt->execute($params)) {
+        $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Failed to insert trainee: " . $insert_stmt->errorInfo()[2] . "</strong></div></div></div>";
+      } else {
+        $newid = $insert_stmt->fetchColumn();
+        $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-success\" role=\"alert\"><strong>Trainee added successfully!</strong></div></div></div>";
+      }
+      $insert_stmt->closeCursor();
     }
-    $insert_stmt->closeCursor();
   }
 
   // create table links
@@ -224,7 +256,7 @@ if ($newadmin == 'newadmin') {
          <!-- Page content-->
          <div class="content-wrapper">
             <div class="content-header" id="report">
-               <div class="content-title"><?php echo $pagetitle ?> <a href="#newform" class="btn btn-sm btn-info ml-5">Add New</a><small><?php echo $subtitle ?></small></div>
+               <div class="content-title"><?php echo $pagetitle ?> <small><?php echo $subtitle ?></small></div>
             </div>
             <?php echo $delalert ?>
             <div class="row mb-3">

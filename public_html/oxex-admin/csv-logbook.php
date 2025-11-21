@@ -69,6 +69,8 @@ while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
 	$stmt->execute([$tbid, $which]);
 	$numpass = $stmt->rowCount();
 	$row = $stmt->fetch(PDO::FETCH_ASSOC);
+	$who_notes = null;
+	$date_signed = null;
 	if ($row) {
 	    $who_notes = $row['who_by'];
 	    $date_signed = $row['date_added'];
@@ -105,7 +107,7 @@ while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
 	// No longer look at dates 
 	// AND date_added >= ? AND date_added <= ?
 	// , $valueyearstart, $valueyearend
-	$dataset = $supabase_pdo->prepare("SELECT date_added, logkey FROM trainee_log WHERE trainkey = ? AND tbid = ?  GROUP BY logkey ORDER BY date_added DESC ");
+	$dataset = $supabase_pdo->prepare("SELECT MAX(date_added) AS date_added, logkey FROM trainee_log WHERE trainkey = ? AND tbid = ? GROUP BY logkey ORDER BY date_added DESC ");
 	  $dataset->execute([$which, $tbid]); 
 	  while ($row = $dataset->fetch(PDO::FETCH_ASSOC)){
 	    $date_added = $row['date_added'];
@@ -244,6 +246,8 @@ foreach ($CSarr as $CSvalue) {
   $stmt->execute([$tbid, $which]);
   $numpass = $stmt->rowCount();
   $row = $stmt->fetch(PDO::FETCH_ASSOC);
+  $who_notes = null;
+  $date_signed = null;
   if ($row) {
       $who_notes = $row['who_by'];
       $date_signed = $row['date_added'];
@@ -301,7 +305,7 @@ foreach ($CSarr as $CSvalue) {
       $stidchk2 = 75; # or check for this stid...
       $pidchk2 = 653; # ... with this pid
     }
-      $dataset = $supabase_pdo->prepare("SELECT date_added, logkey FROM trainee_log WHERE trainkey = ? AND (stid = ? AND pid = ?) GROUP BY logkey ORDER BY date_added DESC ");
+      $dataset = $supabase_pdo->prepare("SELECT MAX(date_added) AS date_added, logkey FROM trainee_log WHERE trainkey = ? AND (stid = ? AND pid = ?) GROUP BY logkey ORDER BY date_added DESC ");
       $dataset->execute([$which, $stidchk1, $pidchk1]); 
       while ($row = $dataset->fetch(PDO::FETCH_ASSOC)){
         $date_added = $row['date_added'];
