@@ -164,6 +164,14 @@ if ($newadmin == 'newadmin') {
   if (empty($name) || empty($email) || empty($uid)) {
     $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-danger\" role=\"alert\"><strong>Error: Required fields cannot be empty</strong></div></div></div>";
   } else {
+  // Check for existing trainee by email (case-insensitive)
+    $dup_stmt = $pdo->prepare("SELECT name FROM trainee_tbl WHERE LOWER(email) = LOWER(?) LIMIT 1");
+    $dup_stmt->execute([$email]);
+    $existingName = $dup_stmt->fetchColumn();
+    $dup_stmt->closeCursor();
+    if ($existingName) {
+      $delalert = "<div class=\"row\"><div class=\"col\"><div class=\"alert alert-warning\" role=\"alert\"><strong>Trainee already exists:</strong> {$existingName} is already registered with {$email}.</div></div></div>";
+    } else {
   // create a user key and password
     $txtpw = substr(md5(rand()), 0, 8); # a temp password
     // Create a random salt
@@ -240,6 +248,7 @@ if ($newadmin == 'newadmin') {
   }
   $tagstmt->closeCursor();
   
+    } // duplicate email check
   } // Close the validation if statement
   
 }
