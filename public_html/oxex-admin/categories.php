@@ -59,10 +59,12 @@ if ($newadmin == 'newadmin') {
   $sort_order_stmt->closeCursor();
 
   // Write new record
-  $insert_stmt = $pdo->prepare("INSERT INTO select_types (str, single, musthave, wouldlike, sort_order) VALUES (?, ?, ?, ?, ?)");
+  $insert_stmt = $pdo->prepare("INSERT INTO select_types (str, single, musthave, wouldlike, sort_order) VALUES (?, ?, ?, ?, ?) RETURNING stid");
   $insert_stmt->execute([$str, $single, $musthave, $wouldlike, $next_sort_order]);
   
-  $newid = $pdo->lastInsertId();
+  // Get the newly created stid from RETURNING clause
+  $new_record = $insert_stmt->fetch(PDO::FETCH_ASSOC);
+  $newid = $new_record['stid'] ?? null;
   $insert_stmt->closeCursor();
 }
 function getSimilarExistingValues($type, $value) {

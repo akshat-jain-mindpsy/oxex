@@ -58,9 +58,13 @@ if ($newadmin == 'newadmin') {
     }
 
     // write new record
-    $insert_stmt = $pdo->prepare("INSERT INTO select_gen (select_type, single, select_val, stid) VALUES (?, ?, ?, ?)");
+    $insert_stmt = $pdo->prepare("INSERT INTO select_gen (select_type, single, select_val, stid) VALUES (?, ?, ?, ?) RETURNING pid");
     $insert_stmt->execute([$select_type, $single, $select_val, $stid]);
-    $newid = $pdo->lastInsertId();
+    
+    // Get the newly created pid from RETURNING clause
+    $new_record = $insert_stmt->fetch(PDO::FETCH_ASSOC);
+    $newid = $new_record['pid'] ?? null;
+    $insert_stmt->closeCursor();
   }
 
   
