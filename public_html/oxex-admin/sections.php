@@ -13,16 +13,23 @@ setAdminVars(3); // Tables section
 $subtitle = "Sections";
 
 // Process ALL form submissions first, before ANY HTML output
+// Check for flash messages from previous request
 $message = '';
 $alertType = '';
+if (isset($_SESSION['flash_message'])) {
+    $message = $_SESSION['flash_message'];
+    $alertType = $_SESSION['flash_alert_type'] ?? 'info';
+    unset($_SESSION['flash_message']);
+    unset($_SESSION['flash_alert_type']);
+}
 
 // Process forms and handle redirects
 if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
     
     // Add new section
     if (isset($_POST['new_section'])) {
-        $section_name = isset($_POST['section_name']) ? $_POST['section_name'] : '';
-        $section_description = isset($_POST['section_description']) ? $_POST['section_description'] : '';
+        $section_name = isset($_POST['section_name']) ? trim($_POST['section_name']) : '';
+        $section_description = isset($_POST['section_description']) ? trim($_POST['section_description']) : '';
         
         // Determine the next order position
         $order_stmt = $pdo->prepare("SELECT COALESCE(MAX(section_order) + 1, 1) FROM field_sections");
@@ -31,21 +38,36 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
         $order_stmt->closeCursor();
         
         if (!empty($section_name)) {
-            $insert_stmt = $pdo->prepare("INSERT INTO field_sections (section_name, section_order, section_description) VALUES (?, ?, ?)");
-            $insert_stmt->execute([$section_name, $next_order, $section_description]);
+            // Get the next available section_id if auto-increment isn't working
+            $next_id_stmt = $pdo->prepare("SELECT COALESCE(MAX(section_id), 0) + 1 AS next_id FROM field_sections");
+            $next_id_stmt->execute();
+            $next_id_result = $next_id_stmt->fetch(PDO::FETCH_ASSOC);
+            $next_section_id = $next_id_result['next_id'] ?? 1;
+            $next_id_stmt->closeCursor();
             
-            if ($insert_stmt->rowCount() > 0) {
-                $message = "Section added successfully!";
-                $alertType = "success";
+            // Insert new section with explicit section_id to ensure it's set
+            $insert_stmt = $pdo->prepare("INSERT INTO field_sections (section_id, section_name, section_order, section_description) VALUES (?, ?, ?, ?) RETURNING section_id");
+            $insert_stmt->execute([$next_section_id, $section_name, $next_order, $section_description]);
+            
+            // Get the newly created section_id from RETURNING clause
+            $new_section = $insert_stmt->fetch(PDO::FETCH_ASSOC);
+            $new_section_id = $new_section['section_id'] ?? $next_section_id;
+            
+            if ($new_section_id) {
+                error_log("New section created with ID: " . $new_section_id);
+                $_SESSION['flash_message'] = "Section added successfully!";
+                $_SESSION['flash_alert_type'] = "success";
             } else {
                 $err = $pdo->errorInfo()[2] ?? 'Unknown error';
-                $message = "Error adding section: " . $err;
-                $alertType = "danger";
+                error_log("Error creating section: " . $err);
+                $_SESSION['flash_message'] = "Error adding section: " . $err;
+                $_SESSION['flash_alert_type'] = "danger";
             }
             $insert_stmt->closeCursor();
         } else {
-            $message = "Section name cannot be empty!";
-            $alertType = "warning";
+            error_log("Section name validation failed - received: '" . var_export($_POST['section_name'] ?? 'NOT SET', true) . "'");
+            $_SESSION['flash_message'] = "Section name cannot be empty!";
+            $_SESSION['flash_alert_type'] = "warning";
         }
         
         // Redirect and exit
@@ -58,12 +80,23 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
         error_log("Edit section form submitted");
         error_log("POST data: " . print_r($_POST, true));
         
+        // Check if section_id exists in POST
+        $section_id_raw = $_POST['section_id'] ?? 'NOT SET';
+        error_log("Section ID (raw from POST): '" . var_export($section_id_raw, true) . "'");
+        error_log("Section ID key exists in POST: " . (isset($_POST['section_id']) ? 'YES' : 'NO'));
+        
         $section_id = isset($_POST['section_id']) ? (int)$_POST['section_id'] : 0;
-        $section_name = isset($_POST['section_name']) ? $_POST['section_name'] : '';
-        $section_description = isset($_POST['section_description']) ? $_POST['section_description'] : '';
+        $section_name = isset($_POST['section_name']) ? trim($_POST['section_name']) : '';
+        $section_description = isset($_POST['section_description']) ? trim($_POST['section_description']) : '';
+        
+        error_log("Section ID (after conversion): " . $section_id);
+        error_log("Section name (raw): '" . var_export($_POST['section_name'] ?? 'NOT SET', true) . "'");
+        error_log("Section name (trimmed): '" . $section_name . "'");
+        error_log("Section name empty check: " . (empty($section_name) ? 'YES' : 'NO'));
         
         // Handle table links
         $table_ids = '';
+        $filtered_ids = [];
         if (isset($_POST['table_ids']) && is_array($_POST['table_ids'])) {
             // Filter out empty values and convert to integers
             $filtered_ids = array_filter($_POST['table_ids'], function($id) {
@@ -104,23 +137,35 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
                 // Commit the transaction
                 $pdo->commit();
                 
-                $message = "Section updated successfully!";
-                $alertType = "success";
+                $_SESSION['flash_message'] = "Section updated successfully!";
+                $_SESSION['flash_alert_type'] = "success";
             } catch (Exception $e) {
                 // Rollback the transaction on error
                 if ($pdo->inTransaction()) { $pdo->rollBack(); }
                 
-                $message = "Error updating section: " . $e->getMessage();
-                $alertType = "danger";
-                error_log($message);
+                $_SESSION['flash_message'] = "Error updating section: " . $e->getMessage();
+                $_SESSION['flash_alert_type'] = "danger";
+                error_log("Error updating section: " . $e->getMessage());
             }
             
             // Redirect and exit
             header("Location: sections.php");
             exit;
         } else {
-            $message = "Section name cannot be empty!";
-            $alertType = "warning";
+            $error_msg = "Section name cannot be empty!";
+            if (empty($section_name)) {
+                $error_msg .= " (Section name is empty or contains only whitespace)";
+            }
+            if ($section_id <= 0) {
+                $error_msg .= " (Invalid section ID: " . $section_id . ")";
+            }
+            error_log("Validation failed: " . $error_msg);
+            $_SESSION['flash_message'] = $error_msg;
+            $_SESSION['flash_alert_type'] = "warning";
+            
+            // Redirect and exit
+            header("Location: sections.php");
+            exit;
         }
     }
     
@@ -376,65 +421,116 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
                               <tbody id="sections-table-body">
                                  <?php
                                  // Get all sections with their table connections using section_table_link
-                                 $query = "
-                                    SELECT 
-                                        fs.section_id,
-                                        fs.section_name,
-                                        fs.section_description,
-                                        fs.section_order,
-                                        STRING_AGG(DISTINCT stl.tbid::text, ',') AS table_ids,
-                                        STRING_AGG(DISTINCT t.tab_name, ',') AS table_names,
-                                        COUNT(DISTINCT stl.tbid) AS table_count,
-                                        COUNT(DISTINCT st.stid) AS field_count
-                                    FROM 
-                                        field_sections fs
-                                    LEFT JOIN 
-                                        section_table_link stl ON fs.section_id = stl.section_id
-                                    LEFT JOIN 
-                                        tabs_tbl t ON stl.tbid = t.tbid
-                                    LEFT JOIN 
-                                        select_types st ON fs.section_id = st.section_id
-                                    GROUP BY 
-                                        fs.section_id, fs.section_name, fs.section_description, fs.section_order
-                                    ORDER BY 
-                                        fs.section_order
-                                 ";
+                                 // Use database-agnostic query (works with both MySQL and PostgreSQL)
+                                 try {
+                                    // Try PostgreSQL syntax first (STRING_AGG)
+                                    $query = "
+                                       SELECT 
+                                          fs.section_id,
+                                          fs.section_name,
+                                          fs.section_description,
+                                          fs.section_order,
+                                          STRING_AGG(DISTINCT stl.tbid::text, ',') AS table_ids,
+                                          STRING_AGG(DISTINCT t.tab_name, ',') AS table_names,
+                                          COUNT(DISTINCT stl.tbid) AS table_count,
+                                          COUNT(DISTINCT st.stid) AS field_count
+                                       FROM 
+                                          field_sections fs
+                                       LEFT JOIN 
+                                          section_table_link stl ON fs.section_id = stl.section_id
+                                       LEFT JOIN 
+                                          tabs_tbl t ON stl.tbid = t.tbid
+                                       LEFT JOIN 
+                                          select_types st ON fs.section_id = st.section_id
+                                       GROUP BY 
+                                          fs.section_id, fs.section_name, fs.section_description, fs.section_order
+                                       ORDER BY 
+                                          fs.section_order
+                                    ";
+                                    
+                                    $sections_result = $pdo->query($query);
+                                 } catch (Exception $e) {
+                                    // Fallback to MySQL syntax if PostgreSQL fails
+                                    error_log("PostgreSQL query failed, trying MySQL syntax: " . $e->getMessage());
+                                    $query = "
+                                       SELECT 
+                                          fs.section_id,
+                                          fs.section_name,
+                                          fs.section_description,
+                                          fs.section_order,
+                                          GROUP_CONCAT(DISTINCT stl.tbid SEPARATOR ',') AS table_ids,
+                                          GROUP_CONCAT(DISTINCT t.tab_name SEPARATOR ',') AS table_names,
+                                          COUNT(DISTINCT stl.tbid) AS table_count,
+                                          COUNT(DISTINCT st.stid) AS field_count
+                                       FROM 
+                                          field_sections fs
+                                       LEFT JOIN 
+                                          section_table_link stl ON fs.section_id = stl.section_id
+                                       LEFT JOIN 
+                                          tabs_tbl t ON stl.tbid = t.tbid
+                                       LEFT JOIN 
+                                          select_types st ON fs.section_id = st.section_id
+                                       GROUP BY 
+                                          fs.section_id, fs.section_name, fs.section_description, fs.section_order
+                                       ORDER BY 
+                                          fs.section_order
+                                    ";
+                                    $sections_result = $pdo->query($query);
+                                 }
                                  
-                                 $sections_result = $pdo->query($query);
-                                 
-                                 while ($section = $sections_result->fetch(PDO::FETCH_ASSOC)) {
-                                    $section_id = $section['section_id'];
-                                    $section_name = $section['section_name'];
-                                    $section_description = $section['section_description'];
-                                    $section_order = $section['section_order'];
-                                    $field_count = $section['field_count'];
+                                 if (!$sections_result) {
+                                    $error = $pdo->errorInfo();
+                                    error_log("Error fetching sections: " . print_r($error, true));
+                                    echo "<tr><td colspan='6' class='text-danger'>Error loading sections: " . htmlspecialchars($error[2] ?? 'Unknown error') . "</td></tr>";
+                                 } else {
+                                    $row_count = 0;
+                                    while ($section = $sections_result->fetch(PDO::FETCH_ASSOC)) {
+                                       $row_count++;
+                                       
+                                       // Ensure section_id is a valid integer
+                                       $section_id = isset($section['section_id']) ? (int)$section['section_id'] : 0;
+                                       
+                                       // Skip rows without a valid section_id
+                                       if ($section_id <= 0) {
+                                          error_log("Warning: Skipping section row #$row_count with invalid section_id. Full row data: " . print_r($section, true));
+                                          continue;
+                                       }
+                                    
+                                    $section_name = $section['section_name'] ?? '';
+                                    $section_description = $section['section_description'] ?? '';
+                                    $section_order = isset($section['section_order']) ? (int)$section['section_order'] : 0;
+                                    $field_count = isset($section['field_count']) ? (int)$section['field_count'] : 0;
                                     
                                     // Count tables from the section_table_link table
-                                    $table_count = $section['table_count'];
+                                    $table_count = isset($section['table_count']) ? (int)$section['table_count'] : 0;
                                     
-                                    echo "<tr class='section-row' data-id='$section_id'>";
+                                    // Ensure section_id is properly set in all data attributes
+                                    $section_id_attr = htmlspecialchars((string)$section_id, ENT_QUOTES);
+                                    
+                                    echo "<tr class='section-row' data-id='$section_id_attr'>";
                                     echo "<td><span class='drag-handle'><i class='fas fa-grip-lines'></i></span> $section_order</td>";
-                                    echo "<td><button type='button' class='btn btn-link p-0 view-categories' data-section-id='$section_id' data-section-name='" . htmlspecialchars($section_name, ENT_QUOTES) . "' title='View categories in this section'>$section_name</button></td>";
-                                    echo "<td>" . (empty($section_description) ? "<em class='text-muted'>No description</em>" : $section_description) . "</td>";
+                                    echo "<td><button type='button' class='btn btn-link p-0 view-categories' data-section-id='$section_id_attr' data-section-name='" . htmlspecialchars($section_name, ENT_QUOTES) . "' title='View categories in this section'>" . htmlspecialchars($section_name) . "</button></td>";
+                                    echo "<td>" . (empty($section_description) ? "<em class='text-muted'>No description</em>" : htmlspecialchars($section_description)) . "</td>";
                                     echo "<td><span class='section-count'>$field_count</span></td>";
-                                    echo "<td><span class='section-count' title='" . htmlspecialchars($section['table_names'] ?? '') . "'>$table_count</span></td>";
+                                    echo "<td><span class='section-count' title='" . htmlspecialchars($section['table_names'] ?? '', ENT_QUOTES) . "'>$table_count</span></td>";
                                     echo "<td>
                                        <div class='btn-group btn-group-sm'>
                                           <button class='btn btn-sm btn-outline-info edit-section-btn' 
-                                             data-id='$section_id' 
+                                             data-id='$section_id_attr' 
                                              data-name='" . htmlspecialchars($section_name, ENT_QUOTES) . "' 
                                              data-description='" . htmlspecialchars($section_description, ENT_QUOTES) . "'
-                                             data-table-ids='" . htmlspecialchars(trim($section['table_ids'] ?? '')) . "'
-                                             data-table-names='" . htmlspecialchars(trim($section['table_names'] ?? '')) . "'
+                                             data-table-ids='" . htmlspecialchars(trim($section['table_ids'] ?? ''), ENT_QUOTES) . "'
+                                             data-table-names='" . htmlspecialchars(trim($section['table_names'] ?? ''), ENT_QUOTES) . "'
                                              title='Edit Section'>
                                              <i class='fas fa-edit'></i>
                                           </button>
-                                          <a href='?delete=1&id=$section_id' class='btn btn-sm btn-outline-danger delete-section' onclick='return confirm(\"Are you sure you want to delete this section? This cannot be undone.\");' title='Delete Section'>
+                                          <a href='?delete=1&id=$section_id_attr' class='btn btn-sm btn-outline-danger delete-section' onclick='return confirm(\"Are you sure you want to delete this section? This cannot be undone.\");' title='Delete Section'>
                                              <i class='fas fa-trash'></i>
                                           </a>
                                        </div>
                                     </td>";
                                     echo "</tr>";
+                                    }
                                  }
                                  ?>
                               </tbody>
@@ -695,17 +791,45 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
          });
          
 
-         // Edit section button click
-         $('.edit-section-btn').click(function() {
-            const id = $(this).data('id');
-            const name = $(this).data('name');
-            const description = $(this).data('description');
-            const tableIds = $(this).data('table-ids') || '';
-            const tableNames = $(this).data('table-names') || '';
+         // Edit section button click - use event delegation for reliability
+         $(document).on('click', '.edit-section-btn', function() {
+            // Use attr() instead of data() for more reliable numeric value retrieval
+            const id = parseInt($(this).attr('data-id')) || 0;
+            const name = $(this).attr('data-name') || '';
+            const description = $(this).attr('data-description') || '';
+            const tableIds = $(this).attr('data-table-ids') || '';
+            const tableNames = $(this).attr('data-table-names') || '';
             
+            console.log('Edit section clicked - ID:', id, 'Name:', name);
+            
+            if (!id || id === 0) {
+               console.error('ERROR: Invalid section ID from button:', id);
+               Swal.fire({
+                  icon: 'error',
+                  title: 'Error',
+                  text: 'Invalid section ID. Please refresh the page and try again.'
+               });
+               return;
+            }
+            
+            // Ensure the hidden field is set with the section ID
             $('#edit_section_id').val(id);
             $('#edit_section_name').val(name);
             $('#edit_section_description').val(description);
+            
+            // Verify the value was set
+            const verifyId = $('#edit_section_id').val();
+            console.log('Section ID set in form:', verifyId);
+            
+            if (!verifyId || verifyId === '0') {
+               console.error('ERROR: Failed to set section ID in form field');
+               Swal.fire({
+                  icon: 'error',
+                  title: 'Error',
+                  text: 'Failed to set section ID. Please refresh the page and try again.'
+               });
+               return;
+            }
             
             // Destroy existing Select2 instance if it exists
             if ($('#edit_table_ids').hasClass('select2-hidden-accessible')) {
@@ -742,6 +866,28 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
          $('#editSectionModal form').on('submit', function(e) {
             // Get all selected values from the dropdown
             const tableIds = $('#edit_table_ids').val();
+            
+            // Verify section ID is set before submission
+            const sectionId = $('#edit_section_id').val();
+            const sectionName = $('#edit_section_name').val();
+            
+            console.log('Form submitting - Section ID:', sectionId, 'Section Name:', sectionName);
+            
+            if (!sectionId || sectionId === '0' || sectionId === '') {
+               console.error('ERROR: Section ID is missing or invalid:', sectionId);
+               e.preventDefault();
+               Swal.fire({
+                  icon: 'error',
+                  title: 'Error',
+                  text: 'Section ID is missing. Please refresh the page and try again.'
+               });
+               return false;
+            }
+            
+            if (!sectionName || sectionName.trim() === '') {
+               console.error('ERROR: Section name is empty');
+               // Let the server-side validation handle this
+            }
          });
 
          // Add fields to section functionality

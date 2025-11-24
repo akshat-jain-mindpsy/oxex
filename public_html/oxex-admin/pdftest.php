@@ -10,13 +10,28 @@ include 'incl/admin_vars.php';
 require 'fpdf/fpdf.php';
 require_once('fpdi2/src/autoload.php');
 
+// Ensure $today is defined (format: YYYYMMDD)
+if (!isset($today)) {
+    $today = date('Ymd');
+}
 $todaydisp = strtotime($today);
 $disptoday = date('D jS F Y', $todaydisp);
  
 // Get the trainee and supervisor from traineedetail.php
-$trainee = isset($_GET['trainee']) ? $_GET['trainee'] : ''; # get id for trainee
+$trainee = isset($_GET['trainee']) ? trim($_GET['trainee']) : ''; # get id for trainee
+// Initialize variables to avoid undefined variable warnings
+$name = '';
+$cohort = '';
+$uid = '';
+$university = '';
+$who_by = '';
+$super_pass = '';
+$date_added = '';
+$supername = '';
+$tab_name = '';
+
 $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
-if ($pdo) {
+if ($pdo && !empty($trainee)) {
    $stmt = $pdo->prepare("SELECT name, year, uid FROM trainee_tbl WHERE trainkey = ?");
    $stmt->execute([$trainee]);
    $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -26,41 +41,87 @@ if ($pdo) {
        $uid = $row['uid'];
    }
    // get uni
-   $stmt = $pdo->prepare("SELECT university FROM uni_tbl WHERE uid = ?");
-   $stmt->execute([$uid]);
-   $row = $stmt->fetch(PDO::FETCH_ASSOC);
-   if ($row) {
-       $university = $row['university'];
+   if (!empty($uid)) {
+       $stmt = $pdo->prepare("SELECT university FROM uni_tbl WHERE uid = ?");
+       $stmt->execute([$uid]);
+       $row = $stmt->fetch(PDO::FETCH_ASSOC);
+       if ($row) {
+           $university = $row['university'];
+       }
    }
 }
 
-$trid = isset($_GET['trid']) ? $_GET['trid'] : 0; # get id for report pass data
-if ($pdo) {
+$trid = isset($_GET['trid']) ? trim($_GET['trid']) : ''; # get id for report pass data
+
+// Debug: Log parameters to help diagnose issues
+error_log("pdftest.php - trainee: '$trainee', trid: '$trid', is_numeric: " . (is_numeric($trid) ? 'yes' : 'no'));
+
+// Validate that we have required parameters and they are not empty
+if ($pdo && !empty($trid) && !empty($trainee) && is_numeric($trid)) {
    $stmt = $pdo->prepare("SELECT who_by, super_pass, date_added FROM trainee_report_ok WHERE trid = ? AND trainkey = ?");
-   $stmt->execute([$trid, $trainee]);
+   $stmt->execute([(int)$trid, $trainee]);
    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+   
+   // Debug: Log query result
+   error_log("pdftest.php - Query found row: " . ($row ? 'yes' : 'no'));
+   if ($row) {
+       error_log("pdftest.php - who_by: " . ($row['who_by'] ?? 'null') . ", super_pass: " . ($row['super_pass'] ?? 'null') . ", date_added: " . ($row['date_added'] ?? 'null'));
+   } else {
+       // Try querying without trainkey condition to see if trid exists
+       $stmt2 = $pdo->prepare("SELECT who_by, super_pass, date_added, trainkey FROM trainee_report_ok WHERE trid = ?");
+       $stmt2->execute([(int)$trid]);
+       $row2 = $stmt2->fetch(PDO::FETCH_ASSOC);
+       if ($row2) {
+           error_log("pdftest.php - Record found but trainkey mismatch. Expected: '$trainee', Found: " . ($row2['trainkey'] ?? 'null'));
+       } else {
+           error_log("pdftest.php - No record found with trid: " . (int)$trid);
+       }
+   }
+   
    if ($row) {
        $who_by = $row['who_by'];
        $super_pass = $row['super_pass'];
-       $date_added = $row['date_added'];
+       $date_added_raw = $row['date_added'];
+       
+       // Format date - handle YYYYMMDD integer format or standard date strings
+       $date_added = '';
+       if (!empty($date_added_raw)) {
+           $date_added_timestamp = null;
+           // Check if it's in YYYYMMDD integer format
+           if (is_numeric($date_added_raw) && strlen((string)$date_added_raw) == 8) {
+               // Convert YYYYMMDD to YYYY-MM-DD for strtotime
+               $date_str = (string)$date_added_raw;
+               $date_added_timestamp = strtotime(substr($date_str, 0, 4) . '-' . substr($date_str, 4, 2) . '-' . substr($date_str, 6, 2));
+           } else {
+               $date_added_timestamp = strtotime($date_added_raw);
+           }
+           
+           if ($date_added_timestamp !== false) {
+               $date_added = date('D jS F Y', $date_added_timestamp);
+           } else {
+               $date_added = 'Unknown date';
+           }
+       }
    }
-   $date_added = strtotime($date_added);
-   $date_added = date('D jS F Y', $date_added);
 
    // get supervisor details who added pass
-   $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
-   $stmt->execute([$who_by]);
-   $row = $stmt->fetch(PDO::FETCH_ASSOC);
-   if ($row) {
-       $supername = $row['realname'];
+   if (!empty($who_by)) {
+       $stmt = $pdo->prepare("SELECT realname FROM who_there WHERE usrkey = ?");
+       $stmt->execute([$who_by]);
+       $row = $stmt->fetch(PDO::FETCH_ASSOC);
+       if ($row) {
+           $supername = $row['realname'];
+       }
    }
 
    // get which competency
-   $stmt = $pdo->prepare("SELECT tab_name FROM tabs_tbl WHERE tbid = ?");
-   $stmt->execute([$super_pass]);
-   $row = $stmt->fetch(PDO::FETCH_ASSOC);
-   if ($row) {
-       $tab_name = $row['tab_name'];
+   if (!empty($super_pass)) {
+       $stmt = $pdo->prepare("SELECT tab_name FROM tabs_tbl WHERE tbid = ?");
+       $stmt->execute([$super_pass]);
+       $row = $stmt->fetch(PDO::FETCH_ASSOC);
+       if ($row) {
+           $tab_name = $row['tab_name'];
+       }
    }
 }
 

@@ -13,6 +13,16 @@ $value59 = 59; # $stid for age in trainee log
 $dispcolorarr = array();
 $dispborderarr = array();
 
+// Ensure $today is defined (format: YYYYMMDD)
+if (!isset($today)) {
+    $today = date('Ymd');
+}
+
+// Ensure $usrkey is defined from session
+if (!isset($usrkey)) {
+    $usrkey = isset($_SESSION['usrkey']) ? $_SESSION['usrkey'] : '';
+}
+
 if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
 ?><!DOCTYPE html>
 <html lang="en">
@@ -69,9 +79,11 @@ if ($done == "passfail" && ($admintype == 'AT' || $admintype == 'AO' || $adminty
    $vids->execute([$which, $super_pass, $today]);
    $numlinks = $vids->rowCount();
    if ($numlinks == 0) {
-      $insert_stmt = $supabase_pdo->prepare("INSERT INTO trainee_report_ok (trainkey, who_by, super_pass, super_txt, date_added, date_modified) VALUES (?, ?, ?, ?, ?, ?)");
+      // Use RETURNING clause to get the inserted ID directly (more reliable for PostgreSQL)
+      $insert_stmt = $supabase_pdo->prepare("INSERT INTO trainee_report_ok (trainkey, who_by, super_pass, super_txt, date_added, date_modified) VALUES (?, ?, ?, ?, ?, ?) RETURNING trid");
       $insert_stmt->execute([$which, $usrkey, $super_pass, $super_txt, $today, $today]);
-      $newid = (int)$supabase_pdo->lastInsertId();
+      $result = $insert_stmt->fetch(PDO::FETCH_ASSOC);
+      $newid = $result ? (int)$result['trid'] : 0;
    }
 }
 if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {  

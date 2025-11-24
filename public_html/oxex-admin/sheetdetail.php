@@ -109,7 +109,6 @@ if ($newadmin == "newfield" && ($admintype == 'AT' || $admintype == 'DV')) {
    if ($numlinks == 0) {
       $insert_stmt = $supabase_pdo->prepare("INSERT INTO tab_fields (tbid, stid, sort_order) VALUES (?, ?, ?)");
       $insert_stmt->execute([$which, $stid, $sort_order]);
-      $newid = (int)$supabase_pdo->lastInsertId();
       
       // Check if this is an AJAX request
       if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
@@ -555,7 +554,7 @@ $changename = htmlspecialchars($tab_name);
                                  <i class="fas fa-info-circle"></i> <strong>Note:</strong> If you need to create a new category, please go to the <a href="sections.php" class="alert-link">Categories section</a> first.
                               </div>
                               <div class="d-flex">
-                                <button class="btn btn-success mr-2" data-toggle="modal" data-target="#addFieldModal">
+                                <button type="button" class="btn btn-success mr-2" data-toggle="modal" data-target="#addFieldModal">
                                    <i class="fa fa-plus"></i> Add New Category
                                 </button>
 </div>

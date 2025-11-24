@@ -111,8 +111,8 @@ while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
    $subset = $row['subset'];
    $date_added = $row['date_added'];
    $date_modified = $row['date_modified'];
-   $date_added = strtotime($date_added);
-   $date_modified = strtotime($date_modified);
+   $date_added = $date_added !== null ? strtotime($date_added) : false;
+   $date_modified = $date_modified !== null ? strtotime($date_modified) : false;
    // count trainees
    $vids = $pdo->prepare("SELECT slid FROM subset_link_tbl WHERE setkey = ? ");
    $vids->execute([$setkey]);
@@ -128,8 +128,8 @@ while ($row = $tableset->fetch(PDO::FETCH_ASSOC)){
 <tr>
    <td><a href="subsetdetail.php?which=<?php echo $setkey ?>"><?php echo $subset?></a></td>
    <td><?php echo $numlinks ?></td>
-   <td><?php echo date('d/m/Y', $date_added) ?></td>
-   <td><?php echo date('d/m/Y', $date_modified) ?></td>
+   <td><?php echo $date_added !== false ? date('d/m/Y', $date_added) : 'N/A' ?></td>
+   <td><?php echo $date_modified !== false ? date('d/m/Y', $date_modified) : 'N/A' ?></td>
    <td><?php echo $realname ?></td>
    <td><a href="subsetstats.php?group=<?php echo $setkey ?>" class="btn btn-success">View</a></td>
 </tr>

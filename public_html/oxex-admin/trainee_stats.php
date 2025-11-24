@@ -121,7 +121,7 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
             WHERE tl.date_added >= ? AND tl.date_added <= ?
               AND t.trainkey = ?
               $course_condition_tmp
-            GROUP BY CONCAT(SUBSTRING(tl.date_added, 1, 4), '-', SUBSTRING(tl.date_added, 5, 2))
+            GROUP BY TO_CHAR(TO_DATE(tl.date_added::text, 'YYYYMMDD'), 'YYYY-MM')
             ORDER BY month ASC
         ";
 
