@@ -232,9 +232,9 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
     // Debug endpoint to help troubleshoot timeline issues
     if (isset($_GET['data_type']) && $_GET['data_type'] === 'timeline_debug') {
         header('Content-Type: application/json');
-        $debug_trainkey = isset($_GET['trainkey']) ? (int)$_GET['trainkey'] : 0;
+        $debug_trainkey = isset($_GET['trainkey']) ? trim($_GET['trainkey']) : '';
         
-        if ($debug_trainkey <= 0) {
+        if (empty($debug_trainkey)) {
             echo json_encode(['status' => 'error', 'message' => 'Missing trainkey']);
             exit;
         }
@@ -429,7 +429,7 @@ $babcp_condition_simple = "";
 $babcp_condition_with_tabs = "";
 
 if ($babcp_filter == 1 && !empty($babcp_trainees)) {
-    $babcp_trainees_list = implode(',', array_map('intval', $babcp_trainees));
+    $babcp_trainees_list = implode(',', array_map(function($val) use ($pdo) { return $pdo->quote($val); }, $babcp_trainees));
     $babcp_condition_simple = "AND t.trainkey IN ($babcp_trainees_list)";
     $babcp_condition_with_tabs = "AND (tabs.tab_name LIKE '%BABCP%' OR tabs.tab_name LIKE '%Behavioural%' OR tabs.tab_name LIKE '%Cognitive%' OR t.trainkey IN ($babcp_trainees_list))";
 } elseif ($babcp_filter == 1 && empty($babcp_trainees)) {
@@ -460,7 +460,7 @@ if ($babcp_training == 1) {
     }
     
     if (!empty($training_trainees)) {
-        $filter_trainees[] = implode(',', array_map('intval', $training_trainees));
+        $filter_trainees[] = implode(',', $training_trainees);
     } else {
         $additional_conditions .= " AND 1=0"; // No results
     }
@@ -483,7 +483,7 @@ if ($supervised_case == 1) {
     }
     
     if (!empty($supervised_trainees)) {
-        $filter_trainees[] = implode(',', array_map('intval', $supervised_trainees));
+        $filter_trainees[] = implode(',', $supervised_trainees);
     } else {
         $additional_conditions .= " AND 1=0"; // No results
     }
@@ -506,7 +506,7 @@ if (!empty($primary_modality)) {
     }
     
     if (!empty($modality_trainees)) {
-        $filter_trainees[] = implode(',', array_map('intval', $modality_trainees));
+        $filter_trainees[] = implode(',', $modality_trainees);
     } else {
         $additional_conditions .= " AND 1=0"; // No results
     }
@@ -529,7 +529,7 @@ if ($min_sessions > 0) {
     }
     
     if (!empty($sessions_trainees)) {
-        $filter_trainees[] = implode(',', array_map('intval', $sessions_trainees));
+        $filter_trainees[] = implode(',', $sessions_trainees);
     } else {
         $additional_conditions .= " AND 1=0"; // No results
     }
@@ -549,7 +549,8 @@ if (!empty($filter_trainees)) {
     }
     
     if (!empty($all_trainees)) {
-        $additional_conditions .= " AND t.trainkey IN (" . implode(',', array_map('intval', $all_trainees)) . ")";
+        $quoted_trainees = implode(',', array_map(function($val) use ($pdo) { return $pdo->quote($val); }, $all_trainees));
+        $additional_conditions .= " AND t.trainkey IN ($quoted_trainees)";
     } else {
         $additional_conditions .= " AND 1=0"; // No results
     }
