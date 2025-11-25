@@ -95,6 +95,8 @@ $value11 = 11;
 $value14 = 14;
 $value15 = 15;
 $value16 = 16;
+$value0 = 0;
+$value1 = 1;
 $tableset = $supabase_pdo->prepare("SELECT tbid, tab_name FROM tabs_tbl WHERE (tbid != ? AND tbid != ? AND tbid != ? AND tbid != ?)");
 $tableset->execute([$value11, $value14, $value15, $value16]);
 $tab_rows = $tableset->fetchAll(PDO::FETCH_ASSOC);
@@ -275,7 +277,7 @@ $tab_name = $stmt->fetchColumn();
         // output the field names
         echo "<th>$str (s$stid)</th>";
         }
-      $tabset->close();
+      $tabset->closeCursor();
 
   echo "  </tr>";
   echo "</thead>";
@@ -309,7 +311,7 @@ $tab_name = $stmt->fetchColumn();
       $stidchk2 = 75; # or check for this stid...
       $pidchk2 = 653; # ... with this pid
     }
-      $dataset = $supabase_pdo->prepare("SELECT date_added, logkey FROM trainee_log WHERE trainkey = ? AND (stid = ? AND pid = ?) GROUP BY logkey ORDER BY date_added DESC ");
+      $dataset = $supabase_pdo->prepare("SELECT MAX(date_added) AS date_added, logkey FROM trainee_log WHERE trainkey = ? AND (stid = ? AND pid = ?) GROUP BY logkey ORDER BY MAX(date_added) DESC ");
       $dataset->execute([$which, $stidchk1, $pidchk1]); 
       $rows = $dataset->fetchAll(PDO::FETCH_ASSOC);
       foreach ($rows as $r){
@@ -403,7 +405,7 @@ $tab_name = $stmt->fetchColumn();
 
 
           }
-          $resultset->close();
+          $resultset->closeCursor();
           echo "</tr>";
         
           
