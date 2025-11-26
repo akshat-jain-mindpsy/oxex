@@ -47,10 +47,16 @@ if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
 }
 
 if ($newadmin == 'newadmin') {
-  $str = isset($_POST['str']) ? $_POST['str'] : '';
-  $single = isset($_POST['single']) ? $_POST['single'] : 0;
-  $musthave = isset($_POST['musthave']) ? $_POST['musthave'] : 0;
-  $wouldlike = isset($_POST['wouldlike']) ? $_POST['wouldlike'] : 0;
+  $str = isset($_POST['str']) ? trim($_POST['str']) : '';
+  $single = isset($_POST['single']) ? (int)$_POST['single'] : 0;
+  $musthave = isset($_POST['musthave']) ? (int)$_POST['musthave'] : 0;
+  $wouldlike = isset($_POST['wouldlike']) ? (int)$_POST['wouldlike'] : 0;
+
+  // Determine the next available STID since Supabase is not auto-incrementing this column
+  $stid_stmt = $pdo->prepare("SELECT COALESCE(MAX(stid) + 1, 1) AS next_stid FROM select_types");
+  $stid_stmt->execute();
+  $next_stid = (int)$stid_stmt->fetchColumn();
+  $stid_stmt->closeCursor();
   
   // Determine the next sort order
   $sort_order_stmt = $pdo->prepare("SELECT COALESCE(MAX(sort_order) + 1, 1) AS next_sort_order FROM select_types");
@@ -58,9 +64,9 @@ if ($newadmin == 'newadmin') {
   $next_sort_order = (int)$sort_order_stmt->fetchColumn();
   $sort_order_stmt->closeCursor();
 
-  // Write new record
-  $insert_stmt = $pdo->prepare("INSERT INTO select_types (str, single, musthave, wouldlike, sort_order) VALUES (?, ?, ?, ?, ?) RETURNING stid");
-  $insert_stmt->execute([$str, $single, $musthave, $wouldlike, $next_sort_order]);
+  // Write new record, explicitly persisting the computed STID
+  $insert_stmt = $pdo->prepare("INSERT INTO select_types (stid, str, single, musthave, wouldlike, sort_order) VALUES (?, ?, ?, ?, ?, ?) RETURNING stid");
+  $insert_stmt->execute([$next_stid, $str, $single, $musthave, $wouldlike, $next_sort_order]);
   
   // Get the newly created stid from RETURNING clause
   $new_record = $insert_stmt->fetch(PDO::FETCH_ASSOC);

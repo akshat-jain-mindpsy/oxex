@@ -9,23 +9,12 @@ $pagetitle = "Items (Dropdown List) ";
 setAdminVars(0); // Dashboard section
 $subtitle = "Items";
 if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
-?><!DOCTYPE html>
-<html lang="en">
-<head>
-   <meta charset="utf-8">
-   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-   <meta name="description" content="Bootstrap Admin App">
-   <meta name="keywords" content="app, responsive, jquery, bootstrap, dashboard, admin">
-   <link rel="icon" type="image/x-icon" href="favicon.ico">
-   <title><?php echo $pagetitle ?> - <?php echo $adminname ?></title>
-   <?php include 'incl/admincss.php' ?>
-</head>
-<?php 
+
 // page actions
 $done = isset($_POST['done']) ? $_POST['done'] : '';
 $newadmin = isset($_POST['newadmin']) ? $_POST['newadmin'] : '';
 $which = isset($_GET['which']) ? $_GET['which'] : 0;
-  $which = (int)$which;
+$which = (int)$which;
 $del = isset($_GET['del']) ? $_GET['del'] : '';
 $delalert = '';
 $select_type = '';
@@ -33,7 +22,7 @@ if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete row from detail page
   $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
   if ($pdo) {
-    $stmt = $pdo->prepare("DELETE FROM select_gen WHERE pid = ? LIMIT 1");
+    $stmt = $pdo->prepare("DELETE FROM select_gen WHERE pid = ?");
     $stmt->execute([$which]);
     if ($stmt->rowCount() > 0) {
       // show message when deleting, not refreshing
@@ -57,19 +46,39 @@ if ($newadmin == 'newadmin') {
       $single = $row['single'];
     }
 
+    // Determine the next available PID because Supabase is not auto-incrementing this column
+    $pid_stmt = $pdo->prepare("SELECT COALESCE(MAX(pid) + 1, 1) AS next_pid FROM select_gen");
+    $pid_stmt->execute();
+    $next_pid = (int)$pid_stmt->fetchColumn();
+    $pid_stmt->closeCursor();
+
     // write new record
-    $insert_stmt = $pdo->prepare("INSERT INTO select_gen (select_type, single, select_val, stid) VALUES (?, ?, ?, ?) RETURNING pid");
-    $insert_stmt->execute([$select_type, $single, $select_val, $stid]);
+    $insert_stmt = $pdo->prepare("INSERT INTO select_gen (pid, select_type, single, select_val, stid) VALUES (?, ?, ?, ?, ?) RETURNING pid");
+    $insert_stmt->execute([$next_pid, $select_type, $single, $select_val, $stid]);
     
     // Get the newly created pid from RETURNING clause
     $new_record = $insert_stmt->fetch(PDO::FETCH_ASSOC);
     $newid = $new_record['pid'] ?? null;
     $insert_stmt->closeCursor();
+
+    // prevent duplicate submissions when refreshing the page
+    header("Location: " . $_SERVER['PHP_SELF'] . "?which=" . ($newid ?? $which));
+    exit;
   }
-
-  
 }
-
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+   <meta name="description" content="Bootstrap Admin App">
+   <meta name="keywords" content="app, responsive, jquery, bootstrap, dashboard, admin">
+   <link rel="icon" type="image/x-icon" href="favicon.ico">
+   <title><?php echo $pagetitle ?> - <?php echo $adminname ?></title>
+   <?php include 'incl/admincss.php' ?>
+</head>
+<?php
 function getSimilarExistingValues($type) {
     global $supabase_pdo;
     $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
@@ -78,7 +87,7 @@ function getSimilarExistingValues($type) {
                                WHERE select_type = ? 
                                ORDER BY SIMILARITY(select_val, ?) 
                                LIMIT 5");
-        $stmt->execute([$type, $newValue]);
+        $stmt->execute([$type, $type]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     return [];

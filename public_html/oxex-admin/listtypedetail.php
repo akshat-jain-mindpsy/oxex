@@ -50,6 +50,14 @@ if ($done == "done" && ($admintype == 'AT' || $admintype == 'DV')) {
 }
 ?>
 <?php
+  // Initialize variables with default values
+  $single = 0;
+  $str = '';
+  $musthave = 0;
+  $wouldlike = 0;
+  $sort_order = 0;
+  $current_section_id = null;
+  
   // find the required record
 $stmt = $supabase_pdo->prepare("SELECT single, str, musthave, wouldlike, sort_order, section_id FROM select_types WHERE stid = ?");
 $stmt->execute([$which]);

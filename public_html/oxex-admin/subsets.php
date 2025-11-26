@@ -48,6 +48,11 @@ if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
 if ($newadmin == 'newadmin') {
   $subset = isset($_POST['subset']) ? $_POST['subset'] : '';
   $description = isset($_POST['description']) ? $_POST['description'] : '';
+  
+  // Ensure $today is defined (format: YYYYMMDD)
+  if (!isset($today)) {
+    $today = date('Ymd');
+  }
     
     $numids = 1;
     while (!$numids == 0) {
@@ -62,8 +67,6 @@ if ($newadmin == 'newadmin') {
   // write new record
   $insert_stmt = $pdo->prepare("INSERT INTO subset_tbl (subset, description, usrkey, setkey, date_added, date_modified, who_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
   $insert_stmt->execute([$subset, $description, $usrkey, $setkey, $today, $today, $usrkey]);
-  //printf("[%d] %s\n", $pdo->errorCode(), $pdo->errorInfo()[2]);
-  $newid = $pdo->lastInsertId();
   $insert_stmt->closeCursor();
 
   

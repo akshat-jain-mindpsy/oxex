@@ -35,7 +35,8 @@ if ($del == "del" && ($admintype == 'AT' || $admintype == 'DV')) {
   $stmt = $supabase_pdo->prepare("DELETE FROM report_data WHERE rmid = ?");
   $stmt->execute([$which]);
    // now remove report
-  $stmt = $supabase_pdo->prepare("DELETE FROM report_manager WHERE rmid = ? LIMIT 1");
+  // Postgres does not support LIMIT in DELETE, rely on PK constraint instead
+  $stmt = $supabase_pdo->prepare("DELETE FROM report_manager WHERE rmid = ?");
   $stmt->execute([$which]);
   if ($stmt->rowCount() > 0) {
     // show message when deleting, not refreshing

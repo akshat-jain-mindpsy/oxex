@@ -8,9 +8,23 @@ $pagetitle = 'Dropdown List Values';
 
 setAdminVars(0); // Dashboard section
 $subtitle = "Admin";
-$listurl = "reports.php"; # where the delete script is found
+$listurl = "items.php"; # list overview + delete handler
 $listname = "List value";
-if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV')) {
+$which = isset($_GET['which']) ? (int)$_GET['which'] : 0;
+$del = isset($_GET['del']) ? $_GET['del'] : '';
+$hasAccess = login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $admintype == 'AE' || $admintype == 'SO' || $admintype == 'SE' || $admintype == 'DV');
+
+if ($del === 'del' && $hasAccess && $which > 0) {
+  $pdoDelete = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
+  if ($pdoDelete) {
+    $stmt = $pdoDelete->prepare("DELETE FROM select_gen WHERE pid = ?");
+    $stmt->execute([$which]);
+  }
+  header("Location: " . $listurl . "?deleted=1");
+  exit;
+}
+
+if($hasAccess) {
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -24,12 +38,15 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
    <?php include 'incl/admincss.php' ?>
 </head>
 <?php 
+// initialise defaults to avoid undefined variable notices
+$thisstid = 0;
+$select_type = '';
+$select_val = '';
+
 // page actions
 $done = isset($_POST['done']) ? $_POST['done'] : '';
 $newadmin = isset($_POST['newadmin']) ? $_POST['newadmin'] : '';
 $delicon = isset($_GET['delicon']) ? $_GET['delicon'] : '';
-$which = isset($_GET['which']) ? $_GET['which'] : 0;
-  $which = (int)$which;
 if ($delicon == "delicon" && ($admintype == 'AT' || $admintype == 'DV')) {
   // delete image ref
   $pdo = (isset($supabase_pdo) && $supabase_pdo instanceof PDO) ? $supabase_pdo : null;
@@ -116,24 +133,28 @@ if ($pdo) {
     $str = $row['str'];
     $single = $row['single'];
     $stid = $row['stid'];
-   if ($single == 1) {
+    $listtype = 'Unknown';
+    if ($single == 0) {
+      $listtype = 'Single Selection';
+    }
+    if ($single == 1) {
       $listtype = 'Multiple Selection';
-   }
-   if ($single == 2) {
+    }
+    if ($single == 2) {
       $listtype = 'Text';
-   }
-   if ($single == 3) {
+    }
+    if ($single == 3) {
       $listtype = 'Date';
-   }
-   if ($single == 6) {
+    }
+    if ($single == 6) {
       $listtype = 'Time';
-   }
-   if ($single == 4) {
+    }
+    if ($single == 4) {
       $listtype = 'Numeric (step 0.1)';
-   }
-   if ($single == 5) {
+    }
+    if ($single == 5) {
       $listtype = 'Numeric (step integer)';
-   }
+    }
    echo "<option value=\"$str\"";
    if ($thisstid == $stid) {
       echo "selected='selected'";

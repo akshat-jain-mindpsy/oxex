@@ -45,15 +45,21 @@ try {
     $delete_field_stmt = $pdo->prepare("DELETE FROM tab_fields WHERE stid = ? AND tbid = ?");
     $delete_field_stmt->execute([$stid, $tbid]);
     
-    // Reorder remaining fields
-    $pdo->query("SET @row_number = 0");
+    // Reorder remaining fields using PostgreSQL-compatible window function
     $reorder_stmt = $pdo->prepare("
-        UPDATE tab_fields 
-        SET sort_order = (@row_number:=@row_number + 1) 
-        WHERE tbid = ? 
-        ORDER BY sort_order
+        WITH ordered AS (
+            SELECT stid,
+                   ROW_NUMBER() OVER (ORDER BY sort_order, stid) AS new_order
+            FROM tab_fields
+            WHERE tbid = ?
+        )
+        UPDATE tab_fields tf
+        SET sort_order = ordered.new_order
+        FROM ordered
+        WHERE tf.stid = ordered.stid
+          AND tf.tbid = ?
     ");
-    $reorder_stmt->execute([$tbid]);
+    $reorder_stmt->execute([$tbid, $tbid]);
     
     // Commit transaction
     $pdo->commit();
