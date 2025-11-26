@@ -183,7 +183,8 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
             $message = "Cannot delete: This section is used by $field_count fields. Please reassign those fields first.";
             $alertType = "warning";
         } else {
-            $delete_stmt = $pdo->prepare("DELETE FROM field_sections WHERE section_id = ? LIMIT 1");
+            // PostgreSQL does not allow LIMIT in DELETE; primary key guarantees single row
+            $delete_stmt = $pdo->prepare("DELETE FROM field_sections WHERE section_id = ?");
             $delete_stmt->execute([$section_id]);
             
             if ($delete_stmt->rowCount() > 0) {
@@ -191,8 +192,16 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
                 $alertType = "success";
                 
                 // Reorder remaining sections
-                $pdo->query("SET @rank = 0");
-                $pdo->query("UPDATE field_sections SET section_order = (@rank:=@rank+1) ORDER BY section_order");
+                // Reassign sequential order numbers in PHP for cross-database compatibility
+                $order_stmt = $pdo->query("SELECT section_id FROM field_sections ORDER BY section_order");
+                $order = 1;
+                while ($row = $order_stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $update_order_stmt = $pdo->prepare("UPDATE field_sections SET section_order = ? WHERE section_id = ?");
+                    $update_order_stmt->execute([$order, $row['section_id']]);
+                    $update_order_stmt->closeCursor();
+                    $order++;
+                }
+                $order_stmt->closeCursor();
             } else {
                 $err = $pdo->errorInfo()[2] ?? 'Unknown error';
                 $message = "Error deleting section: " . $err;
@@ -283,7 +292,8 @@ if(login_check($pdo) == true && ($admintype == 'AT' || $admintype == 'AO' || $ad
             $check_stmt->closeCursor();
             
             // Remove the section association by setting section_id to NULL
-            $update_stmt = $pdo->prepare("UPDATE select_types SET section_id = NULL WHERE stid = ? LIMIT 1");
+            // LIMIT is not supported in PostgreSQL UPDATE statements; primary key ensures single row
+            $update_stmt = $pdo->prepare("UPDATE select_types SET section_id = NULL WHERE stid = ?");
             $update_stmt->execute([$field_id]);
             
             if ($update_stmt->rowCount() > 0) {
